@@ -17,7 +17,6 @@ from pathlib import Path
 
 import mock_ftdi as nb
 import pytest
-from mock_ftdi import BuildUnavailable, build
 
 from n1mm_scope_bridge.cli import main
 from n1mm_scope_bridge.emulator import Faults, Ft710Emulator
@@ -31,11 +30,12 @@ pytestmark = pytest.mark.native
 @pytest.fixture(scope="session")
 def mock_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     try:
-        return build(tmp_path_factory.mktemp("mock-ftdi"))
-    except BuildUnavailable as err:
+        built = nb.build(tmp_path_factory.mktemp("mock-ftdi"))
+    except nb.BuildUnavailable as err:
         if os.environ.get("N1MM_REQUIRE_NATIVE") == "1":
             pytest.fail(f"native tests required but {err}")
         pytest.skip(str(err))
+    return built
 
 
 def raw_stream(frames: int = 6, start_offset: int = 0) -> bytes:
@@ -89,13 +89,16 @@ def test_mock_rejects_wrong_spi_parameters(mock_dir: Path, capture: Path) -> Non
     api = load_api(str(mock_dir))
     status, handle = api.open_ex("FT4222 A")
     assert status == ft.FT_OK
-    assert api.spi_read(handle, 16)[0] == 3  # read before setup: FT_DEVICE_NOT_OPENED
-    assert api._spi_init(handle, 2, ft.CLK_DIV_64, ft.CLK_IDLE_HIGH, ft.CLK_LEADING, 1) == 6
-    assert api.set_timeouts(handle, 50, 100) == 6
-    assert api.set_latency_timer(handle, 16) == 6
-    assert api.uninitialize(handle) == ft.FT_OK
-    assert api.close(handle) == ft.FT_OK
-    assert api.close(handle) == 1  # handle no longer valid
+    results = [
+        api.spi_read(handle, 16)[0],  # before setup: FT_DEVICE_NOT_OPENED
+        api._spi_init(handle, 2, ft.CLK_DIV_64, ft.CLK_IDLE_HIGH, ft.CLK_LEADING, 1),
+        api.set_timeouts(handle, 50, 100),
+        api.set_latency_timer(handle, 16),
+        api.uninitialize(handle),
+        api.close(handle),
+        api.close(handle),  # stale handle is rejected, never read after free
+    ]
+    assert results == [3, 6, 6, 6, ft.FT_OK, ft.FT_OK, 1]
 
 
 def test_cli_probe_and_run_through_native_library(
@@ -138,9 +141,9 @@ def test_build_commands_per_platform(tmp_path: Path) -> None:
         tmp_path, platform="linux", which=lambda c: "/usr/bin/cc" if c == "cc" else None
     )
     assert linux[0][-2].endswith("libft4222.so")
-    with pytest.raises(BuildUnavailable):
+    with pytest.raises(nb.BuildUnavailable):
         nb.commands(tmp_path, platform="win32", which=lambda c: None)
-    with pytest.raises(BuildUnavailable):
+    with pytest.raises(nb.BuildUnavailable):
         nb.commands(tmp_path, platform="darwin", which=lambda c: None)
 
 
@@ -149,4 +152,4 @@ def test_build_reports_compiler_failure(tmp_path: Path) -> None:
         return subprocess.CompletedProcess([], 1, "", "boom")
 
     with pytest.raises(RuntimeError, match="boom"):
-        build(tmp_path, runner=failing, platform="linux", which=lambda c: "cc")
+        nb.build(tmp_path, runner=failing, platform="linux", which=lambda c: "cc")

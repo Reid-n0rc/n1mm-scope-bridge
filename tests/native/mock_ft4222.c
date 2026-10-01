@@ -86,6 +86,15 @@ static void mock_log(const mock_device *dev, const char *line) {
     fclose(f);
 }
 
+#define MAX_DEVICES 8
+
+#ifdef MOCK_D2XX
+/* Devices live in a fixed table and are never freed, so a stale handle (for
+ * example a second FT_Close) is detected safely instead of reading freed
+ * memory. Only the capture buffer is malloc'd and freed. */
+static mock_device devices[MAX_DEVICES];
+#endif
+
 static mock_device *device(FT_HANDLE h) {
     mock_device *dev = (mock_device *)h;
     return (dev && dev->magic == MOCK_MAGIC) ? dev : NULL;
@@ -103,8 +112,12 @@ EXPORT FT_STATUS FTAPI FT_OpenEx(void *arg, uint32_t flags, FT_HANDLE *handle) {
     if (!capture) return FT_DEVICE_NOT_FOUND;
     FILE *f = fopen(capture, "rb");
     if (!f) return FT_DEVICE_NOT_FOUND;
-    mock_device *dev = (mock_device *)calloc(1, sizeof *dev);
+    mock_device *dev = NULL;
+    for (int i = 0; i < MAX_DEVICES && !dev; i++) {
+        if (devices[i].magic != MOCK_MAGIC) dev = &devices[i];
+    }
     if (!dev) { fclose(f); return FT_IO_ERROR; }
+    memset(dev, 0, sizeof *dev);
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
@@ -112,7 +125,7 @@ EXPORT FT_STATUS FTAPI FT_OpenEx(void *arg, uint32_t flags, FT_HANDLE *handle) {
     if (size <= 0 || !dev->data || fread(dev->data, 1, (size_t)size, f) != (size_t)size) {
         fclose(f);
         free(dev->data);
-        free(dev);
+        dev->data = NULL;
         return FT_IO_ERROR;
     }
     fclose(f);
@@ -130,7 +143,7 @@ EXPORT FT_STATUS FTAPI FT_Close(FT_HANDLE h) {
     if (!dev) return FT_INVALID_HANDLE;
     dev->magic = 0;
     free(dev->data);
-    free(dev);
+    dev->data = NULL;
     return FT_OK;
 }
 
