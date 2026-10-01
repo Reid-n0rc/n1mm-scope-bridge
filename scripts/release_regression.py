@@ -246,6 +246,7 @@ def e2e_replay(runner: Runner = run_command, fixture: Path = FIXTURE) -> None:
             raise CheckFailed("packet does not match the N1MM <Spectrum> format")
 
 
+GUI_PATHS = r"(src/n1mm_scope_bridge/gui/|tests/test_gui)"
 GUI_SKIP = "skipped: no PySide6 wheels for free-threaded Python (--skip-gui)"
 
 
@@ -271,7 +272,11 @@ def default_steps(runner: Runner = run_command, *, skip_gui: bool = False) -> li
         ),
         Step("Lint (ruff)", ("uv", "run", "ruff", "check", ".")),
         Step("Format (ruff)", ("uv", "run", "ruff", "format", "--check", ".")),
-        Step("Type check (mypy --strict)", ("uv", "run", "mypy")),
+        Step(
+            "Type check (mypy --strict)",
+            # Without PySide6 the GUI can't be type-checked; the 3.13 jobs check it.
+            ("uv", "run", "mypy", *(("--exclude", GUI_PATHS) if skip_gui else ())),
+        ),
         Step(
             "Unit, slow, and licensing tests with coverage",
             (

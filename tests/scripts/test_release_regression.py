@@ -322,6 +322,8 @@ def test_skip_gui_drops_gui_group_and_is_allowed(
 ) -> None:
     steps = rr.default_steps(fake_runner(), skip_gui=True)
     assert steps[0].command[-2:] == ("--no-group", "gui-dev")
+    mypy = next(s for s in steps if s.name.startswith("Type check"))
+    assert mypy.command[-2:] == ("--exclude", rr.GUI_PATHS)
     gui = next(s for s in steps if s.name == "GUI self-test")
     assert gui.disabled_reason == rr.GUI_SKIP
     monkeypatch.delenv("UV_NO_GROUP", raising=False)
