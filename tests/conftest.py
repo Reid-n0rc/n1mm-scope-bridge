@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import socket
+from collections.abc import Iterator
 
 import pytest
 
@@ -18,3 +20,13 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "hardware" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.fixture
+def listener() -> Iterator[socket.socket]:
+    """A loopback UDP socket standing in for N1MM+ (bind port 0, 5 s timeout)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
+        rx.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+        rx.bind(("127.0.0.1", 0))
+        rx.settimeout(5)
+        yield rx

@@ -194,6 +194,11 @@ hold (#43):
   names mirrored (`foo.py` → `tests/test_foo.py`).
 - Every file starts with `# SPDX-License-Identifier: GPL-3.0-only` and a
   `# SPDX-FileCopyrightText:` line.
+- **CLI commands:** one module per command in
+  `src/n1mm_scope_bridge/cli/commands/` (the contract is in that package's
+  `__init__.py`), with tests in `tests/cli/test_cli_<name>.py` and a page in
+  `docs/user/cli/<name>.md`. Shared helpers go in `cli/common.py`. Commands
+  are discovered automatically, so never register one in a shared list.
 - Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
   I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
   small protocols, so tests can substitute fakes.
@@ -228,7 +233,8 @@ control command, or an error message. The user docs live in `docs/user/`,
 and the website (#21–#23) is rendered from them.
 
 `tests/test_docs.py` fails CI when:
-- a command, option, or setting is missing from `cli.md` or `settings.md`;
+- a command lacks its page `docs/user/cli/<command>.md`, an option is missing
+  from its command's page, or a setting is missing from `settings.md`;
 - a user-facing error message is missing from `troubleshooting.md`;
 - a link is broken.
 
