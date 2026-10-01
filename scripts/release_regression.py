@@ -8,78 +8,66 @@ Python before the project environment exists:
 
     uv run --no-project python scripts/release_regression.py --report regression-report.md
 
+The checks themselves live in scripts/regression_steps/NN_name.py, one file
+per check, loaded in filename order (#45). Every new user-facing feature adds
+its own step file (AGENTS.md); this runner does not change.
+
 Windows-only steps (app, installer, GUI) are skipped with --skip-windows-only
 and marked SKIPPED in the report. A release requires a Windows run with no
-skips. Every new user-facing feature adds its step here (AGENTS.md).
+skips.
 """
 
 from __future__ import annotations
 
 import argparse
-import fnmatch
-import json
+import importlib.util
 import os
 import platform
-import shutil
-import socket
 import subprocess
 import sys
-import tarfile
-import tempfile
 import time
-import xml.etree.ElementTree as ET
-import zipfile
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
-ROOT = Path(__file__).resolve().parent.parent
-DIST = ROOT / "dist" / "regression"
-LICENSE_FILES = ("LICENSE", "NOTICE", "THIRD_PARTY.md")
-FIXTURE = ROOT / "tests" / "fixtures" / "ft710_synthetic.cap"
-MIN_PACKETS = 5
-DRAIN_TIMEOUT = 0.5
-FORBIDDEN = ("*ft4222*.dll", "*ft4222*.so*", "*ft4222*.dylib", "*ftd2xx*")
-OUTPUT_TAIL = 40
+from regression_core import (
+    GUI_SKIP,
+    PENDING,
+    ROOT,
+    CheckFailed,
+    Result,
+    Runner,
+    Step,
+    StepContext,
+    run_command,
+    tail,
+)
 
+__all__ = ["CheckFailed", "Result", "Runner", "Step", "StepContext", "default_steps", "main"]
 
-class CheckFailed(Exception):
-    """A callable step found a problem."""
-
-
-Action = Callable[[], None]
-
-
-@dataclass(frozen=True)
-class Step:
-    name: str
-    command: tuple[str, ...] = ()
-    action: Action | None = None
-    windows_only: bool = False
-    disabled_reason: str = ""
+STEPS_DIR = Path(__file__).resolve().parent / "regression_steps"
 
 
-@dataclass(frozen=True)
-class Result:
-    name: str
-    status: str  # PASS, FAIL, SKIPPED, NOT RUN
-    seconds: float = 0.0
-    detail: str = ""
-    command: str = ""
+def load_step_files(directory: Path = STEPS_DIR) -> list[ModuleType]:
+    """Import every ``NN_name.py`` step file in ``directory``, in filename order."""
+    modules: list[ModuleType] = []
+    for path in sorted(directory.glob("[0-9]*.py")):
+        spec = importlib.util.spec_from_file_location(f"regression_steps.{path.stem}", path)
+        if spec is None or spec.loader is None:  # pragma: no cover - not a loadable file
+            raise RuntimeError(f"cannot load regression step file {path.name}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not callable(getattr(module, "steps", None)):
+            raise RuntimeError(f"regression step file {path.name} has no steps(ctx) function")
+        modules.append(module)
+    return modules
 
 
-Runner = Callable[[Sequence[str]], tuple[int, str]]
-
-
-def run_command(command: Sequence[str]) -> tuple[int, str]:  # pragma: no cover - real processes
-    proc = subprocess.run(
-        list(command), cwd=ROOT, capture_output=True, text=True, check=False, errors="replace"
-    )
-    return proc.returncode, proc.stdout + proc.stderr
-
-
-def _tail(text: str, lines: int = OUTPUT_TAIL) -> str:
-    return "\n".join(text.rstrip().splitlines()[-lines:])
+def default_steps(
+    runner: Runner = run_command, *, skip_gui: bool = False, directory: Path = STEPS_DIR
+) -> list[Step]:
+    ctx = StepContext(runner=runner, skip_gui=skip_gui)
+    return [step for module in load_step_files(directory) for step in module.steps(ctx)]
 
 
 def run_steps(
@@ -115,7 +103,7 @@ def run_steps(
         else:
             code, output = runner(step.command)
             status = "PASS" if code == 0 else "FAIL"
-            detail = "" if code == 0 else f"exit code {code}\n{_tail(output)}"
+            detail = "" if code == 0 else f"exit code {code}\n{tail(output)}"
         results.append(Result(step.name, status, clock() - start, detail, shown))
         failed = status == "FAIL"
     return results
@@ -149,210 +137,6 @@ def render_report(results: Sequence[Result], meta: dict[str, str], *, ok: bool) 
                 lines += ["", f"`{r.command}`"]
             lines += ["", "```", r.detail, "```"]
     return "\n".join(lines) + "\n"
-
-
-# --- archive checks ---------------------------------------------------------------
-
-
-def _forbidden(names: Sequence[str]) -> list[str]:
-    return [n for n in names for pat in FORBIDDEN if fnmatch.fnmatch(n.lower(), pat)]
-
-
-def check_wheel(path: Path) -> None:
-    with zipfile.ZipFile(path) as zf:
-        names = zf.namelist()
-    for lic in LICENSE_FILES:
-        if not any(n.endswith(f".dist-info/licenses/{lic}") for n in names):
-            raise CheckFailed(f"{path.name} is missing licenses/{lic}")
-    if not any(n.endswith("n1mm_scope_bridge/__init__.py") for n in names):
-        raise CheckFailed(f"{path.name} does not contain the package")
-    if bad := _forbidden(names):
-        raise CheckFailed(f"{path.name} contains FTDI binaries: {bad}")
-
-
-def check_sdist(path: Path) -> None:
-    with tarfile.open(path) as tf:
-        names = [n.split("/", 1)[1] for n in tf.getnames() if "/" in n]
-    for required in (*LICENSE_FILES, "pyproject.toml"):
-        if required not in names:
-            raise CheckFailed(f"{path.name} is missing {required}")
-    for prefix in ("src/n1mm_scope_bridge/", "tests/"):
-        if not any(n.startswith(prefix) for n in names):
-            raise CheckFailed(f"{path.name} has no {prefix} (GPLv3 corresponding source)")
-    if bad := _forbidden(names):
-        raise CheckFailed(f"{path.name} contains FTDI binaries: {bad}")
-
-
-def check_dists(dist: Path = DIST) -> None:
-    wheels, sdists = sorted(dist.glob("*.whl")), sorted(dist.glob("*.tar.gz"))
-    if len(wheels) != 1 or len(sdists) != 1:
-        raise CheckFailed(f"expected one wheel and one sdist in {dist}, found {wheels + sdists}")
-    check_wheel(wheels[0])
-    check_sdist(sdists[0])
-
-
-def wheel_smoke(dist: Path = DIST, runner: Runner = run_command) -> None:
-    """Install the wheel into a fresh venv and run the CLI's legal notices."""
-    wheel = next(iter(sorted(dist.glob("*.whl"))), None)
-    if wheel is None:
-        raise CheckFailed(f"no wheel in {dist}")
-    with tempfile.TemporaryDirectory() as tmp:
-        venv = Path(tmp) / "venv"
-        exe = venv / ("Scripts" if sys.platform == "win32" else "bin") / "n1mm-scope-bridge"
-        for cmd in (
-            ("uv", "venv", "--quiet", str(venv)),
-            ("uv", "pip", "install", "--quiet", "--python", str(venv), str(wheel)),
-            (str(exe), "--version"),
-            (str(exe), "--license"),
-        ):
-            code, out = runner(cmd)
-            if code != 0:
-                raise CheckFailed(f"{' '.join(cmd)} failed ({code}):\n{_tail(out)}")
-            if cmd[-1] == "--version" and "ABSOLUTELY NO WARRANTY" not in out:
-                raise CheckFailed("--version does not show the GPL legal notice")
-
-
-def e2e_replay(runner: Runner = run_command, fixture: Path = FIXTURE) -> None:
-    """Replay the synthetic capture through the real CLI into a UDP listener."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
-        rx.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
-        rx.bind(("127.0.0.1", 0))
-        port = str(rx.getsockname()[1])
-        cmd = ("uv", "run", "n1mm-scope-bridge", "run", "--replay", str(fixture), "--loop",
-               "--duration", "2", "--rate", "10", "--port", port)  # fmt: skip
-        code, out = runner(cmd)
-        if code != 0:
-            raise CheckFailed(f"bridge exited {code}:\n{_tail(out)}")
-        # Drain until the socket is quiet; loopback delivery can lag the sender slightly.
-        rx.settimeout(DRAIN_TIMEOUT)
-        packets = []
-        while True:
-            try:
-                packets.append(rx.recv(65535))
-            except OSError:  # includes TimeoutError
-                break
-    if len(packets) < MIN_PACKETS:
-        raise CheckFailed(f"N1MM listener got {len(packets)} packets, expected >= {MIN_PACKETS}")
-    for data in packets:
-        try:
-            root = ET.fromstring(data)
-        except ET.ParseError as err:
-            raise CheckFailed(f"invalid <Spectrum> XML: {err}") from None
-        values = (root.findtext("SpectrumData") or "").split(",")
-        if (
-            root.tag != "Spectrum"
-            or root.findtext("DataCount") != str(len(values))
-            or len(values) != 850
-        ):
-            raise CheckFailed("packet does not match the N1MM <Spectrum> format")
-
-
-GUI_PATHS = r"(src/n1mm_scope_bridge/gui/|tests/test_gui)"
-GUI_SKIP = "skipped: no PySide6 wheels for free-threaded Python (--skip-gui)"
-
-
-LIST_SCENARIOS = (
-    "uv", "run", "python", "-c",
-    "import json; from n1mm_scope_bridge.emulator import SCENARIOS; "
-    "print(json.dumps({n: s.expect_error for n, s in SCENARIOS.items()}))",
-)  # fmt: skip
-
-
-def _collect(rx: socket.socket) -> list[bytes]:
-    rx.settimeout(DRAIN_TIMEOUT)
-    packets = []
-    while True:
-        try:
-            packets.append(rx.recv(65535))
-        except OSError:  # includes TimeoutError
-            return packets
-
-
-def emulator_scenarios(runner: Runner = run_command) -> None:
-    """Run every emulator scenario through the real CLI (no radio needed)."""
-    code, out = runner(LIST_SCENARIOS)
-    if code != 0:
-        raise CheckFailed(f"could not list emulator scenarios:\n{_tail(out)}")
-    scenarios: dict[str, str] = json.loads(out.strip().splitlines()[-1])
-    if not scenarios:
-        raise CheckFailed("no emulator scenarios defined")
-    failures = []
-    for name, expect_error in sorted(scenarios.items()):
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
-            rx.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
-            rx.bind(("127.0.0.1", 0))
-            cmd = ("uv", "run", "n1mm-scope-bridge", "run", "--scenario", name, "--duration", "2",
-                   "--rate", "10", "--port", str(rx.getsockname()[1]))  # fmt: skip
-            code, out = runner(cmd)
-            packets = _collect(rx)
-        if expect_error:
-            if code != 1 or expect_error not in out:
-                failures.append(f"{name}: expected exit 1 with {expect_error!r}, got {code}")
-        elif code != 0 or len(packets) < MIN_PACKETS:
-            failures.append(f"{name}: exit {code}, {len(packets)} packets\n{_tail(out, 5)}")
-    if failures:
-        raise CheckFailed("\n".join(failures))
-
-
-def default_steps(runner: Runner = run_command, *, skip_gui: bool = False) -> list[Step]:
-    sh = shutil.which("sh") or "sh"
-
-    def build() -> None:
-        shutil.rmtree(DIST, ignore_errors=True)
-        code, out = runner(("uv", "build", "--out-dir", str(DIST)))
-        if code != 0:
-            raise CheckFailed(f"uv build failed ({code}):\n{_tail(out)}")
-
-    return [
-        Step(
-            "Locked clean environment",
-            (
-                "uv",
-                "sync",
-                "--locked",
-                "--reinstall",
-                *(("--no-group", "gui-dev") if skip_gui else ()),
-            ),
-        ),
-        Step("Lint (ruff)", ("uv", "run", "ruff", "check", ".")),
-        Step("Format (ruff)", ("uv", "run", "ruff", "format", "--check", ".")),
-        Step(
-            "Type check (mypy --strict)",
-            # Without PySide6 the GUI can't be type-checked; the 3.13 jobs check it.
-            ("uv", "run", "mypy", *(("--exclude", GUI_PATHS) if skip_gui else ())),
-        ),
-        Step(
-            "Unit, slow, and licensing tests with coverage",
-            (
-                "uv",
-                "run",
-                "pytest",
-                "--cov",
-                "--cov-report=term-missing",
-                "-p",
-                "no:cacheprovider",
-                *(("--cov-config=.coveragerc-nogui",) if skip_gui else ()),
-            ),
-        ),
-        Step("Git and agent hook tests", (sh, "tests/hooks/run.sh")),
-        Step("Build sdist and wheel", action=build),
-        Step("Dist contents (licenses, source, no FTDI binaries)", action=check_dists),
-        Step("Wheel installs and shows legal notices", action=lambda: wheel_smoke(runner=runner)),
-        Step("End-to-end replay to N1MM UDP listener", action=lambda: e2e_replay(runner)),
-        Step("Emulator scenarios through the CLI", action=lambda: emulator_scenarios(runner)),
-        Step("Windows app (PyInstaller) runs", windows_only=True, disabled_reason="added by #6"),
-        Step(
-            "GUI self-test",
-            windows_only=True,
-            disabled_reason=GUI_SKIP if skip_gui else "added by #18",
-        ),
-        Step(
-            "Installer silent install/run/uninstall",
-            windows_only=True,
-            disabled_reason="added by #20",
-        ),
-        Step("Website builds for this version", disabled_reason="added by #21"),
-    ]
 
 
 def environment() -> dict[str, str]:
@@ -398,9 +182,7 @@ def main(
     )
     # Steps disabled until their feature lands are allowed; skipped Windows steps are not.
     blocking_skips = [
-        r
-        for r in results
-        if r.status == "SKIPPED" and not r.detail.startswith(("added by #", GUI_SKIP))
+        r for r in results if r.status == "SKIPPED" and not r.detail.startswith((PENDING, GUI_SKIP))
     ]
     ok = passed(results, allow_skips=True) and not blocking_skips
     report = render_report(results, meta if meta is not None else environment(), ok=ok)

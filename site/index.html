@@ -2,16 +2,16 @@
 <html lang="en">
 <head>
 <!-- include:head -->
-<title>N1MM Scope Bridge: your FT-710's waterfall in N1MM Logger+</title>
-<meta name="description" content="Show the Yaesu FT-710's spectrum scope in N1MM Logger+'s Spectrum Display window.">
+<title>N1MM Scope Bridge: your Yaesu radio's waterfall in N1MM Logger+</title>
+<meta name="description" content="Show a Yaesu radio's built-in spectrum scope in N1MM Logger+'s Spectrum Display window. Starting with the FT-710.">
 </head>
 <body>
 <!-- include:header -->
 <main id="main">
   <section class="hero">
     <div class="wrap">
-      <h1>Your FT-710's waterfall, in N1MM Logger+</h1>
-      <p class="lead">N1MM Scope Bridge reads the Yaesu FT-710's spectrum scope over USB and shows it in N1MM Logger+'s Spectrum Display window, the same way Icom radios work today.</p>
+      <h1>Your Yaesu radio's waterfall, in N1MM Logger+</h1>
+      <p class="lead">N1MM Scope Bridge reads the spectrum scope built into Yaesu radios and shows it in N1MM Logger+'s Spectrum Display window, the same way Icom radios work today. It starts with the Yaesu FT-710, and more Yaesu models are planned.</p>
       <!-- if:release -->
       <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
       <!-- endif:release -->
@@ -24,7 +24,7 @@
   <section class="wrap">
     <h2 id="how-it-works">How it works</h2>
     <ol class="steps">
-      <li><strong>The radio streams its scope.</strong> The FT-710's USB port carries the spectrum scope on its own channel, next to the usual CAT ports.</li>
+      <li><strong>The radio streams its scope.</strong> Recent Yaesu radios send their spectrum scope to the PC on a channel of its own, separate from CAT. On the FT-710 it arrives over the same USB cable, next to the usual CAT ports.</li>
       <li><strong>The bridge reads it.</strong> N1MM Scope Bridge reads that stream on your station PC.</li>
       <li><strong>N1MM+ draws it.</strong> The bridge sends each spectrum line to N1MM+'s Spectrum Display, which you set to show it.</li>
     </ol>
@@ -36,8 +36,10 @@
     <table>
       <thead><tr><th scope="col">Radio</th><th scope="col">Status</th></tr></thead>
       <tbody>
-        <tr><td>Yaesu FT-710</td><td><!-- if:release -->Supported<!-- endif:release --><!-- if:prerelease -->In development<!-- endif:prerelease --></td></tr>
-        <tr><td>Yaesu FTDX10, FTDX101</td><td>Planned. Owners who can test are welcome.</td></tr>
+        <tr><td>Yaesu FT-710 (USB)</td><td><!-- if:release -->Supported<!-- endif:release --><!-- if:prerelease -->In development<!-- endif:prerelease --></td></tr>
+        <tr><td>Yaesu FTDX10 (USB)</td><td>Planned. Owners who can test are welcome.</td></tr>
+        <tr><td>Yaesu FTDX101D and FTDX101MP (USB)</td><td>Planned. Owners who can test are welcome.</td></tr>
+        <tr><td>Yaesu radios on the SCU-LAN10 network adapter</td><td>Planned.</td></tr>
         <tr><td>Icom (IC-7300, IC-7610, IC-705, and others)</td><td>Not needed: N1MM+ supports their scopes directly.</td></tr>
       </tbody>
     </table>
@@ -46,7 +48,7 @@
 
   <section class="wrap">
     <h2 id="credits">Built on wfview's work</h2>
-    <p>Knowing how the FT-710 streams its scope comes from the <a href="https://gitlab.com/eliggett/wfview">wfview</a> project by Elliott Liggett, W6EL, and Phil Taylor, M0VSE. Thank you.</p>
+    <p>Knowing how Yaesu radios such as the FT-710 stream their scope comes from the <a href="https://gitlab.com/eliggett/wfview">wfview</a> project by Elliott Liggett, W6EL, and Phil Taylor, M0VSE. Thank you.</p>
   </section>
 </main>
 <!-- include:footer -->

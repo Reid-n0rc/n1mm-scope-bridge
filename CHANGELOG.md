@@ -6,7 +6,5 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-### Added
-
-- Repository scaffolding: process (AGENTS.md), CI, git and agent hooks, issue
-  and PR templates, design docs, and a placeholder CLI.
+See `changelog.d/` for changes not yet released
+(`python scripts/build_changelog.py --preview`).
