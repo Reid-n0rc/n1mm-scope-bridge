@@ -90,7 +90,8 @@ change (see [AGENTS.md](AGENTS.md), Task sizing).
 
 ## Command line (advanced)
 
-The GUI is the normal way to run the bridge (coming soon). The same features
+The GUI (`n1mm-scope-bridge-gui`, see the [GUI guide](docs/user/gui.md)) is the
+normal way to run the bridge. The same features
 are available from a terminal:
 
 ```

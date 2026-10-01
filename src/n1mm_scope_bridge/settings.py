@@ -48,6 +48,8 @@ class Settings:
     combine: str = "latest"
     ftdi_lib_dir: str = ""
     device: str = DEFAULT_DESCRIPTION
+    emulator: bool = False
+    """Use the built-in FT-710 emulator instead of the radio (demo, N1MM+ setup)."""
     start_streaming_on_launch: bool = False
     start_minimized: bool = False
     on_close: str = "ask"
