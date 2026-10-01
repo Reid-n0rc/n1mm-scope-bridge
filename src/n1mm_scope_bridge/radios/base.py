@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Radio-independent types that every supported radio plugs into.
 
 A radio is a ``RadioProfile``: static facts about the model plus a pure

@@ -31,21 +31,37 @@ comment, the issue, or the doc instead.
 
 - Source: <https://gitlab.com/eliggett/wfview>, reviewed at commit
   `cd18ea55fe479eb4526d1732b443cbfc3969c540` (2026-05-28)
-- Copyright: 2017-2026 Elliott H. Liggett (W6EL) and Phil E. Taylor (M0VSE)
-- License: GPLv3 (`LICENSE` in that repository)
-- Used for: the FT-710 FT4222 SPI scope protocol, namely the frame layout
-  (`include/packettypes.h`, `yaesu_scope_data`), the sync pattern and device
-  setup (`src/ft4222handler.cpp`), the status-byte decoding
-  (`src/radio/yaesucommander.cpp`, `haveScopeData()`), and the span and
-  scope-mode tables (`rigs/FT-710.rig`). Any code ported from these files
-  carries a header comment naming the file it came from.
+- License: GPLv3 (`LICENSE` in that repository; "GPLv3", no "or later"). This
+  project is GPL-3.0-only, which is compatible.
+- Copyright notices, reproduced verbatim:
+  - README: "wfview is copyright 2017-2026 Elliott H. Liggett (W6EL) and Phil
+    Taylor (M0VSE). All rights reserved. wfview source code is licensed via the
+    GNU GPLv3."
+  - `src/radio/yaesucommander.cpp`: "Copyright 2017-2024 Elliott H. Liggett
+    W6EL and Phil E. Taylor M0VSE"
+- Derived files. Each carries those notices, the GPL notice, and a dated
+  "Modified by" notice (GPLv3 §5(a)):
+
+  | File | Taken from wfview | Changes |
+  |------|-------------------|---------|
+  | `src/n1mm_scope_bridge/radios/yaesu_scope.py` | `include/packettypes.h` (`yaesu_scope_data`), `src/ft4222handler.cpp` (sync pattern), `src/radio/yaesucommander.cpp` (`haveScopeData()`) | Ported to Python as a pure parser, with validation added |
+  | `src/n1mm_scope_bridge/radios/ft710.py` | `rigs/FT-710.rig` (span and scope-mode tables) | Converted from Qt INI to a `RadioProfile` |
+  | `docs/protocol-yaesu-ft4222.md` | The same sources | Documentation of the protocol facts |
+
+- How we meet GPLv3: see issue #12. In short, notices are kept (§4, §5),
+  modifications are marked (§5(a)), the whole project is GPL-3.0-only
+  (§5(c)), the CLI shows legal notices (`--version`, `--license`; §5(d)),
+  and every release ships the source next to any binary (§6). `LICENSE`,
+  `NOTICE`, and this file are included in the sdist and wheel.
 
 ### FTDI LibFT4222 / D2XX (runtime dependency, not included)
 
 - Source: <https://ftdichip.com/products/ft4222h/>
-- License: FTDI driver licence terms. Users install it themselves. It is not
-  committed to this repository, and it will only be bundled in a release
-  build if the release PR records the licence review here.
+- License: FTDI's proprietary driver licence. It is **never bundled** in this
+  repository or in any release. Users install it from FTDI, and the bridge
+  loads it at run time. Bundling it would mean distributing GPL code
+  (including wfview's) combined with a GPL-incompatible library, which we
+  don't do without written permission from the wfview copyright holders.
 
 ### N1MM Logger+ external spectrum interface (facts only)
 

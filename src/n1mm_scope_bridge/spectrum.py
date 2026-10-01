@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Radio-independent spectrum line passed between the pipeline stages.
 
 Frames are immutable (frozen dataclass, tuple of ints) so they can be handed

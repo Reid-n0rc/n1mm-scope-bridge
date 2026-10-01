@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """N1MM Logger+ external spectrum packet: encoder and UDP sender.
 
 Source: N1MM+ manual, External UDP Messages,

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Enforce the AGENTS.md issue policy on pull requests.
 
 Every PR into `dev` must close at least one issue, and each linked issue must
