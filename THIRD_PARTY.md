@@ -45,6 +45,7 @@ comment, the issue, or the doc instead.
   | File | Taken from wfview | Changes |
   |------|-------------------|---------|
   | `src/n1mm_scope_bridge/radios/yaesu_scope.py` | `include/packettypes.h` (`yaesu_scope_data`), `src/ft4222handler.cpp` (sync pattern), `src/radio/yaesucommander.cpp` (`haveScopeData()`) | Ported to Python as a pure parser, with validation added |
+  | `src/n1mm_scope_bridge/transport/ft4222.py` | `src/ft4222handler.cpp`, `include/ft4222handler.h` (library names, device setup sequence, sync/resync) | Rewritten with ctypes; sliding-window resync; errors raised; device released only by the reading thread |
   | `src/n1mm_scope_bridge/radios/ft710.py` | `rigs/FT-710.rig` (span and scope-mode tables) | Converted from Qt INI to a `RadioProfile` |
   | `docs/protocol-yaesu-ft4222.md` | The same sources | Documentation of the protocol facts |
 
