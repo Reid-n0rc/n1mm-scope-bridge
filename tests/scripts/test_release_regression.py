@@ -336,3 +336,55 @@ def test_skip_gui_drops_gui_group_and_is_allowed(
     assert code == 0
     assert os.environ["UV_NO_GROUP"] == "gui-dev"
     capsys.readouterr()
+
+
+# --- emulator scenarios step -------------------------------------------------------------
+
+
+def scenario_runner(listing: str, results: dict[str, tuple[int, str, int]]) -> rr.Runner:
+    """Fake CLI: listing for LIST_SCENARIOS, else (exit, output, packets) per scenario."""
+
+    def run(cmd: Sequence[str]) -> tuple[int, str]:
+        if tuple(cmd) == rr.LIST_SCENARIOS:
+            return 0, listing
+        name = cmd[cmd.index("--scenario") + 1]
+        code, out, packets = results[name]
+        port = int(cmd[cmd.index("--port") + 1])
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tx:
+            for _ in range(packets):
+                tx.sendto(SPECTRUM, ("127.0.0.1", port))
+        return code, out
+
+    return run
+
+
+def test_emulator_scenarios_pass() -> None:
+    listing = '{"steady": "", "usb-unplug": "SingleRead failed"}'
+    rr.emulator_scenarios(
+        scenario_runner(
+            listing, {"steady": (0, "", 6), "usb-unplug": (1, "error: SingleRead failed", 0)}
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("results", "message"),
+    [
+        (
+            {"steady": (0, "", 1), "usb-unplug": (1, "SingleRead failed", 0)},
+            "steady: exit 0, 1 packets",
+        ),
+        ({"steady": (0, "", 6), "usb-unplug": (0, "", 6)}, "usb-unplug: expected exit 1"),
+    ],
+)
+def test_emulator_scenario_failures(results: dict[str, tuple[int, str, int]], message: str) -> None:
+    listing = '{"steady": "", "usb-unplug": "SingleRead failed"}'
+    with pytest.raises(rr.CheckFailed, match=message):
+        rr.emulator_scenarios(scenario_runner(listing, results))
+
+
+def test_emulator_scenarios_listing_errors() -> None:
+    with pytest.raises(rr.CheckFailed, match="could not list"):
+        rr.emulator_scenarios(fake_runner({"uv": 1}))
+    with pytest.raises(rr.CheckFailed, match="no emulator scenarios"):
+        rr.emulator_scenarios(scenario_runner("{}", {}))

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import platform
 import shutil
@@ -250,6 +251,49 @@ GUI_PATHS = r"(src/n1mm_scope_bridge/gui/|tests/test_gui)"
 GUI_SKIP = "skipped: no PySide6 wheels for free-threaded Python (--skip-gui)"
 
 
+LIST_SCENARIOS = (
+    "uv", "run", "python", "-c",
+    "import json; from n1mm_scope_bridge.emulator import SCENARIOS; "
+    "print(json.dumps({n: s.expect_error for n, s in SCENARIOS.items()}))",
+)  # fmt: skip
+
+
+def _collect(rx: socket.socket) -> list[bytes]:
+    rx.settimeout(DRAIN_TIMEOUT)
+    packets = []
+    while True:
+        try:
+            packets.append(rx.recv(65535))
+        except OSError:  # includes TimeoutError
+            return packets
+
+
+def emulator_scenarios(runner: Runner = run_command) -> None:
+    """Run every emulator scenario through the real CLI (no radio needed)."""
+    code, out = runner(LIST_SCENARIOS)
+    if code != 0:
+        raise CheckFailed(f"could not list emulator scenarios:\n{_tail(out)}")
+    scenarios: dict[str, str] = json.loads(out.strip().splitlines()[-1])
+    if not scenarios:
+        raise CheckFailed("no emulator scenarios defined")
+    failures = []
+    for name, expect_error in sorted(scenarios.items()):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
+            rx.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
+            rx.bind(("127.0.0.1", 0))
+            cmd = ("uv", "run", "n1mm-scope-bridge", "run", "--scenario", name, "--duration", "2",
+                   "--rate", "10", "--port", str(rx.getsockname()[1]))  # fmt: skip
+            code, out = runner(cmd)
+            packets = _collect(rx)
+        if expect_error:
+            if code != 1 or expect_error not in out:
+                failures.append(f"{name}: expected exit 1 with {expect_error!r}, got {code}")
+        elif code != 0 or len(packets) < MIN_PACKETS:
+            failures.append(f"{name}: exit {code}, {len(packets)} packets\n{_tail(out, 5)}")
+    if failures:
+        raise CheckFailed("\n".join(failures))
+
+
 def default_steps(runner: Runner = run_command, *, skip_gui: bool = False) -> list[Step]:
     sh = shutil.which("sh") or "sh"
 
@@ -295,6 +339,7 @@ def default_steps(runner: Runner = run_command, *, skip_gui: bool = False) -> li
         Step("Dist contents (licenses, source, no FTDI binaries)", action=check_dists),
         Step("Wheel installs and shows legal notices", action=lambda: wheel_smoke(runner=runner)),
         Step("End-to-end replay to N1MM UDP listener", action=lambda: e2e_replay(runner)),
+        Step("Emulator scenarios through the CLI", action=lambda: emulator_scenarios(runner)),
         Step("Windows app (PyInstaller) runs", windows_only=True, disabled_reason="added by #6"),
         Step(
             "GUI self-test",

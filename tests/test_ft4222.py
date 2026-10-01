@@ -98,12 +98,33 @@ def test_misaligned_stream_resyncs_on_inter_frame_pattern() -> None:
     assert (reader.resyncs, reader.reinits) == (1, 0)
 
 
-def test_resync_window_finds_pattern_after_partial_match() -> None:
-    # wfview's restart-at-0xFF scan can miss this; a sliding window cannot.
-    stream = b"\xff\x01\xee\x01\xff" + ft.RESYNC_PATTERN
+def test_resync_skips_sync_padding_and_returns_next_frame_start() -> None:
+    stream = b"\x00\xff\x01" + ft.RESYNC_PATTERN + b"\xff\x01\xee\x01" + b"NEXT"
     reader = Ft4222Reader(FakeApi(stream))
     reader.open()
-    assert reader.resync() is True
+    assert reader.resync() == b"NEXT"
+
+
+def test_resync_handles_unpadded_frames() -> None:
+    # Frames back to back with zero padding: a single sync marks the boundary.
+    stream = FRAME[100:] + FRAME + FRAME
+    reader = Ft4222Reader(FakeApi(stream))
+    reader.open()
+    assert reader.read_frame() == FRAME
+    assert reader.resyncs == 1
+
+
+@pytest.mark.parametrize("cut", [b"", b"\xff\x01\xee\x01\xff\x01"])
+def test_resync_stream_ends_inside_padding(cut: bytes) -> None:
+    reader = Ft4222Reader(FakeApi(b"\x00\xff\x01\xee\x01" + cut))
+    reader.open()
+    assert reader.resync() is None
+
+
+def test_resync_gives_up_on_endless_padding() -> None:
+    reader = Ft4222Reader(FakeApi(ft.RESYNC_PATTERN * 25), max_resync_bytes=32)
+    reader.open()
+    assert reader.resync() is None
 
 
 def test_failed_resync_reopens_device() -> None:
@@ -141,10 +162,21 @@ def test_stop_during_recovery_returns_none() -> None:
     assert not reader.is_open
 
 
+def test_garbled_stream_that_keeps_resyncing_gives_up() -> None:
+    # Sync markers everywhere but never a whole valid frame.
+    garbage = (b"\x00" * 100 + ft.RESYNC_PATTERN[:4] + b"\x11" * 4) * 5000
+    reader = Ft4222Reader(FakeApi(repeat=garbage))
+    reader.open()
+    with pytest.raises(Ft4222Error, match="No valid scope frames"):
+        reader.read_frame()
+    assert reader.resyncs >= ft.MAX_RESYNCS
+    assert reader.reinits == ft.MAX_REINITS
+
+
 def test_resync_stops_on_short_read() -> None:
     reader = Ft4222Reader(FakeApi(b""))
     reader.open()
-    assert reader.resync() is False
+    assert reader.resync() is None
 
 
 def test_read_error_status_raises() -> None:

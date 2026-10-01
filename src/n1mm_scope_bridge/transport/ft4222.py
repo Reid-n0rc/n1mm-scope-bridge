@@ -22,8 +22,10 @@
 #   Library names and the device setup sequence (open by description, timeouts,
 #   latency, SPI master parameters, system clock) are taken from
 #   src/ft4222handler.cpp and include/ft4222handler.h. Rewritten with ctypes
-#   instead of QLibrary; resync uses a sliding 16-byte window instead of
-#   restarting at each 0xFF; I/O errors raise instead of emitting the buffer;
+#   instead of QLibrary; resync locks on the 4-byte sync, skips repeated sync
+#   padding, and keeps the bytes that follow as the start of the next frame
+#   (wfview waits for 16 pattern bytes and can lock mid-padding); I/O errors
+#   raise instead of emitting the buffer;
 #   the device is released only by the reading thread.
 """Read raw scope frames from a Yaesu radio's FT4222 USB-to-SPI bridge.
 
@@ -49,9 +51,10 @@ from n1mm_scope_bridge.radios.yaesu_scope import FRAME_SIZE, SYNC
 
 FTDI_DOWNLOAD_URL = "https://ftdichip.com/products/ft4222h/"
 DEFAULT_DESCRIPTION = "FT4222 A"
-RESYNC_PATTERN = SYNC * 4
+RESYNC_PATTERN = SYNC * 4  # wfview's inter-frame pattern (sync padding)
 MAX_RESYNC_BYTES = 8192
 MAX_REINITS = 3
+MAX_RESYNCS = 16  # resyncs in a row without a valid frame before re-opening
 
 FT_OK = 0
 FT_OPEN_BY_DESCRIPTION = 2
@@ -330,35 +333,57 @@ class Ft4222Reader:
             raise Ft4222Error(f"FT4222_SPIMaster_SingleRead failed ({status_name(status)})")
         return data
 
-    def resync(self) -> bool:
-        """Read byte by byte until the 16-byte inter-frame sync pattern is seen."""
-        window: deque[int] = deque(maxlen=len(RESYNC_PATTERN))
+    def resync(self) -> bytes | None:
+        """Find the next frame boundary; return the first bytes of the next frame.
+
+        Reads byte by byte until the 4-byte sync marker, then consumes any
+        repeats of it (frames may be padded with the sync pattern; wfview
+        waits for four repeats). The first 4-byte group that is not the
+        pattern starts the next frame. Returns None if the stream ends or no
+        sync is found within ``max_resync_bytes``.
+        UNVERIFIED (#36): the real radio's padding between frames.
+        """
+        window: deque[int] = deque(maxlen=len(SYNC))
         for _ in range(self._max_resync):
             byte = self._read(1)
             if len(byte) != 1:
-                return False
+                return None
             window.append(byte[0])
-            if len(window) == len(RESYNC_PATTERN) and bytes(window) == RESYNC_PATTERN:
-                return True
-        return False
+            if bytes(window) == SYNC:
+                for _ in range(self._max_resync // len(SYNC)):
+                    group = self._read(len(SYNC))
+                    if len(group) != len(SYNC):
+                        return None
+                    if group != SYNC:
+                        return group
+                return None
+        return None
 
     def read_frame(self) -> bytes | None:
         """Return the next whole frame, resynchronising (or re-opening) as needed.
 
-        Returns None if ``stop()`` was called during recovery. Raises
-        ``Ft4222Error`` after ``MAX_REINITS`` re-opens in a row without a
-        valid frame, so a silent radio never becomes an endless busy loop.
+        Returns None if ``stop()`` was called during recovery. After
+        ``MAX_RESYNCS`` resyncs without a valid frame the device is re-opened,
+        and after ``MAX_REINITS`` re-opens ``Ft4222Error`` is raised, so neither
+        a silent nor a garbled stream can become an endless busy loop.
         """
         if self._handle is None:
             raise Ft4222Error("device is not open")
         failed_reinits = 0
+        resyncs_without_frame = 0
+        prefix = b""
         while not self._stop.is_set():
-            data = self._read(self._frame_size)
+            data = prefix + self._read(self._frame_size - len(prefix))
             if len(data) == self._frame_size and data.endswith(SYNC):
                 return data
             self.resyncs += 1
-            if self.resync():
+            resyncs_without_frame += 1
+            found = self.resync()
+            if found is not None and resyncs_without_frame < MAX_RESYNCS:
+                prefix = found
                 continue
+            prefix = b""
+            resyncs_without_frame = 0
             if failed_reinits >= MAX_REINITS:
                 raise Ft4222Error(
                     f"No valid scope frames from {self._description!r} after "
