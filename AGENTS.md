@@ -46,13 +46,24 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
 5. **Do not push, tag, release, or bump versions** unless the maintainer
    explicitly asks in the current conversation. Commit locally and stop.
 6. **Respect licenses (GPL-3.0-only).** wfview is GPLv3. Code ported or
-   adapted from it is allowed, but it must keep wfview's copyright notice in a
-   header comment and must be recorded in [THIRD_PARTY.md](THIRD_PARTY.md) in
-   the same PR. Never copy code from sources whose license is unknown or
-   incompatible, such as proprietary SDKs, Yaesu documents beyond facts, or
-   N1MM binaries.
-7. **Never commit FTDI libraries** (LibFT4222, ftd2xx). Users install them
-   from FTDI. The `pre-commit` hook blocks them.
+   adapted from it is allowed only with all of the following, in the same PR
+   (GPLv3 §§4–5, enforced by `tests/test_licensing.py`):
+   - wfview's copyright notices kept **verbatim** in the file header (copy them
+     from `NOTICE`), plus `SPDX-FileCopyrightText` lines for both copyright
+     holders;
+   - the GPL notice block, and a dated **"Modified by <name>, <YYYY-MM-DD>:
+     <what changed>"** notice;
+   - a row in the derived-files table in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+   Use `src/n1mm_scope_bridge/radios/yaesu_scope.py` as the template. Never
+   copy code from sources whose license is unknown or incompatible, such as
+   proprietary SDKs, Yaesu documents beyond facts, or N1MM binaries. Every
+   `.py` file starts with `SPDX-License-Identifier` and
+   `SPDX-FileCopyrightText` lines. Releases must ship `LICENSE`, `NOTICE`,
+   and `THIRD_PARTY.md`, with the sdist attached next to any binary (§6).
+7. **Never commit or bundle FTDI libraries** (LibFT4222, ftd2xx), not even in
+   release builds. They are proprietary and not GPL-compatible. Users install
+   them from FTDI. The `pre-commit` hook blocks them.
 8. **Never transmit, and never key the radio.** This project only reads scope
    data. Do not add code that sends CAT commands that change radio state
    unless an approved issue says so explicitly.
@@ -150,18 +161,16 @@ version, and a short trimmed capture, so the result can be reproduced.
 
 - Source goes in `src/n1mm_scope_bridge/` and tests in `tests/`, with module
   names mirrored (`foo.py` → `tests/test_foo.py`).
-- Every file starts with `# SPDX-License-Identifier: GPL-3.0-only`.
+- Every file starts with `# SPDX-License-Identifier: GPL-3.0-only` and a
+  `# SPDX-FileCopyrightText:` line.
 - Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
   I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
   small protocols, so tests can substitute fakes.
 - Radios plug in through a `RadioProfile` plus a `SpectrumSource`. See
   [docs/adding-a-radio.md](docs/adding-a-radio.md). Do not special-case a
   radio model outside its own module.
-- Anything derived from wfview cites it in a header comment:
-  ```python
-  # Derived from wfview (https://gitlab.com/eliggett/wfview), <file>:<function>,
-  # Copyright 2017-2026 Elliott H. Liggett W6EL and Phil E. Taylor M0VSE, GPLv3.
-  ```
+- Anything derived from wfview follows rule 6 (verbatim notices, GPL block,
+  dated modification notice, THIRD_PARTY.md row).
 - Mark anything not yet confirmed on real hardware with `# UNVERIFIED:` and
   link the hardware-validation issue.
 - **Concurrency** (see docs/architecture.md, Concurrency):

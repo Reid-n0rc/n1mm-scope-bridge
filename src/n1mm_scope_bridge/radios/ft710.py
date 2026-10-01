@@ -1,9 +1,29 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
+# SPDX-FileCopyrightText: 2017-2026 Elliott H. Liggett (W6EL) and Phil Taylor (M0VSE)
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Portions derived from wfview (https://gitlab.com/eliggett/wfview):
+#   wfview is copyright 2017-2026 Elliott H. Liggett (W6EL) and Phil Taylor
+#   (M0VSE). All rights reserved. wfview source code is licensed via the GNU
+#   GPLv3.
+#
+# Modified by Reid Crowe, N0RC, 2026-10-01: span and scope-mode tables from rigs/FT-710.rig
+#   converted from Qt INI format into a Python RadioProfile.
 """Yaesu FT-710 profile.
 
-Span and scope-mode tables are from wfview's rigs/FT-710.rig
-(https://gitlab.com/eliggett/wfview), Copyright 2017-2026 Elliott H. Liggett
-W6EL and Phil E. Taylor M0VSE, GPLv3.
+Span and scope-mode tables are from wfview's rigs/FT-710.rig (see the header
+above and THIRD_PARTY.md).
 """
 
 from __future__ import annotations

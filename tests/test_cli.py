@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 import subprocess
 import sys
 
@@ -35,3 +36,31 @@ def test_module_entry_point_runs() -> None:
     )
     assert result.returncode == 0
     assert __version__ in result.stdout
+
+
+def test_version_shows_legal_notices(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--version"])
+    out = capsys.readouterr().out
+    assert "ABSOLUTELY NO WARRANTY" in out
+    assert "wfview" in out
+    assert "Elliott H. Liggett (W6EL)" in out
+    assert "GNU General Public License version 3" in out
+    assert "--license" in out
+
+
+def test_license_flag_prints_full_notice(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--license"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "version 3 of the License" in out
+    assert "WITHOUT\nANY WARRANTY" in out
+    assert "corresponding source" in out
+    assert "https://github.com/Reid-n0rc/n1mm-scope-bridge" in out
+
+
+def test_help_shows_legal_notice(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    assert "ABSOLUTELY NO WARRANTY" in capsys.readouterr().out

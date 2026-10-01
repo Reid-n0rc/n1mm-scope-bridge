@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Stream a radio's panadapter/waterfall (Yaesu FT-710 first) into N1MM Logger+'s Spectrum Display window"
 readme = "README.md"
 license = "GPL-3.0-only"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md"]
 authors = [{ name = "Reid Crowe, N0RC" }]
 requires-python = ">=3.10"
 dependencies = []
@@ -57,6 +57,7 @@ testpaths = ["tests"]
 pythonpath = ["scripts", "tests"]
 addopts = "-ra --strict-markers"
 markers = [
+    "slow: builds the package (runs in CI, a few seconds)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
 ]
 

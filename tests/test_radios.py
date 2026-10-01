@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 import pytest
 
 from n1mm_scope_bridge.radios import RADIOS, get_radio

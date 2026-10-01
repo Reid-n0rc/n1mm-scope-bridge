@@ -1,10 +1,34 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
+# SPDX-FileCopyrightText: 2017-2026 Elliott H. Liggett (W6EL) and Phil Taylor (M0VSE)
+#
+# This program is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# Portions derived from wfview (https://gitlab.com/eliggett/wfview):
+#   wfview is copyright 2017-2026 Elliott H. Liggett (W6EL) and Phil Taylor
+#   (M0VSE). All rights reserved. wfview source code is licensed via the GNU
+#   GPLv3.
+#   src/radio/yaesucommander.cpp:
+#   Copyright 2017-2024 Elliott H. Liggett W6EL and Phil E. Taylor M0VSE
+#
+# Modified by Reid Crowe, N0RC, 2026-10-01: ported from C++/Qt to Python.
+#   Frame layout from include/packettypes.h (yaesu_scope_data) and the sync
+#   pattern from src/ft4222handler.cpp, re-expressed as offset constants.
+#   Status decoding from yaesuCommander::haveScopeData() rewritten as a pure
+#   function: adds validation (length, sync, BCD, span index, negative edge),
+#   raises FrameError instead of continuing, and does not update radio state.
 """Parser for Yaesu scope frames read through the radio's FT4222 SPI bridge.
 
-Derived from wfview (https://gitlab.com/eliggett/wfview):
-  include/packettypes.h (yaesu_scope_data), src/ft4222handler.cpp (sync),
-  src/radio/yaesucommander.cpp (yaesuCommander::haveScopeData),
-Copyright 2017-2026 Elliott H. Liggett W6EL and Phil E. Taylor M0VSE, GPLv3.
+Derived from wfview; see the header above and THIRD_PARTY.md.
 Frame layout and open questions: docs/protocol-yaesu-ft4222.md.
 """
 
