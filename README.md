@@ -1,5 +1,8 @@
 # n1mm-scope-bridge
 
+[![CI](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/branch/dev/graph/badge.svg)](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
+
 Show your radio's panadapter/waterfall in **N1MM Logger+'s Spectrum Display
 window**. The first target is the **Yaesu FT-710**. The design is pluggable so
 other radios can follow.
