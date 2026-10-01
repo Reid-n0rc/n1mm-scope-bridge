@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import os
 import threading
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -301,13 +302,16 @@ def test_ctypes_api_marshals_calls() -> None:
     api = ft.CtypesApi(d2xx_lib(log), ft4222_lib(log))
     status, handle = api.open_ex("FT4222 A")
     assert (status, handle.value) == (0, 1234)
-    assert api.set_timeouts(handle, 100, 100) == 0
-    assert api.set_latency_timer(handle, 2) == 0
-    assert api.spi_master_init(handle) == 0
-    assert api.set_clock(handle) == 0
-    assert api.spi_read(handle, 4) == (0, b"\x00\x01\x02\x03")
-    assert api.uninitialize(handle) == 0
-    assert api.close(handle) == 0
+    results = [
+        api.set_timeouts(handle, 100, 100),
+        api.set_latency_timer(handle, 2),
+        api.spi_master_init(handle),
+        api.set_clock(handle),
+        api.spi_read(handle, 4),
+        api.uninitialize(handle),
+        api.close(handle),
+    ]
+    assert results == [0, 0, 0, 0, (0, b"\x00\x01\x02\x03"), 0, 0]
     assert log[0] == ("open", b"FT4222 A", ft.FT_OPEN_BY_DESCRIPTION)
     assert ("spi_init", ft.SPI_IO_SINGLE, ft.CLK_DIV_64, ft.CLK_IDLE_HIGH, ft.CLK_LEADING, 1) in log
     assert ("clock", ft.SYS_CLK_24) in log
@@ -362,11 +366,37 @@ def test_load_api_combined_library_on_linux() -> None:
     assert tried == ["libft4222.so"]
 
 
-def test_load_api_uses_lib_dir() -> None:
+def test_load_api_uses_lib_dir_and_registers_it(tmp_path: Path) -> None:
     tried: list[str] = []
+    registered: list[str] = []
     libs = {"ftd2xx.dll": d2xx_lib([]), "LibFT4222-64.dll": ft4222_lib([])}
-    ft.load_api("C:/ftdi", loader=make_loader(libs, tried), platform="win32", is_64bit=True)
-    assert tried[0] == os.path.join("C:/ftdi", "ftd2xx.dll")
+    ft.load_api(
+        str(tmp_path),
+        loader=make_loader(libs, tried),
+        platform="win32",
+        is_64bit=True,
+        add_dll_directory=registered.append,
+    )
+    assert tried[0] == os.path.join(str(tmp_path), "ftd2xx.dll")
+    assert registered == [str(tmp_path)]
+
+
+def test_load_api_without_dll_directory_support(tmp_path: Path) -> None:
+    libs = {"ftd2xx.dll": d2xx_lib([]), "LibFT4222-64.dll": ft4222_lib([])}
+    api = ft.load_api(
+        str(tmp_path),
+        loader=make_loader(libs, []),
+        platform="win32",
+        is_64bit=True,
+        add_dll_directory=None,
+    )
+    assert isinstance(api, ft.CtypesApi)
+
+
+def test_load_api_rejects_missing_folder(tmp_path: Path) -> None:
+    missing = str(tmp_path / "nope")
+    with pytest.raises(LibraryNotFound, match="folder does not exist"):
+        ft.load_api(missing, loader=make_loader({}, []), platform="win32")
 
 
 @pytest.mark.parametrize("missing", ["ftd2xx.dll", "LibFT4222-64.dll"])

@@ -94,14 +94,29 @@ class DeviceNotFound(Ft4222Error):
 class Ft4222Api(Protocol):
     """The handful of D2XX/LibFT4222 calls the reader needs, as plain Python."""
 
-    def open_ex(self, description: str) -> tuple[int, Any]: ...
-    def set_timeouts(self, handle: Any, read_ms: int, write_ms: int) -> int: ...
-    def set_latency_timer(self, handle: Any, ms: int) -> int: ...
-    def spi_master_init(self, handle: Any) -> int: ...
-    def set_clock(self, handle: Any) -> int: ...
-    def spi_read(self, handle: Any, size: int) -> tuple[int, bytes]: ...
-    def uninitialize(self, handle: Any) -> int: ...
-    def close(self, handle: Any) -> int: ...
+    def open_ex(self, description: str) -> tuple[int, Any]:
+        """Open by description; return (status, handle)."""
+
+    def set_timeouts(self, handle: Any, read_ms: int, write_ms: int) -> int:
+        """FT_SetTimeouts."""
+
+    def set_latency_timer(self, handle: Any, ms: int) -> int:
+        """FT_SetLatencyTimer."""
+
+    def spi_master_init(self, handle: Any) -> int:
+        """FT4222_SPIMaster_Init with wfview's parameters."""
+
+    def set_clock(self, handle: Any) -> int:
+        """FT4222_SetClock(SYS_CLK_24)."""
+
+    def spi_read(self, handle: Any, size: int) -> tuple[int, bytes]:
+        """FT4222_SPIMaster_SingleRead; return (status, data)."""
+
+    def uninitialize(self, handle: Any) -> int:
+        """FT4222_UnInitialize."""
+
+    def close(self, handle: Any) -> int:
+        """FT_Close."""
 
 
 # D2XX's DWORD/ULONG/FT_STATUS are 32-bit on every platform; FT4222 enums are ints.
@@ -181,6 +196,8 @@ class CtypesApi:
 
 Loader = Callable[[str], Any]
 
+_ADD_DLL_DIRECTORY: Callable[[str], object] | None = getattr(os, "add_dll_directory", None)
+
 
 def library_names(
     platform: str = sys.platform, is_64bit: bool = sys.maxsize > 2**32
@@ -222,16 +239,18 @@ def load_api(
     platform: str = sys.platform,
     is_64bit: bool = sys.maxsize > 2**32,
     loader: Loader = _default_loader,
+    add_dll_directory: Callable[[str], object] | None = _ADD_DLL_DIRECTORY,
 ) -> CtypesApi:
     """Load LibFT4222 (and D2XX where it is separate) and return the bound API."""
+    if lib_dir and not os.path.isdir(lib_dir):
+        raise LibraryNotFound(f"FTDI library folder does not exist: {lib_dir}")
     d2xx_names, ft_names = library_names(platform, is_64bit)
     tried: list[str] = []
     if platform == "win32":
         # LibFT4222 links against ftd2xx.dll; Python 3.8+ does not search the
         # DLL's own folder for dependencies, so register it, then load D2XX first.
-        add_dir = getattr(os, "add_dll_directory", None)
-        if lib_dir and add_dir is not None:  # pragma: no cover - Windows only
-            add_dir(lib_dir)
+        if lib_dir and add_dll_directory is not None:
+            add_dll_directory(lib_dir)
         d2xx = _load_first(d2xx_names, lib_dir, loader, tried)
         ft4222 = _load_first(ft_names, lib_dir, loader, tried)
     else:
