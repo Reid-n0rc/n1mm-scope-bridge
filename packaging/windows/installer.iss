@@ -86,29 +86,49 @@ Type: files; Name: "{app}\ftd2xx.dll"
 
 [Code]
 var
-  FtdiPage: TInputDirWizardPage;
+  FtdiPage: TInputQueryWizardPage;
 
 function HasLibFT4222(Dir: String): Boolean;
 begin
   Result := FileExists(AddBackslash(Dir) + 'LibFT4222-64.dll');
 end;
 
-procedure InitializeWizard();
+procedure BrowseClick(Sender: TObject);
+var
+  Dir: String;
 begin
-  FtdiPage := CreateInputDirPage(wpSelectTasks,
+  Dir := FtdiPage.Values[0];
+  if BrowseForFolder('Select the folder you unzipped from FTDI', Dir, False) then
+    FtdiPage.Values[0] := Dir;
+end;
+
+procedure InitializeWizard();
+var
+  Browse: TNewButton;
+begin
+  // A plain text field (optional): TInputDirWizardPage rejects an empty path.
+  FtdiPage := CreateInputQueryPage(wpSelectTasks,
     'FTDI LibFT4222 library',
     'The FT-710''s scope is read through FTDI''s LibFT4222 library.',
     'FTDI''s license does not let us include LibFT4222, so download it from ' +
     'FTDI (' + '{#FtdiUrl}' + ') and unzip it. If you pick the unzipped folder ' +
     'below, setup copies LibFT4222-64.dll into the program folder for you. ' +
-    'You can also leave this empty and set the folder later in the app.',
-    False, '');
-  FtdiPage.Add('Folder containing LibFT4222-64.dll (optional):');
+    'You can also leave this empty and set the folder later in the app.');
+  FtdiPage.Add('Folder containing LibFT4222-64.dll (optional):', False);
+  Browse := TNewButton.Create(FtdiPage);
+  Browse.Parent := FtdiPage.Surface;
+  Browse.Caption := '&Browse...';
+  Browse.Width := ScaleX(90);
+  Browse.Height := ScaleY(23);
+  Browse.Left := FtdiPage.SurfaceWidth - Browse.Width;
+  Browse.Top := FtdiPage.Edits[0].Top + FtdiPage.Edits[0].Height + ScaleY(8);
+  Browse.OnClick := @BrowseClick;
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = FtdiPage.ID) and HasLibFT4222(ExpandConstant('{sys}'));
+  // Silent installs never ask; the GUI checks for LibFT4222 at launch.
+  Result := (PageID = FtdiPage.ID) and (WizardSilent() or HasLibFT4222(ExpandConstant('{sys}')));
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
