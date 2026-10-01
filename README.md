@@ -39,6 +39,10 @@ N1MM's documented external spectrum interface.
   and span come from the scope frame itself, so N1MM+ keeps exclusive control
   of the radio.
 
+- **Multi-core.** Each radio runs as its own reader → process → sender
+  thread pipeline, and the reader is never blocked by the stages after it. On
+  free-threaded Python (3.14t) all stages run in parallel on separate cores.
+
 More detail: [docs/architecture.md](docs/architecture.md).
 
 ## Supported radios
@@ -73,10 +77,11 @@ change (see [AGENTS.md](AGENTS.md), Task sizing).
 1. N1MM `<Spectrum>` packet encoder and UDP sender
 2. FT-710 scope frame parser (pure function, fixture-driven tests)
 3. LibFT4222 ctypes reader with frame resync
-4. Bridge loop, CLI, and record/replay of raw frames
-5. Hardware validation on an FT-710: span, scope modes, and dB scaling
-6. Windows standalone build and release packaging
-7. More radios (FTDX10, FTDX101, SCU-LAN10)
+4. Multi-core threaded pipeline (one pipeline per radio)
+5. Bridge loop, CLI, and record/replay of raw frames
+6. Hardware validation on an FT-710: span, scope modes, and dB scaling
+7. Windows standalone build and release packaging
+8. More radios (FTDX10, FTDX101, SCU-LAN10)
 
 ## Development
 
