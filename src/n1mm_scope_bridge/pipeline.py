@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Threaded, multi-core streaming pipeline: reader -> process -> sender.
 
 Each radio gets its own ``Pipeline`` with three non-daemon threads:
