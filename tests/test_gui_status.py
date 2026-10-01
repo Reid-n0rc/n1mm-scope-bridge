@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+
+import pytest
 
 from n1mm_scope_bridge.gui.status import (
     DIAGNOSTIC_LOG_LINES,
@@ -87,10 +89,22 @@ def test_log_buffer_is_bounded_and_timestamped() -> None:
     assert [ln.split(" ", 1)[1] for ln in log.lines()] == ["info: m2", "info: m3", "info: m4"]
 
 
-def test_redact_home() -> None:
-    home = Path("/Users/op")
-    assert redact_home("/Users/op/ftdi and /Users/op", home) == "~/ftdi and ~"
-    assert redact_home("/x", Path("/")) == "/x"
+@pytest.mark.parametrize(
+    ("home", "text", "expected"),
+    [
+        (PurePosixPath("/Users/op"), "/Users/op/ftdi and /Users/op", "~/ftdi and ~"),
+        (PureWindowsPath("C:/Users/op"), r"C:\Users\op\ftdi", r"~\ftdi"),
+        (PureWindowsPath("C:/Users/op"), r'"C:\\Users\\op\\ftdi"', r'"~\\ftdi"'),
+        (PureWindowsPath("C:/Users/op"), "C:/Users/op/ftdi", "~/ftdi"),
+        (PurePosixPath("/"), "/x", "/x"),
+    ],
+)
+def test_redact_home(home: PurePath, text: str, expected: str) -> None:
+    assert redact_home(text, home) == expected
+
+
+def test_redact_home_defaults_to_current_user() -> None:
+    assert redact_home(str(Path.home()) + "/x") == "~/x"
 
 
 def test_diagnostics_content(tmp_path: Path) -> None:
@@ -105,7 +119,9 @@ def test_diagnostics_content(tmp_path: Path) -> None:
     text = diagnostics(settings, model, log, home=tmp_path)
     assert text.startswith("n1mm-scope-bridge ")
     assert str(tmp_path) not in text
-    assert '"ftdi_lib_dir": "~/ftdi"' in text
+    ftdi = json.loads(text.split("Settings:\n", 1)[1].split("\n\nStatus:", 1)[0])["ftdi_lib_dir"]
+    assert ftdi.startswith("~")
+    assert ftdi.endswith("ftdi")
     assert "VFO: 14.074000 MHz" in text
     assert "Frames read: 42" in text
     log_part = text.split("Log (last")[1].splitlines()[1:]

@@ -13,7 +13,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from n1mm_scope_bridge import __version__
 from n1mm_scope_bridge.pipeline import PipelineStats
@@ -110,10 +110,19 @@ class LogBuffer:
         return list(self._lines)
 
 
-def redact_home(text: str, home: Path | None = None) -> str:
-    """Replace the user's home folder (which contains their account name) with ``~``."""
-    home_text = str(home or Path.home())
-    return text.replace(home_text, "~") if home_text not in ("", "/") else text
+def redact_home(text: str, home: PurePath | None = None) -> str:
+    """Replace the user's home folder (it contains the account name) with ``~``.
+
+    Covers the plain form, the JSON-escaped form (``C:\\\\Users\\\\op`` in the
+    settings dump), and the forward-slash form of a Windows path.
+    """
+    home_text = str(home if home is not None else Path.home())
+    if home_text in ("", "/", "\\"):
+        return text
+    forms = {home_text, json.dumps(home_text)[1:-1], home_text.replace("\\", "/")}
+    for form in sorted(forms, key=len, reverse=True):
+        text = text.replace(form, "~")
+    return text
 
 
 def diagnostics(
@@ -121,7 +130,7 @@ def diagnostics(
     model: StatusModel,
     log: LogBuffer,
     *,
-    home: Path | None = None,
+    home: PurePath | None = None,
 ) -> str:
     """Text for bug reports: version, platform, settings, status, recent log."""
     stats = model.stats
