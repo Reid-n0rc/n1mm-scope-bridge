@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>N1MM+ setup | N1MM Scope Bridge</title>
+<meta name="description" content="Set up N1MM Logger+'s Spectrum Display to show the bridge's spectrum.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Set up N1MM+</h1>
+  <p>Do this once. N1MM+ remembers it.</p>
+  <ol class="steps">
+    <li>Keep N1MM+ connected to the radio for CAT as usual (<strong>Config &rarr; Configure Ports</strong>). The bridge doesn't use the CAT port.</li>
+    <li>Start N1MM Scope Bridge first, so N1MM+ can see its source name. By default the name is <code>FT-710</code>.</li>
+    <li>In N1MM+, open <strong>Window &rarr; Spectrum Display</strong>.</li>
+    <li>Click the <strong>gear</strong> icon. In <strong>Spectrum Source</strong>, choose <strong>For all other radios, source named</strong>, then pick the bridge's name in <strong>External Source Name</strong>.</li>
+    <li>For SO2R, choose <strong>Radio 1</strong> or <strong>Radio 2</strong> in <strong>General Options</strong> to match the radio the bridge is reading.</li>
+  </ol>
+  <p>The bridge sends the frequency range and level scaling with every update, so there is nothing else to set in N1MM+.</p>
+
+  <h2 id="radio">On the FT-710</h2>
+  <p>Set the scope to <strong>Center</strong> mode. Frequencies in N1MM+ are exact in Center mode. The bridge warns you if the scope is in another mode.</p>
+
+  <h2 id="other-pc">N1MM+ on another PC</h2>
+  <p>N1MM+ listens on UDP port 13064. Point the bridge at that PC's address and allow UDP port 13064 through that PC's firewall.</p>
+
+  <p class="note">Source: the N1MM+ manual, <a href="https://n1mmwp.hamdocs.com/manual-windows/spectrum-display-window/">The Spectrum Display Window</a>.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>

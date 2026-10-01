@@ -7,7 +7,8 @@
 - [Setting up N1MM Logger+](../n1mm-setup.md)
 
 These pages describe the software on the branch you are reading. The
-project website (published with the first release) is built from the latest
-release, so it matches the version you can download. CI fails if a
+[project website](https://reid-n0rc.github.io/n1mm-scope-bridge/) describes the
+latest release, so it matches the version you can download. Until the first
+release it is marked "In development". CI fails if a
 command-line option, setting, or user-facing error is missing from these
 pages.
