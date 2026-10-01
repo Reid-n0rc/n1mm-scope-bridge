@@ -111,7 +111,7 @@ def test_save_is_atomic_on_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     def boom(*_: object, **__: object) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr(st.json, "dump", boom)
+    monkeypatch.setattr("n1mm_scope_bridge.settings.json.dump", boom)
     with pytest.raises(OSError, match="disk full"):
         st.save(Settings(source_name="lost"), path)
     assert st.load(path)[0].source_name == "kept"
