@@ -1,0 +1,77 @@
+# Builds the Windows installer (Inno Setup) around the PyInstaller app and runs
+# the silent install -> run -> uninstall smoke test on a clean runner. Issue #20.
+#
+# Inno Setup is downloaded from its official GitHub release and pinned by
+# SHA-256. FTDI's LibFT4222 is never bundled.
+name: Windows installer
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths:
+      - packaging/**
+      - scripts/build_windows_app.py
+      - scripts/build_installer.py
+      - src/n1mm_scope_bridge/gui/**
+      - .github/workflows/windows-installer.yml
+      - .github/workflows/windows-app.yml
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe
+  INNO_SHA256: 0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f
+
+jobs:
+  app:
+    uses: ./.github/workflows/windows-app.yml
+
+  installer:
+    name: Build and smoke-test installer
+    needs: app
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-app
+          path: dist/windows
+      - name: Unpack the app
+        shell: pwsh
+        run: Get-ChildItem dist/windows/*.zip | ForEach-Object { Expand-Archive $_ -DestinationPath dist/windows -Force }
+      - name: Install Inno Setup (pinned)
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:INNO_SHA256) { throw "Inno Setup checksum mismatch: $hash" }
+          $dir = Join-Path $env:RUNNER_TEMP 'inno'
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER',"/DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup install failed: $($p.ExitCode)" }
+          "ISCC=$dir\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Build installer
+        shell: bash
+        run: uv run --no-project python scripts/build_installer.py
+      - name: Smoke test (install, run, uninstall)
+        shell: pwsh
+        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-installer
+          path: dist/windows/n1mm-scope-bridge-setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
