@@ -37,6 +37,7 @@ DIST = ROOT / "dist" / "regression"
 LICENSE_FILES = ("LICENSE", "NOTICE", "THIRD_PARTY.md")
 FIXTURE = ROOT / "tests" / "fixtures" / "ft710_synthetic.cap"
 MIN_PACKETS = 5
+DRAIN_TIMEOUT = 0.5
 FORBIDDEN = ("*ft4222*.dll", "*ft4222*.so*", "*ft4222*.dylib", "*ftd2xx*")
 OUTPUT_TAIL = 40
 
@@ -221,12 +222,13 @@ def e2e_replay(runner: Runner = run_command, fixture: Path = FIXTURE) -> None:
         code, out = runner(cmd)
         if code != 0:
             raise CheckFailed(f"bridge exited {code}:\n{_tail(out)}")
-        rx.setblocking(False)
+        # Drain until the socket is quiet; loopback delivery can lag the sender slightly.
+        rx.settimeout(DRAIN_TIMEOUT)
         packets = []
         while True:
             try:
                 packets.append(rx.recv(65535))
-            except OSError:
+            except OSError:  # includes TimeoutError
                 break
     if len(packets) < MIN_PACKETS:
         raise CheckFailed(f"N1MM listener got {len(packets)} packets, expected >= {MIN_PACKETS}")
