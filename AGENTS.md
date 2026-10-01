@@ -1,0 +1,180 @@
+# AGENTS.md
+
+Instructions for AI coding agents (Claude Code, Codex, Copilot, Cursor, and
+others) and for human contributors. `CLAUDE.md` points here, so this file is
+the single source of truth. If another doc disagrees with this one, this one
+wins. Fix the other doc in the same PR.
+
+## Project
+
+`n1mm-scope-bridge` reads a radio's spectrum scope and sends it to N1MM
+Logger+'s Spectrum Display window as N1MM's external `<Spectrum>` UDP packet.
+The first radio is the **Yaesu FT-710**. Its scope arrives through an FTDI
+FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
+
+- Stack: Python 3.10 or later, standard library only at runtime (`ctypes`,
+  `socket`, `argparse`), and uv, pytest, ruff, and mypy (strict) for development
+- Commands:
+  - `uv sync`: create `.venv` with the dev tools
+  - `uv run pytest --cov`: unit tests. Coverage must stay at 90% or higher.
+  - `uv run ruff check . && uv run ruff format --check .`: lint and format
+  - `uv run mypy`: strict type check of `src/` and `tests/`
+  - `sh tests/hooks/run.sh`: git hook and agent hook tests
+- Read these before touching the matching area:
+  - [docs/architecture.md](docs/architecture.md): module layout and data flow
+  - [docs/protocol-yaesu-ft4222.md](docs/protocol-yaesu-ft4222.md): FT-710 frame layout
+  - [docs/n1mm-spectrum-protocol.md](docs/n1mm-spectrum-protocol.md): N1MM packet
+  - [docs/adding-a-radio.md](docs/adding-a-radio.md): how a new radio plugs in
+
+## Non-negotiable rules
+
+1. **No work without an approved, assigned issue.** Every change is tracked by
+   a GitHub issue that contains a software plan. Do not start until the
+   maintainer (@Reid-n0rc) approves the plan, which means the issue has the
+   `plan-approved` label. Issues labeled `plan-needs-approval` are **not**
+   ready. Before work starts, assign the issue to whoever is working it.
+2. **One branch per issue, based on `dev`.**
+   ```bash
+   git fetch origin
+   git switch -c issue-<number>-<short-slug> origin/dev
+   ```
+3. **Open pull requests against `dev`.** Never push directly to `dev` or
+   `master`. A ruleset enforces this. PRs from non-admins need code-owner
+   approval, and new pushes dismiss approvals.
+4. **Only the maintainer promotes `dev` to `master`**, through a release PR.
+   Tags and releases come only from `master`.
+5. **Do not push, tag, release, or bump versions** unless the maintainer
+   explicitly asks in the current conversation. Commit locally and stop.
+6. **Respect licenses (GPL-3.0-only).** wfview is GPLv3. Code ported or
+   adapted from it is allowed, but it must keep wfview's copyright notice in a
+   header comment and must be recorded in [THIRD_PARTY.md](THIRD_PARTY.md) in
+   the same PR. Never copy code from sources whose license is unknown or
+   incompatible, such as proprietary SDKs, Yaesu documents beyond facts, or
+   N1MM binaries.
+7. **Never commit FTDI libraries** (LibFT4222, ftd2xx). Users install them
+   from FTDI. The `pre-commit` hook blocks them.
+8. **Never transmit, and never key the radio.** This project only reads scope
+   data. Do not add code that sends CAT commands that change radio state
+   unless an approved issue says so explicitly.
+9. **Test everything, and regress before merging.** See the Testing policy.
+10. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+    required.
+
+## Task sizing (context-window budget)
+
+**Always break work up so that one agent session can finish it without
+exceeding its context window.** This applies to issues, to plans, and to how
+an agent works inside a session.
+
+- One issue covers one concern: one module, one radio, one doc, or one
+  workflow.
+- Aim for a diff of **300 lines or fewer** (tests excluded), touching **5 files
+  or fewer**.
+- A plan must list every file the issue reads or changes. If doing the work
+  means reading more than about **10 files**, or any very large file, split
+  the issue.
+- **Do not load large inputs into context.** wfview is a large Qt codebase.
+  Read only the specific function or file named in the issue, for example
+  `src/radio/yaesucommander.cpp` `haveScopeData()` or
+  `src/ft4222handler.cpp`. Never read the whole tree. Scope captures used as
+  fixtures must be a few frames (the hook rejects files over 1 MiB). Never
+  paste a full capture into context. Inspect it with a script that prints a
+  summary.
+- If a task grows mid-flight, **stop**. Commit what is coherent, then open a
+  follow-up issue with its own plan for approval. Do not expand scope.
+- Agents that spawn sub-agents should give each one an issue-sized piece, not
+  the whole project.
+
+## Local setup
+
+```bash
+uv sync
+git config core.hooksPath .githooks
+```
+
+- `pre-commit` blocks commits on `master` or `dev`, staged FTDI vendor
+  libraries, and staged files over 1 MiB.
+- `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
+  bypass is `ALLOW_PROTECTED_PUSH=1`.
+- `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
+  needs `jq`. It denies agent pushes to `master` or `dev` and force pushes,
+  except `--force-with-lease` on `issue-*` branches.
+
+## Issue lifecycle
+
+Anyone can file a **Bug report**, **Feature request**, or **Radio support
+request** without a plan. Those templates are intake only, and filing one
+does not authorize work.
+
+1. Before anyone works an issue, it needs a software plan: the goal, the
+   steps, every file it touches, a test plan, acceptance criteria, and what is
+   out of scope. New work uses the **Implementation task** template. Then apply
+   `plan-needs-approval`.
+2. The maintainer approves the plan by swapping the label to `plan-approved`,
+   or asks for changes in the comments.
+3. Assign the issue (`gh issue edit <n> --add-assignee @me`). Agents act
+   under the maintainer's account, so agent work is assigned to that account.
+4. Work on `issue-<n>-<slug>`, branched from `dev`.
+5. Open a PR into `dev` whose body contains `Closes #<n>`. The **Issue policy**
+   check (`.github/workflows/issue-policy.yml`) fails a PR whose linked issue
+   lacks `plan-approved` or an assignee. CI must be green.
+6. The maintainer (or an agent the maintainer has explicitly authorized)
+   merges.
+
+Hardware-dependent findings (anything learned by running against a real
+radio) go in the issue as a comment, with the radio model, the firmware
+version, and a short trimmed capture, so the result can be reproduced.
+
+## Testing policy
+
+1. **Every function has thorough unit tests**: the happy path, boundaries,
+   invalid input, and every error path. Tests never need a radio, FTDI
+   libraries, N1MM, or the network. Use synthetic frames built in the test,
+   small binary fixtures under `tests/fixtures/`, a fake `ctypes` library
+   object, and a fake or loopback socket.
+2. **Hardware tests are opt-in.** Mark them `@pytest.mark.hardware`. They are
+   skipped unless `N1MM_BRIDGE_HARDWARE=1` is set, and they never run in CI.
+   Record their results in the issue or PR.
+3. **Every change runs regression tests.** Before opening or updating a PR,
+   run the full suite plus lint and type checks. Paste the commands and
+   results into the PR. Never skip, xfail, or delete a failing test to get
+   green.
+4. **Every release runs full regression from a clean environment**, and the
+   maintainer runs an on-air check with a real FT-710 and N1MM+:
+   ```bash
+   uv sync --locked && uv run ruff check . && uv run ruff format --check . \
+     && uv run mypy && uv run pytest --cov && sh tests/hooks/run.sh
+   ```
+
+## Code conventions
+
+- Source goes in `src/n1mm_scope_bridge/` and tests in `tests/`, with module
+  names mirrored (`foo.py` → `tests/test_foo.py`).
+- Every file starts with `# SPDX-License-Identifier: GPL-3.0-only`.
+- Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
+  I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
+  small protocols, so tests can substitute fakes.
+- Radios plug in through a `RadioProfile` plus a `SpectrumSource`. See
+  [docs/adding-a-radio.md](docs/adding-a-radio.md). Do not special-case a
+  radio model outside its own module.
+- Anything derived from wfview cites it in a header comment:
+  ```python
+  # Derived from wfview (https://gitlab.com/eliggett/wfview), <file>:<function>,
+  # Copyright 2017-2026 Elliott H. Liggett W6EL and Phil E. Taylor M0VSE, GPLv3.
+  ```
+- Mark anything not yet confirmed on real hardware with `# UNVERIFIED:` and
+  link the hardware-validation issue.
+- Never log at a rate higher than once per second inside the frame loop. The
+  radio produces dozens of frames per second.
+- Default N1MM update rate: about 3 to 5 packets per second, never more than
+  10. This follows the N1MM team's guidance.
+
+## Release process
+
+1. Open a PR from `dev` to `master` titled `Release vX.Y.Z`. The maintainer
+   chooses the version.
+2. Paste the full regression output and the on-air check result into it.
+3. The maintainer merges, then creates the tag and GitHub release from
+   `master`. Agents never tag or release.
+4. Update [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format) in the
+   release PR.

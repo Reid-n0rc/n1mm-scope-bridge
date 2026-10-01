@@ -1,0 +1,37 @@
+name: Radio support request
+description: Ask for a radio to be supported, ideally with a short scope capture (see docs/adding-a-radio.md)
+labels: [radio-support]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Radio model and firmware version
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: How does the radio expose scope data?
+      options:
+        - USB FT4222 SPI (like the FT-710)
+        - CAT command stream over USB/serial
+        - Network (for example Yaesu SCU-LAN10 or Kenwood LAN)
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: wfview
+    attributes:
+      label: Does wfview show this radio's scope?
+      options: ["Yes", "No", "Not sure"]
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Links, the wfview rig file name, and a trimmed capture with the frequency, span, and scope mode the radio showed at the time.
+  - type: checkboxes
+    id: tester
+    attributes:
+      label: Testing
+      options:
+        - label: I own this radio and can test pre-release builds

@@ -1,0 +1,57 @@
+#!/bin/sh
+# pre-commit: local guardrails (see AGENTS.md).
+#
+#  1. Refuse commits while on master or dev. Work happens on issue branches.
+#  2. Refuse staged FTDI vendor libraries (LibFT4222 / ftd2xx). Users install
+#     them from FTDI; they are never committed (see THIRD_PARTY.md).
+#  3. Refuse staged files larger than 1 MiB. Scope captures used as test
+#     fixtures must be trimmed to a few frames (see AGENTS.md, Testing policy).
+#
+# Bypass with `git commit --no-verify` only if you are certain the commit is fine.
+
+fail=0
+
+# --- 1. Protected branches ---------------------------------------------------
+branch=$(git symbolic-ref --short -q HEAD 2>/dev/null)
+case "$branch" in
+    master | dev)
+        echo "pre-commit: refusing to commit on $branch." >&2
+        echo "  Create a branch first: git switch -c issue-<n>-<slug> origin/dev" >&2
+        fail=1
+        ;;
+esac
+
+# Added, copied, modified, or renamed paths in the index.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# --- 2. FTDI vendor libraries --------------------------------------------------
+vendor=$(printf '%s\n' "$staged" | while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    name=$(printf '%s' "${path##*/}" | tr '[:upper:]' '[:lower:]')
+    case "$name" in
+        (libft4222*.dll | libft4222*.so* | libft4222*.dylib | libft4222*.lib) printf '%s\n' "$path" ;;
+        (ftd2xx*.dll | libftd2xx*.so* | libftd2xx*.dylib | ftd2xx*.lib) printf '%s\n' "$path" ;;
+    esac
+done)
+if [ -n "$vendor" ]; then
+    echo "pre-commit: refusing to commit FTDI vendor libraries:" >&2
+    printf '%s\n' "$vendor" | sed 's/^/  /' >&2
+    echo "  Users install LibFT4222 from FTDI (see README.md and THIRD_PARTY.md)." >&2
+    fail=1
+fi
+
+# --- 3. Large files ------------------------------------------------------------
+limit=1048576
+big=$(printf '%s\n' "$staged" | while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    size=$(git cat-file -s ":$path" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$limit" ]; then printf '%s (%s bytes)\n' "$path" "$size"; fi
+done)
+if [ -n "$big" ]; then
+    echo "pre-commit: refusing to commit files larger than 1 MiB:" >&2
+    printf '%s\n' "$big" | sed 's/^/  /' >&2
+    echo "  Trim scope captures to a few frames before adding them as fixtures." >&2
+    fail=1
+fi
+
+exit $fail

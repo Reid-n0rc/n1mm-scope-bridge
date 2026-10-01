@@ -1,0 +1,47 @@
+name: Implementation task
+description: Work to be implemented, with a software plan. The maintainer must approve it before work starts.
+labels: [plan-needs-approval]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep the task small enough for one agent context window: one concern, about 300 lines and 5 files or fewer, and no more than about 10 files read (AGENTS.md → Task sizing). Branch `issue-<n>-<slug>` from `dev`. Work starts only after the `plan-approved` label is applied and the issue is assigned.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What and why, in 1 to 3 sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Software plan
+      description: Numbered implementation steps.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: Every file to be created, modified, or read (including upstream wfview files, by path and function).
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test plan
+      description: Unit tests (no radio, FTDI libraries, or network) and any opt-in hardware checks.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope

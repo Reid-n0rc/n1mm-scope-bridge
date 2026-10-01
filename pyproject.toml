@@ -1,0 +1,66 @@
+[project]
+name = "n1mm-scope-bridge"
+version = "0.1.0"
+description = "Stream a radio's panadapter/waterfall (Yaesu FT-710 first) into N1MM Logger+'s Spectrum Display window"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Reid Crowe, N0RC" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["ham radio", "amateur radio", "n1mm", "yaesu", "ft-710", "spectrum", "waterfall", "contesting"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Communications :: Ham Radio",
+]
+
+[project.urls]
+Homepage = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
+Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
+
+[project.scripts]
+n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11"]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PT"]
+ignore = ["PLR2004"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+files = ["src", "tests", "scripts"]
+mypy_path = "scripts"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = "-ra --strict-markers"
+markers = [
+    "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
+]
+
+[tool.coverage.run]
+source = ["n1mm_scope_bridge"]
+branch = true
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
