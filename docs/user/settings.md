@@ -26,6 +26,7 @@ a warning.
 | `combine` | `latest` | `--combine` | `latest`, `average`, or `peak` |
 | `ftdi_lib_dir` | empty (system path) | `--ftdi-lib-dir` | Folder with FTDI's LibFT4222 and ftd2xx DLLs |
 | `device` | `FT4222 A` | `--device` | FT4222 device description |
+| `emulator` | `false` | `--emulator` | Use the built-in FT-710 emulator instead of the radio, to try the bridge or set up N1MM+ without the radio. The GUI saves it; the command line uses `--emulator` |
 | `start_streaming_on_launch` | `false` | — | GUI: start streaming as soon as it opens |
 | `start_minimized` | `false` | — | GUI: start hidden in the system tray |
 | `on_close` | `ask` | — | GUI Close button: `ask`, `tray` (keep streaming in the tray), or `exit` |
