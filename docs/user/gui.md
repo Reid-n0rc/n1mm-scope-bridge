@@ -53,12 +53,39 @@ button.
 
 **N1MM+ setup guide** opens the [N1MM+ setup instructions](../n1mm-setup.md).
 
-## Closing and the system tray
+**Startup and closing**
 
-> **Coming next (#19).** Close will ask whether to keep streaming in the
-> system tray or exit, with a **Remember my choice** option (setting
-> `on_close`), and Minimize will hide the window to the tray and keep
-> streaming. Until then, closing the window stops streaming and exits.
+| Control | Setting | What it does |
+|---|---|---|
+| Start streaming when the program opens | `start_streaming_on_launch` | Presses Start for you at launch |
+| Start hidden in the system tray | `start_minimized` | Opens straight to the tray icon, without the window |
+| Close button | `on_close` | **Ask me**, **Keep running in tray**, or **Exit** |
+
+These stay editable while streaming.
+
+## Closing, minimizing, and the system tray
+
+The bridge keeps a **system tray icon** (near the clock) while it runs. Its
+tooltip shows **Streaming** or **Stopped**. Right-click it for:
+
+- **Show window**: brings the window back (or double-click the icon)
+- **Start streaming** / **Stop streaming**
+- **Exit**: stops streaming and closes the program
+
+**Minimize** hides the window to the tray. **Streaming continues**, so
+N1MM+ keeps its spectrum. The first time each session, a notification says
+the program is still running in the tray.
+
+**Close (X)** asks:
+
+> Keep streaming in the system tray, or exit N1MM Scope Bridge?
+> **[Keep running in tray] [Exit] [Cancel]** and ☐ **Remember my choice**
+
+Ticking **Remember my choice** saves your answer as the **Close button**
+setting, so you aren't asked again. Change it any time in **Startup and
+closing**. **Exit** stops streaming, so N1MM+'s spectrum stops.
+
+On a system with no tray (rare), Close exits and Minimize minimizes normally.
 
 ## Command-line options
 
