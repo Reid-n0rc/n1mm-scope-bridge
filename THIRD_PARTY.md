@@ -74,6 +74,16 @@ comment, the issue, or the doc instead.
   the Qt license texts and this notice. No Qt code is copied into this
   repository.
 
+### PyInstaller bootloader (Windows build)
+
+- Source: <https://pyinstaller.org> (PyPI `pyinstaller`, `packaging` dependency group)
+- License: GPL-2.0-or-later with the PyInstaller bootloader exception, which
+  allows the bootloader to be distributed with programs under any license.
+- Use: `scripts/build_windows_app.py` / `packaging/windows/n1mm_scope_bridge.spec`
+  build the one-folder Windows app (#6). The bootloader is embedded in the
+  executables. The app ships `LICENSE`, `NOTICE`, and this file in
+  `licenses/` (plus the Qt license texts once the GUI is bundled).
+
 ### pytest-qt (development only, not distributed)
 
 - Source: <https://pypi.org/project/pytest-qt/>; license: MIT.
