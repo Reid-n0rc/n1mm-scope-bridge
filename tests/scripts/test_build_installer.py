@@ -74,7 +74,8 @@ def test_build_reports_iscc_failures(tmp_path: Path) -> None:
         bi.build(make_app(tmp_path / "b"), "ISCC.exe", fake_iscc(produce=False))
 
 
-def test_find_iscc_order(tmp_path: Path) -> None:
+def test_find_iscc_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("build_installer.shutil.which", lambda _: None)  # runners have ISCC on PATH
     explicit = tmp_path / "explicit" / "ISCC.exe"
     from_env = tmp_path / "env" / "ISCC.exe"
     default = tmp_path / "pf" / "Inno Setup 7" / "ISCC.exe"

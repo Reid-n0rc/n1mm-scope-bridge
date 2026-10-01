@@ -37,6 +37,11 @@ $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
 $code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
     "/DIR=`"$Dir`"", '/TASKS=desktopicon', "/LOG=`"$log`"")
 Check ($code -eq 0) "silent install exits 0 (got $code)"
+if ($code -ne 0) {
+    Write-Host '--- install log ---'
+    if (Test-Path $log) { Get-Content $log -Tail 60 } else { Write-Host '(no log written)' }
+    exit 1
+}
 $cli = Join-Path $Dir 'n1mm-scope-bridge.exe'
 $gui = Join-Path $Dir "$AppName.exe"
 Check (Test-Path $cli) 'CLI exe installed'
