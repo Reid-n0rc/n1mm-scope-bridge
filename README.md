@@ -96,7 +96,9 @@ n1mm-scope-bridge record --frames 50 my-ft710.cap
 n1mm-scope-bridge run --replay my-ft710.cap --loop   # test without the radio
 ```
 
-Run `n1mm-scope-bridge COMMAND --help` for all options.
+Run `n1mm-scope-bridge COMMAND --help` for all options. The full reference is in
+the [user guide](docs/user/README.md): [command line](docs/user/cli.md),
+[settings](docs/user/settings.md), and [troubleshooting](docs/user/troubleshooting.md).
 
 ## Development
 

@@ -27,7 +27,9 @@ class CaptureError(ValueError):
 
 def format_header(model: str, frame_size: int) -> bytes:
     if not _MODEL.match(model):
-        raise CaptureError(f"model {model!r} must be 1-32 characters of A-Z, a-z, 0-9, . _ -")
+        raise CaptureError(
+            f"capture model name {model!r} must be 1-32 characters of A-Z, a-z, 0-9, . _ -"
+        )
     if not 0 < frame_size <= MAX_FRAME_SIZE:
         raise CaptureError(f"frame size must be in 1..{MAX_FRAME_SIZE}, got {frame_size}")
     return f"{MAGIC} {model} {frame_size}\n".encode("ascii")
@@ -56,7 +58,7 @@ class CaptureWriter:
 
     def write(self, frame: bytes) -> None:
         if len(frame) != self.frame_size:
-            raise CaptureError(f"frame is {len(frame)} bytes, expected {self.frame_size}")
+            raise CaptureError(f"capture frame is {len(frame)} bytes, expected {self.frame_size}")
         self._stream.write(frame)
         self.frames += 1
 
@@ -76,7 +78,7 @@ class CaptureReader:
         sleep: Callable[[float], object] = time.sleep,
     ) -> None:
         if fps < 0:
-            raise CaptureError(f"fps must be >= 0, got {fps}")
+            raise CaptureError(f"replay fps must be >= 0, got {fps}")
         self.path = Path(path)
         with self.path.open("rb") as fh:
             self.model, self.frame_size = parse_header(fh.readline(64))
