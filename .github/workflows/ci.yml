@@ -38,9 +38,6 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-      id-token: write # Codecov OIDC upload; no token secret stored
     strategy:
       fail-fast: false
       matrix:
@@ -73,7 +70,8 @@ jobs:
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          use_oidc: true
+          # Repository secret only; fork PRs have no secrets and skip the upload.
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           flags: ${{ runner.os }}-${{ matrix.python }}
           fail_ci_if_error: false
