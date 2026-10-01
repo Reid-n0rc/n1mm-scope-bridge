@@ -76,6 +76,7 @@ timeout = 60
 markers = [
     "slow: builds the package (runs in CI, a few seconds)",
     "gui: needs PySide6 (skipped on free-threaded Python)",
+    "native: builds and loads the mock FTDI C library (needs a C compiler)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
 ]
 

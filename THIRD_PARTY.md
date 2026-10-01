@@ -74,6 +74,14 @@ comment, the issue, or the doc instead.
   the Qt license texts and this notice. No Qt code is copied into this
   repository.
 
+### Mock FTDI library (test infrastructure, not distributed)
+
+- `tests/native/mock_ft4222.c` is written for this project (GPL-3.0-only). It
+  exports functions with the same names and C signatures as FTDI's D2XX and
+  LibFT4222 so tests can exercise the real ctypes boundary. It contains no FTDI
+  code and is never shipped; build outputs are git-ignored and blocked by the
+  pre-commit hook.
+
 ### pytest-qt (development only, not distributed)
 
 - Source: <https://pypi.org/project/pytest-qt/>; license: MIT.
