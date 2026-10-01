@@ -87,9 +87,11 @@ def encode_spectrum(
 
 
 class DatagramSocket(Protocol):
-    def sendto(self, data: bytes, address: Any, /) -> int: ...
+    def sendto(self, data: bytes, address: Any, /) -> int:
+        """Send one datagram; return the number of bytes sent."""
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Release the socket."""
 
 
 Resolver = Callable[[str, int], tuple[int, Any]]
