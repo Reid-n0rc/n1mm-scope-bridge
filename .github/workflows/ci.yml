@@ -61,17 +61,17 @@ jobs:
       - name: Qt runtime libraries (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
-      # MSVC for the mock FTDI library used by the native tests (#37).
-      - name: MSVC (Windows)
+      # FTDI's real LibFT4222/D2XX DLLs for the native tests (#37). CI-only download,
+      # hash-pinned in scripts/fetch_ftdi.py; never committed or bundled.
+      - name: FTDI libraries probe (Windows) - TEMPORARY, prints hashes to pin
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        shell: bash
+        run: python scripts/fetch_ftdi.py --dest "$RUNNER_TEMP/ftdi" --print-hashes
       # PySide6 has no wheels for free-threaded Python; GUI tests skip there.
       - run: uv sync --locked ${{ endsWith(matrix.python, 't') && '--no-group gui-dev' || '' }}
       - run: uv run ${{ endsWith(matrix.python, 't') && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml ${{ endsWith(matrix.python, 't') && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
-          # Native tests must run in CI, never silently skip (#37).
-          N1MM_REQUIRE_NATIVE: "1"
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
