@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import itertools
+import socket
 import tarfile
 import zipfile
 from collections.abc import Callable, Sequence
@@ -263,3 +264,53 @@ def test_main_skipped_windows_steps_are_not_releasable(
 def test_environment_metadata() -> None:
     meta = rr.environment()
     assert set(meta) == {"commit", "ref", "platform", "python", "date (UTC)"}
+
+
+# --- end-to-end replay step ------------------------------------------------------------
+
+SPECTRUM = (
+    (
+        "<Spectrum><app>a</app><Name>FT-710</Name><LowScopeFrequency>1</LowScopeFrequency>"
+        "<HighScopeFrequency>2</HighScopeFrequency><ScalingFactor>1</ScalingFactor>"
+        "<DataCount>850</DataCount><SpectrumData>{}</SpectrumData></Spectrum>"
+    )
+    .format(",".join(["7"] * 850))
+    .encode()
+)
+
+
+def udp_runner(packets: list[bytes], code: int = 0) -> rr.Runner:
+    """Pretends to be the bridge: sends ``packets`` to the --port in the command."""
+
+    def run(cmd: Sequence[str]) -> tuple[int, str]:
+        port = int(cmd[cmd.index("--port") + 1])
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as tx:
+            for p in packets:
+                tx.sendto(p, ("127.0.0.1", port))
+        return code, "bridge output"
+
+    return run
+
+
+def test_e2e_replay_accepts_valid_packets() -> None:
+    rr.e2e_replay(udp_runner([SPECTRUM] * rr.MIN_PACKETS))
+
+
+@pytest.mark.parametrize(
+    ("packets", "code", "message"),
+    [
+        ([SPECTRUM] * 6, 3, "exited 3"),
+        ([SPECTRUM] * 2, 0, "got 2 packets"),
+        ([b"<Spectrum>"] * 6, 0, "invalid"),
+        ([b"<Other/>"] * 6, 0, "N1MM <Spectrum> format"),
+    ],
+)
+def test_e2e_replay_failures(packets: list[bytes], code: int, message: str) -> None:
+    with pytest.raises(rr.CheckFailed, match=message):
+        rr.e2e_replay(udp_runner(packets, code))
+
+
+def test_e2e_step_is_enabled() -> None:
+    step = next(s for s in rr.default_steps(fake_runner()) if s.name.startswith("End-to-end"))
+    assert step.action is not None
+    assert not step.disabled_reason

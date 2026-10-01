@@ -51,6 +51,7 @@ FTDI_DOWNLOAD_URL = "https://ftdichip.com/products/ft4222h/"
 DEFAULT_DESCRIPTION = "FT4222 A"
 RESYNC_PATTERN = SYNC * 4
 MAX_RESYNC_BYTES = 8192
+MAX_REINITS = 3
 
 FT_OK = 0
 FT_OPEN_BY_DESCRIPTION = 2
@@ -341,18 +342,32 @@ class Ft4222Reader:
                 return True
         return False
 
-    def read_frame(self) -> bytes:
-        """Return the next whole frame, resynchronising (or re-opening) as needed."""
+    def read_frame(self) -> bytes | None:
+        """Return the next whole frame, resynchronising (or re-opening) as needed.
+
+        Returns None if ``stop()`` was called during recovery. Raises
+        ``Ft4222Error`` after ``MAX_REINITS`` re-opens in a row without a
+        valid frame, so a silent radio never becomes an endless busy loop.
+        """
         if self._handle is None:
             raise Ft4222Error("device is not open")
-        while True:
+        failed_reinits = 0
+        while not self._stop.is_set():
             data = self._read(self._frame_size)
             if len(data) == self._frame_size and data.endswith(SYNC):
                 return data
             self.resyncs += 1
-            if not self.resync():
-                self.reinits += 1
-                self.open()
+            if self.resync():
+                continue
+            if failed_reinits >= MAX_REINITS:
+                raise Ft4222Error(
+                    f"No valid scope frames from {self._description!r} after "
+                    f"{MAX_REINITS} re-opens. Is the radio's scope running?"
+                )
+            failed_reinits += 1
+            self.reinits += 1
+            self.open()
+        return None
 
     def stop(self) -> None:
         self._stop.set()
@@ -362,7 +377,10 @@ class Ft4222Reader:
             if self._handle is None:
                 self.open()
             while not self._stop.is_set():
-                yield self.read_frame()
+                frame = self.read_frame()
+                if frame is None:
+                    return
+                yield frame
         finally:
             self._release()
 
