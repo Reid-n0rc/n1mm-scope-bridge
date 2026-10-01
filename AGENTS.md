@@ -137,6 +137,33 @@ Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware
 version, and a short trimmed capture, so the result can be reproduced.
 
+## Parallel work (no PR conflicts)
+
+Several people or agents can work at once without PR conflicts if these rules
+hold (#43):
+
+1. **Every issue has one lane label:** `lane:core` (bridge, transport,
+   emulator, CLI internals), `lane:gui`, `lane:packaging` (build, installer,
+   release, CI packaging), `lane:site` (website and user-docs content), or
+   `lane:process` (shared infrastructure).
+2. **At most one open PR per lane.** `lane:process` work runs alone: it touches
+   shared files, so other lanes wait for it to merge.
+3. **Check for overlap before starting.** Run
+   `python scripts/check_overlap.py <issue>`. It compares the issue's **Files**
+   list with the files changed by every open PR. Start only if it reports
+   *Clear to start*; otherwise wait for the other PR, or stack on it
+   deliberately and say so in your PR. The **PR overlap** workflow also posts
+   a warning on any PR that shares files with another open PR.
+4. **Prefer new files to shared ones.** Add a CLI command as its own module,
+   a regression step as its own file, and a changelog entry as a fragment
+   (see #44 and #45) instead of editing a shared list.
+5. **Merge bottom-up as soon as CI is green.** Then bring dependent branches
+   up to date with `git merge origin/dev`. Never rebase or force-push a
+   branch someone else may have.
+6. **Use a separate git worktree per agent**
+   (`git worktree add ../n1mm-wt-<lane> -b issue-<n>-<slug> origin/dev`) so
+   parallel agents never share a checkout.
+
 ## Testing policy
 
 0. **No automated test may need a radio.** Use the FT-710 emulator
