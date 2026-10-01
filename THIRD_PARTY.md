@@ -64,6 +64,20 @@ comment, the issue, or the doc instead.
   (including wfview's) combined with a GPL-incompatible library, which we
   don't do without written permission from the wfview copyright holders.
 
+### PySide6 / Qt 6 (GUI dependency)
+
+- Source: <https://pypi.org/project/PySide6-Essentials/> (Qt for Python, The Qt Company)
+- License: offered under LGPL-3.0-only, GPL-2.0-only, or GPL-3.0-only. This
+  project uses it under **GPL-3.0-only**, which matches its own license.
+- Use: the optional `gui` extra. The Windows build (#6) bundles the Qt
+  libraries as separate DLLs (PyInstaller one-folder build). The release ships
+  the Qt license texts and this notice. No Qt code is copied into this
+  repository.
+
+### pytest-qt (development only, not distributed)
+
+- Source: <https://pypi.org/project/pytest-qt/>; license: MIT.
+
 ### N1MM Logger+ external spectrum interface (facts only)
 
 - Source: <https://n1mmwp.hamdocs.com/appendices/external-udp-broadcasts/>

@@ -246,7 +246,11 @@ def e2e_replay(runner: Runner = run_command, fixture: Path = FIXTURE) -> None:
             raise CheckFailed("packet does not match the N1MM <Spectrum> format")
 
 
-def default_steps(runner: Runner = run_command) -> list[Step]:
+GUI_PATHS = r"(src/n1mm_scope_bridge/gui/|tests/test_gui)"
+GUI_SKIP = "skipped: no PySide6 wheels for free-threaded Python (--skip-gui)"
+
+
+def default_steps(runner: Runner = run_command, *, skip_gui: bool = False) -> list[Step]:
     sh = shutil.which("sh") or "sh"
 
     def build() -> None:
@@ -256,13 +260,35 @@ def default_steps(runner: Runner = run_command) -> list[Step]:
             raise CheckFailed(f"uv build failed ({code}):\n{_tail(out)}")
 
     return [
-        Step("Locked clean environment", ("uv", "sync", "--locked", "--reinstall")),
+        Step(
+            "Locked clean environment",
+            (
+                "uv",
+                "sync",
+                "--locked",
+                "--reinstall",
+                *(("--no-group", "gui-dev") if skip_gui else ()),
+            ),
+        ),
         Step("Lint (ruff)", ("uv", "run", "ruff", "check", ".")),
         Step("Format (ruff)", ("uv", "run", "ruff", "format", "--check", ".")),
-        Step("Type check (mypy --strict)", ("uv", "run", "mypy")),
+        Step(
+            "Type check (mypy --strict)",
+            # Without PySide6 the GUI can't be type-checked; the 3.13 jobs check it.
+            ("uv", "run", "mypy", *(("--exclude", GUI_PATHS) if skip_gui else ())),
+        ),
         Step(
             "Unit, slow, and licensing tests with coverage",
-            ("uv", "run", "pytest", "--cov", "--cov-report=term-missing", "-p", "no:cacheprovider"),
+            (
+                "uv",
+                "run",
+                "pytest",
+                "--cov",
+                "--cov-report=term-missing",
+                "-p",
+                "no:cacheprovider",
+                *(("--cov-config=.coveragerc-nogui",) if skip_gui else ()),
+            ),
         ),
         Step("Git and agent hook tests", (sh, "tests/hooks/run.sh")),
         Step("Build sdist and wheel", action=build),
@@ -270,7 +296,11 @@ def default_steps(runner: Runner = run_command) -> list[Step]:
         Step("Wheel installs and shows legal notices", action=lambda: wheel_smoke(runner=runner)),
         Step("End-to-end replay to N1MM UDP listener", action=lambda: e2e_replay(runner)),
         Step("Windows app (PyInstaller) runs", windows_only=True, disabled_reason="added by #6"),
-        Step("GUI self-test", windows_only=True, disabled_reason="added by #18"),
+        Step(
+            "GUI self-test",
+            windows_only=True,
+            disabled_reason=GUI_SKIP if skip_gui else "added by #18",
+        ),
         Step(
             "Installer silent install/run/uninstall",
             windows_only=True,
@@ -303,19 +333,29 @@ def main(
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--report", type=Path, default=ROOT / "regression-report.md")
     parser.add_argument(
+        "--skip-gui",
+        action="store_true",
+        help="free-threaded Python jobs: no PySide6, so GUI checks are skipped",
+    )
+    parser.add_argument(
         "--skip-windows-only",
         action="store_true",
         help="for local runs off Windows; the result is not releasable",
     )
     args = parser.parse_args(argv)
+    if args.skip_gui:
+        # Every `uv run` re-syncs default groups; keep PySide6 out on free-threaded Python.
+        os.environ["UV_NO_GROUP"] = "gui-dev"
     results = run_steps(
-        steps if steps is not None else default_steps(runner),
+        steps if steps is not None else default_steps(runner, skip_gui=args.skip_gui),
         runner=runner,
         skip_windows_only=args.skip_windows_only,
     )
     # Steps disabled until their feature lands are allowed; skipped Windows steps are not.
     blocking_skips = [
-        r for r in results if r.status == "SKIPPED" and not r.detail.startswith("added by #")
+        r
+        for r in results
+        if r.status == "SKIPPED" and not r.detail.startswith(("added by #", GUI_SKIP))
     ]
     ok = passed(results, allow_skips=True) and not blocking_skips
     report = render_report(results, meta if meta is not None else environment(), ok=ok)
