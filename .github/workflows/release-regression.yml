@@ -1,0 +1,61 @@
+# Full release regression (issue #16). Must pass before any release candidate
+# (vX.Y.Z-rcN) or release (vX.Y.Z) ships. Runs on release PRs (dev -> master),
+# on release tags, and on demand. Logic: scripts/release_regression.py.
+#
+# Windows is the product platform (N1MM+ is Windows-only): the Windows jobs
+# run every step, including the app, GUI, and installer steps. The Ubuntu job
+# keeps the code portable and skips the Windows-only steps.
+name: Release regression
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regression:
+    name: Release regression (${{ matrix.os }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, python: "3.13", flags: "" }
+          - { os: windows-latest, python: "3.14t", flags: "" }
+          - { os: ubuntu-latest, python: "3.13", flags: "--skip-windows-only" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run full regression
+        shell: bash
+        run: >
+          uv run --no-project python scripts/release_regression.py
+          --report regression-report.md ${{ matrix.flags }}
+      - name: Publish report to the job summary
+        if: always()
+        shell: bash
+        run: cat regression-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: regression-${{ matrix.os }}-${{ matrix.python }}
+          path: |
+            regression-report.md
+            dist/regression/
+          if-no-files-found: warn
+          retention-days: 90

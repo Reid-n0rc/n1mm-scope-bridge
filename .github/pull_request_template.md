@@ -18,4 +18,5 @@ Closes #
 - [ ] No FTDI libraries, oversized captures, or secrets included
 
 <!-- Release PRs (dev → master) only: -->
-- [ ] Release PR: full regression from `uv sync --locked` passed, the output is attached, and the on-air check with FT-710 + N1MM+ is done
+- [ ] Release PR: **Release regression** is green on Windows (link the run, paste `regression-report.md`), CHANGELOG updated
+- [ ] Release PR: RC on-air check with FT-710 + N1MM+ is planned (AGENTS.md → Release process)
