@@ -1,0 +1,27 @@
+# Codecov configuration (issue #39). The hard gate stays pytest's
+# fail_under = 90 in pyproject.toml; Codecov adds per-PR reporting.
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 1
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+
+flag_management:
+  default_rules:
+    carryforward: true
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  require_changes: false
+
+ignore:
+  - "tests/**"
+  - "scripts/**"
