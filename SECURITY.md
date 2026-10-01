@@ -18,9 +18,16 @@ security-relevant surface is:
 - **Radio safety.** The bridge must never transmit or change radio state (see
   AGENTS.md, rule 8).
 
-There are no secrets in this project. If a future feature needs one (for
+The program itself uses no secrets (CI secrets are listed below). If a future feature needs one (for
 example remote LAN radio credentials), it must come from the environment or
 the OS credential store at runtime and never be committed.
+
+## CI secrets
+
+The only CI secret is `CODECOV_TOKEN`, the Codecov upload token. It is stored
+as a GitHub repository secret and is never written to the repository. Pull
+requests from forks don't receive secrets, so they skip the coverage upload;
+that never fails CI.
 
 ## Reporting a vulnerability
 

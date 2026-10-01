@@ -1,5 +1,7 @@
 # n1mm-scope-bridge
 
+**Website:** <https://reid-n0rc.github.io/n1mm-scope-bridge/>
+
 [![CI](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/branch/dev/graph/badge.svg)](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
 
@@ -88,7 +90,8 @@ change (see [AGENTS.md](AGENTS.md), Task sizing).
 
 ## Command line (advanced)
 
-The GUI is the normal way to run the bridge (coming soon). The same features
+The GUI (`n1mm-scope-bridge-gui`, see the [GUI guide](docs/user/gui.md)) is the
+normal way to run the bridge. The same features
 are available from a terminal:
 
 ```

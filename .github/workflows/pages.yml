@@ -1,0 +1,114 @@
+# GitHub Pages site (issue #21): https://reid-n0rc.github.io/n1mm-scope-bridge/
+#
+# The site always describes the latest *final* release (STYLE.md, Website):
+# - a published final release rebuilds the site from that release's tag;
+# - before the first release, changes to site/ on dev publish the
+#   "in development" site (no downloads, clearly marked);
+# - once a release exists, dev pushes do not change the public site;
+# - pre-releases (vX.Y.Z-rcN) never change it;
+# - workflow_dispatch can rebuild for a given tag (or the latest release).
+name: Pages
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [dev]
+    paths:
+      - site/**
+      - scripts/build_site.py
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Final release tag to publish (vX.Y.Z). Empty: latest release, or the in-development site if there is none."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.mode.outputs.publish }}
+    steps:
+      - name: Decide what to publish
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRE: ${{ github.event.release.prerelease }}
+          RELEASE_DATE: ${{ github.event.release.published_at }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag=""; date=""; publish=true
+          if [ "$EVENT" = "release" ]; then
+            if [ "$RELEASE_PRE" = "true" ]; then publish=false; echo "Pre-release: site unchanged."; fi
+            tag=$RELEASE_TAG; date=${RELEASE_DATE%%T*}
+          else
+            if [ -n "$INPUT_TAG" ]; then
+              tag=$INPUT_TAG
+            else
+              tag=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null || true)
+              if [ -n "$tag" ] && [ "$EVENT" = "push" ]; then
+                publish=false; echo "A release exists; dev changes publish with the next release."
+              fi
+            fi
+            if [ -n "$tag" ]; then
+              date=$(gh api "repos/$REPO/releases/tags/$tag" --jq '.published_at[:10]')
+            fi
+          fi
+          {
+            echo "publish=$publish"
+            echo "tag=$tag"
+            echo "date=$date"
+          } >> "$GITHUB_OUTPUT"
+          echo "publish=$publish tag=${tag:-<in development>} date=$date"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.mode.outputs.publish == 'true'
+        with:
+          ref: ${{ steps.mode.outputs.tag || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        if: steps.mode.outputs.publish == 'true'
+      - name: Build
+        if: steps.mode.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.mode.outputs.tag }}
+          DATE: ${{ steps.mode.outputs.date }}
+        run: |
+          if [ -n "$TAG" ]; then
+            uv run --no-project --python 3.13 python scripts/build_site.py --out _site --tag "$TAG" --release-date "$DATE"
+          else
+            uv run --no-project --python 3.13 python scripts/build_site.py --out _site
+          fi
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        if: steps.mode.outputs.publish == 'true'
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: steps.mode.outputs.publish == 'true'
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

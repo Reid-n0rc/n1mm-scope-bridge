@@ -11,6 +11,7 @@ Closes #
 ## Checklist
 - [ ] Branch is `issue-<n>-<slug>`, based on `dev`, and the PR targets `dev`
 - [ ] Linked issue has the `plan-approved` label and is assigned
+- [ ] Issue has a `lane:*` label, and `python scripts/check_overlap.py <issue>` was clear when work started (AGENTS.md → Parallel work)
 - [ ] Follows [STYLE.md](../STYLE.md) (naming, messages, docs, commit/PR format)
 - [ ] Diff stays within the issue's plan (about 300 lines and 5 files or fewer; follow-ups filed as new issues)
 - [ ] Every new or changed function has thorough tests (happy path, edge cases, invalid input, errors)

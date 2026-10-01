@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>N1MM Scope Bridge: your FT-710's waterfall in N1MM Logger+</title>
+<meta name="description" content="Show the Yaesu FT-710's spectrum scope in N1MM Logger+'s Spectrum Display window.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <h1>Your FT-710's waterfall, in N1MM Logger+</h1>
+      <p class="lead">N1MM Scope Bridge reads the Yaesu FT-710's spectrum scope over USB and shows it in N1MM Logger+'s Spectrum Display window, the same way Icom radios work today.</p>
+      <!-- if:release -->
+      <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
+      <!-- endif:release -->
+      <!-- if:prerelease -->
+      <p><a class="button" href="{{source_url}}">Follow development on GitHub</a></p>
+      <!-- endif:prerelease -->
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2 id="how-it-works">How it works</h2>
+    <ol class="steps">
+      <li><strong>The radio streams its scope.</strong> The FT-710's USB port carries the spectrum scope on its own channel, next to the usual CAT ports.</li>
+      <li><strong>The bridge reads it.</strong> N1MM Scope Bridge reads that stream on your station PC.</li>
+      <li><strong>N1MM+ draws it.</strong> The bridge sends each spectrum line to N1MM+'s Spectrum Display, which you set to show it.</li>
+    </ol>
+    <p>N1MM+ keeps full CAT control of the radio. The bridge never uses the CAT port and never transmits.</p>
+  </section>
+
+  <section class="wrap">
+    <h2 id="radios">Supported radios</h2>
+    <table>
+      <thead><tr><th scope="col">Radio</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        <tr><td>Yaesu FT-710</td><td><!-- if:release -->Supported<!-- endif:release --><!-- if:prerelease -->In development<!-- endif:prerelease --></td></tr>
+        <tr><td>Yaesu FTDX10, FTDX101</td><td>Planned. Owners who can test are welcome.</td></tr>
+        <tr><td>Icom (IC-7300, IC-7610, IC-705, and others)</td><td>Not needed: N1MM+ supports their scopes directly.</td></tr>
+      </tbody>
+    </table>
+    <p>Have a different radio? <a href="{{source_url}}/issues/new/choose">Open a radio support request</a>.</p>
+  </section>
+
+  <section class="wrap">
+    <h2 id="credits">Built on wfview's work</h2>
+    <p>Knowing how the FT-710 streams its scope comes from the <a href="https://gitlab.com/eliggett/wfview">wfview</a> project by Elliott Liggett, W6EL, and Phil Taylor, M0VSE. Thank you.</p>
+  </section>
+</main>
+<!-- include:footer -->
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>Install | N1MM Scope Bridge</title>
+<meta name="description" content="Install N1MM Scope Bridge on Windows.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Install</h1>
+
+  <h2 id="requirements">What you need</h2>
+  <ul>
+    <li>Windows 10 or 11 (64-bit), the PC that runs N1MM Logger+</li>
+    <li>A Yaesu FT-710 connected by USB</li>
+    <li>FTDI's <strong>LibFT4222</strong> library, from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>. It's free, but its license doesn't let us include it with this GPL program, so you install it yourself.</li>
+    <li>N1MM Logger+</li>
+  </ul>
+
+  <!-- if:prerelease -->
+  <h2 id="download">Download</h2>
+  <p>There is no release yet. When there is, an installer will be available here. Until then you can follow progress, or try the development version from source, on <a href="{{source_url}}">GitHub</a>.</p>
+  <!-- endif:prerelease -->
+
+  <!-- if:release -->
+  <h2 id="download">Download</h2>
+  <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
+  <p>The release page lists the installer and SHA-256 checksums. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
+  <!-- endif:release -->
+
+  <h2 id="next">Next</h2>
+  <p><a href="n1mm.html">Set up N1MM+ to show the bridge's spectrum</a>.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>

@@ -1,0 +1,66 @@
+/* N1MM Scope Bridge website: one stylesheet, light and dark (STYLE.md, Website). */
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #57606a;
+  --accent: #0b6e8a;
+  --accent-fg: #ffffff;
+  --surface: #f3f6f9;
+  --border: #d0d7de;
+  --banner-bg: #fff4ce;
+  --banner-fg: #3b2e00;
+  --max: 64rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1419;
+    --fg: #e6edf3;
+    --muted: #9da7b1;
+    --accent: #5cc8e6;
+    --accent-fg: #0f1419;
+    --surface: #161d24;
+    --border: #30363d;
+    --banner-bg: #3b2e00;
+    --banner-fg: #fff4ce;
+  }
+}
+* { box-sizing: border-box; }
+html { font-size: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 1rem/1.6 system-ui, "Segoe UI", Roboto, sans-serif;
+}
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 1rem; }
+a { color: var(--accent); text-underline-offset: 0.15em; }
+a:focus-visible, .button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; background: var(--bg); padding: 0.5rem; z-index: 10; }
+
+.site-header { border-bottom: 1px solid var(--border); background: var(--surface); }
+.header-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; padding-top: 0.75rem; padding-bottom: 0.75rem; }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; color: var(--fg); text-decoration: none; }
+nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0; padding: 0; }
+nav a { text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+
+.banner { background: var(--banner-bg); color: var(--banner-fg); padding: 0.6rem 0; }
+.banner a { color: inherit; font-weight: 600; }
+
+.hero { padding: 3rem 0 2rem; background: linear-gradient(180deg, var(--surface), var(--bg)); }
+h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); line-height: 1.2; margin: 0 0 1rem; }
+h2 { margin-top: 2.5rem; }
+.lead { font-size: 1.15rem; color: var(--muted); max-width: 46rem; }
+.button {
+  display: inline-block; background: var(--accent); color: var(--accent-fg);
+  padding: 0.7rem 1.2rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none;
+}
+.button:hover { filter: brightness(1.08); }
+.steps li { margin-bottom: 0.6rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { background: var(--surface); }
+code { background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 0.25rem; }
+.note { color: var(--muted); font-size: 0.95rem; }
+.site-footer { margin-top: 4rem; border-top: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 0.95rem; padding: 1rem 0; }
