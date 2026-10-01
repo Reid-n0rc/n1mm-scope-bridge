@@ -1,0 +1,34 @@
+# Requires a changelog fragment (changelog.d/<issue>.<type>.md) in every PR
+# into dev, unless the PR has the `no-changelog` label (#45). Fragments are
+# separate files, so parallel PRs never conflict on CHANGELOG.md.
+name: Changelog
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  fragment:
+    name: Changelog fragment present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check fragment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+        run: |
+          files=$(gh pr view "$PR_NUMBER" --json files --jq '.files[].path')
+          label_args=()
+          for l in $LABELS; do label_args+=(--label "$l"); done
+          # shellcheck disable=SC2086
+          python3 scripts/build_changelog.py --check-pr $files "${label_args[@]}"

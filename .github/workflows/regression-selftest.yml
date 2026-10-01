@@ -8,6 +8,8 @@ on:
     branches: [dev]
     paths:
       - scripts/release_regression.py
+      - scripts/regression_core.py
+      - scripts/regression_steps/**
       - .github/workflows/release-regression.yml
       - .github/workflows/regression-selftest.yml
       - packaging/**
