@@ -152,7 +152,9 @@ def test_start_stop_with_emulator(qtbot: QtBot, listener: socket.socket) -> None
         window.start_stop.click()
     assert window.chip.text() == "Streaming"
     assert window.start_stop.text() == "Stop"
-    assert all(not box.isEnabled() for box in window.findChildren(QGroupBox))
+    boxes = {box.objectName(): box.isEnabled() for box in window.findChildren(QGroupBox)}
+    assert boxes["behaviourBox"] is True  # closing/startup choices stay editable
+    assert not any(enabled for name, enabled in boxes.items() if name != "behaviourBox")
     assert b"<Spectrum>" in listener.recvfrom(65535)[0]
     qtbot.waitUntil(lambda: window.status.text().startswith("VFO 14.074000 MHz"), timeout=3000)
     qtbot.waitUntil(lambda: window.counters.text().startswith("Sent"), timeout=3000)

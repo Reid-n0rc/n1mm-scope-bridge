@@ -87,7 +87,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     path = args.settings or settings_mod.settings_path()
     settings, warnings = settings_mod.load(path)
     window = MainWindow(settings, settings_path=path)
-    window.show()
+    # With a tray icon, hiding the window must not quit the program.
+    app.setQuitOnLastWindowClosed(window.tray is None)
+    if settings.start_minimized and window.tray is not None:
+        window.hide_to_tray()
+    else:
+        window.show()
     if warnings:
         window.show_error("\n".join(warnings))
     if settings.start_streaming_on_launch:
