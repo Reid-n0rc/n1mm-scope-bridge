@@ -35,16 +35,27 @@ A problem with a value is shown right under the field, for example
 ## Start and Stop
 
 Press **Start**. The status chip at the top right changes to **Streaming**,
-the settings lock until you press **Stop**, and the lines under the settings
-show what the radio's scope is showing:
+and the radio and N1MM+ settings lock until you press **Stop**. The Status,
+Log, and Startup and closing sections stay usable.
 
-```
-VFO 14.074000 MHz · span 20 kHz · Center (Normal)
-Sent 120 · dropped 0 · bad 0
-```
+**Status** shows, updated several times a second:
 
-If the scope isn't in Center mode, the status line says so: set the radio's
-scope to **Center** for exact frequencies in N1MM+.
+| Row | Meaning |
+|---|---|
+| Radio | *Not streaming*, *Waiting for the radio*, or *Receiving scope data* |
+| VFO, Span | What the radio's scope is showing |
+| Scope mode | For example *Center (Normal)*. Outside Center mode it adds *set Center for exact frequencies* |
+| Sent to N1MM+ | Updates per second and the total sent |
+| Dropped / bad frames | Frames skipped because the program was busy / frames that failed checks |
+| Last error | The most recent problem, until the next Start |
+
+The tray icon's tooltip shows the same summary, for example
+*Streaming FT-710 to N1MM+, 4.0 per second*.
+
+**Log** keeps the last 500 messages (starts, stops, warnings, and errors).
+**Copy diagnostics** copies the version, your settings, the status, and the
+last 50 log lines to the clipboard, ready to paste into a bug report. Your
+Windows account name is replaced with `~` in any folder path.
 
 If streaming stops because of a problem, the chip shows **Error** and a
 message explains what to do (see [troubleshooting](troubleshooting.md)). When
