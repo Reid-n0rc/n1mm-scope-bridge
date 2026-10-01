@@ -113,6 +113,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 sh tests/hooks/run.sh            # git hook tests
 ```
 
+Building the Windows app: [docs/building-windows.md](docs/building-windows.md).
+
 Read [AGENTS.md](AGENTS.md) before contributing. Humans and AI agents follow
 the same rules. See also [CONTRIBUTING.md](CONTRIBUTING.md).
 
