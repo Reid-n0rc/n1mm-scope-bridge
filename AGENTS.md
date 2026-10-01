@@ -173,6 +173,17 @@ version, and a short trimmed capture, so the result can be reproduced.
   dated modification notice, THIRD_PARTY.md row).
 - Mark anything not yet confirmed on real hardware with `# UNVERIFIED:` and
   link the hardware-validation issue.
+- **Concurrency** (see docs/architecture.md, Concurrency):
+  - No blocking I/O on the process or sender threads. Only the reader stage
+    talks to the device.
+  - No shared mutable state between pipelines or module-level mutable
+    globals. Frames passed between threads are immutable (frozen dataclasses,
+    tuples, bytes).
+  - All threads are non-daemon, named `<radio>-<stage>`, and joined on
+    shutdown. Tests check that no threads leak.
+  - Code must be correct on free-threaded CPython (3.14t, in CI). Never rely on
+    the GIL for atomicity.
+  - Synchronize threaded tests with events, never with sleeps alone.
 - Never log at a rate higher than once per second inside the frame loop. The
   radio produces dozens of frames per second.
 - Default N1MM update rate: about 3 to 5 packets per second, never more than
