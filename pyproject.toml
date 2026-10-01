@@ -28,7 +28,7 @@ Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
 n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=8", "pytest-cov>=5", "pytest-timeout>=2.3", "ruff>=0.6", "mypy>=1.11"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -60,6 +60,8 @@ mypy_path = "scripts:tests"
 testpaths = ["tests"]
 pythonpath = ["scripts", "tests"]
 addopts = "-ra --strict-markers"
+# Threaded code must never hang CI: fail any single test after 60 s.
+timeout = 60
 markers = [
     "slow: builds the package (runs in CI, a few seconds)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",

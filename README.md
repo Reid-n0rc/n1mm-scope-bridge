@@ -83,6 +83,21 @@ change (see [AGENTS.md](AGENTS.md), Task sizing).
 7. Windows standalone build and release packaging
 8. More radios (FTDX10, FTDX101, SCU-LAN10)
 
+## Command line (advanced)
+
+The GUI is the normal way to run the bridge (coming soon). The same features
+are available from a terminal:
+
+```
+n1mm-scope-bridge probe                 # check the FTDI library and the radio
+n1mm-scope-bridge run                   # stream the FT-710 scope to N1MM+ on this PC
+n1mm-scope-bridge run --host 192.168.1.20 --name "Shack FT-710" --combine peak
+n1mm-scope-bridge record --frames 50 my-ft710.cap
+n1mm-scope-bridge run --replay my-ft710.cap --loop   # test without the radio
+```
+
+Run `n1mm-scope-bridge COMMAND --help` for all options.
+
 ## Development
 
 ```bash

@@ -20,11 +20,13 @@ import fnmatch
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
 import tempfile
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -33,6 +35,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist" / "regression"
 LICENSE_FILES = ("LICENSE", "NOTICE", "THIRD_PARTY.md")
+FIXTURE = ROOT / "tests" / "fixtures" / "ft710_synthetic.cap"
+MIN_PACKETS = 5
 FORBIDDEN = ("*ft4222*.dll", "*ft4222*.so*", "*ft4222*.dylib", "*ftd2xx*")
 OUTPUT_TAIL = 40
 
@@ -206,6 +210,40 @@ def wheel_smoke(dist: Path = DIST, runner: Runner = run_command) -> None:
                 raise CheckFailed("--version does not show the GPL legal notice")
 
 
+def e2e_replay(runner: Runner = run_command, fixture: Path = FIXTURE) -> None:
+    """Replay the synthetic capture through the real CLI into a UDP listener."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
+        rx.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
+        rx.bind(("127.0.0.1", 0))
+        port = str(rx.getsockname()[1])
+        cmd = ("uv", "run", "n1mm-scope-bridge", "run", "--replay", str(fixture), "--loop",
+               "--duration", "2", "--rate", "10", "--port", port)  # fmt: skip
+        code, out = runner(cmd)
+        if code != 0:
+            raise CheckFailed(f"bridge exited {code}:\n{_tail(out)}")
+        rx.setblocking(False)
+        packets = []
+        while True:
+            try:
+                packets.append(rx.recv(65535))
+            except OSError:
+                break
+    if len(packets) < MIN_PACKETS:
+        raise CheckFailed(f"N1MM listener got {len(packets)} packets, expected >= {MIN_PACKETS}")
+    for data in packets:
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError as err:
+            raise CheckFailed(f"invalid <Spectrum> XML: {err}") from None
+        values = (root.findtext("SpectrumData") or "").split(",")
+        if (
+            root.tag != "Spectrum"
+            or root.findtext("DataCount") != str(len(values))
+            or len(values) != 850
+        ):
+            raise CheckFailed("packet does not match the N1MM <Spectrum> format")
+
+
 def default_steps(runner: Runner = run_command) -> list[Step]:
     sh = shutil.which("sh") or "sh"
 
@@ -228,10 +266,7 @@ def default_steps(runner: Runner = run_command) -> list[Step]:
         Step("Build sdist and wheel", action=build),
         Step("Dist contents (licenses, source, no FTDI binaries)", action=check_dists),
         Step("Wheel installs and shows legal notices", action=lambda: wheel_smoke(runner=runner)),
-        Step(
-            "End-to-end replay to N1MM UDP listener",
-            disabled_reason="added by #4 (bridge CLI)",
-        ),
+        Step("End-to-end replay to N1MM UDP listener", action=lambda: e2e_replay(runner)),
         Step("Windows app (PyInstaller) runs", windows_only=True, disabled_reason="added by #6"),
         Step("GUI self-test", windows_only=True, disabled_reason="added by #18"),
         Step(

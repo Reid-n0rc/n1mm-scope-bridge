@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fakes import FakeApi
 from frames import make_ft4222_frame
 
 from n1mm_scope_bridge.transport import ft4222 as ft
@@ -20,57 +21,6 @@ from n1mm_scope_bridge.transport.ft4222 import (
 )
 
 FRAME = make_ft4222_frame()
-HANDLE = object()
-
-
-class FakeApi:
-    """Scripted Ft4222Api: serves bytes from ``stream`` and records calls."""
-
-    def __init__(self, stream: bytes = b"", **status: int) -> None:
-        self.stream = bytearray(stream)
-        self.status = status
-        self.calls: list[tuple[Any, ...]] = []
-        self.read_error_after: int | None = None
-        self.reads = 0
-
-    def _st(self, name: str) -> int:
-        return self.status.get(name, ft.FT_OK)
-
-    def open_ex(self, description: str) -> tuple[int, Any]:
-        self.calls.append(("open", description))
-        return self._st("open"), HANDLE
-
-    def set_timeouts(self, handle: Any, read_ms: int, write_ms: int) -> int:
-        self.calls.append(("timeouts", read_ms, write_ms))
-        return self._st("timeouts")
-
-    def set_latency_timer(self, handle: Any, ms: int) -> int:
-        self.calls.append(("latency", ms))
-        return self._st("latency")
-
-    def spi_master_init(self, handle: Any) -> int:
-        self.calls.append(("spi_init",))
-        return self._st("spi_init")
-
-    def set_clock(self, handle: Any) -> int:
-        self.calls.append(("clock",))
-        return self._st("clock")
-
-    def spi_read(self, handle: Any, size: int) -> tuple[int, bytes]:
-        assert handle is HANDLE
-        self.reads += 1
-        if self.read_error_after is not None and self.reads > self.read_error_after:
-            return 4, b""
-        data, self.stream = bytes(self.stream[:size]), self.stream[size:]
-        return ft.FT_OK, data
-
-    def uninitialize(self, handle: Any) -> int:
-        self.calls.append(("uninit",))
-        return ft.FT_OK
-
-    def close(self, handle: Any) -> int:
-        self.calls.append(("close",))
-        return ft.FT_OK
 
 
 def names(api: FakeApi) -> list[str]:
@@ -111,7 +61,7 @@ def test_open_device_not_found_has_helpful_message() -> None:
     ],
 )
 def test_setup_step_failure_releases_device(step: str, label: str) -> None:
-    api = FakeApi(b"", **{step: 4})
+    api: FakeApi = FakeApi(b"", **{step: 4})  # type: ignore[arg-type]
     reader = Ft4222Reader(api)
     with pytest.raises(Ft4222Error, match=f"{label} failed \\(FT_IO_ERROR\\)"):
         reader.open()
@@ -163,6 +113,32 @@ def test_failed_resync_reopens_device() -> None:
     assert reader.read_frame() == FRAME
     assert reader.reinits == 1
     assert names(api).count("open") == 2
+
+
+def test_silent_device_gives_up_after_max_reinits() -> None:
+    api = FakeApi(b"")  # opens fine but never produces data
+    reader = Ft4222Reader(api)
+    reader.open()
+    with pytest.raises(Ft4222Error, match="No valid scope frames"):
+        reader.read_frame()
+    assert reader.reinits == ft.MAX_REINITS
+
+
+def test_stop_during_recovery_returns_none() -> None:
+    reader = Ft4222Reader(FakeApi(b""))
+    original_open = reader.open
+    opens = []
+
+    def open_then_stop_on_reinit() -> None:
+        original_open()
+        opens.append(1)
+        if len(opens) > 1:
+            reader.stop()
+
+    reader.open = open_then_stop_on_reinit  # type: ignore[method-assign]
+    assert list(reader) == []  # iteration ends cleanly instead of spinning
+    assert len(opens) == 2
+    assert not reader.is_open
 
 
 def test_resync_stops_on_short_read() -> None:
