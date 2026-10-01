@@ -20,6 +20,7 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
   - `sh tests/hooks/run.sh`: git hook and agent hook tests
+- Follow [STYLE.md](STYLE.md) for code, messages, docs, GUI, website, and git conventions.
 - Read these before touching the matching area:
   - [docs/architecture.md](docs/architecture.md): module layout and data flow
   - [docs/protocol-yaesu-ft4222.md](docs/protocol-yaesu-ft4222.md): FT-710 frame layout

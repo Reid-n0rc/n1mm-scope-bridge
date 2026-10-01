@@ -37,4 +37,6 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 sh tests/hooks/run.sh
 ```
 
+Follow the [style guide](STYLE.md) so code, messages, and docs stay consistent.
+
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
