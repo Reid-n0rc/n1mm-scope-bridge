@@ -5,7 +5,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Keep the task small enough for one agent context window: one concern, about 300 lines and 5 files or fewer, and no more than about 10 files read (AGENTS.md → Task sizing). Branch `issue-<n>-<slug>` from `dev`. Work starts only after the `plan-approved` label is applied and the issue is assigned.
+        Keep the task small enough for one agent context window: one concern, about 300 lines and 5 files or fewer, and no more than about 10 files read (AGENTS.md → Task sizing). Branch `issue-<n>-<slug>` from `dev`. Work starts only after the `plan-approved` label is applied and the issue is assigned, and `python scripts/check_overlap.py <issue>` is clear.
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Lane
+      description: One lane per issue; add the matching `lane:*` label (AGENTS.md → Parallel work).
+      options: ["lane:core", "lane:gui", "lane:packaging", "lane:site", "lane:process"]
+    validations:
+      required: true
   - type: textarea
     id: goal
     attributes:
