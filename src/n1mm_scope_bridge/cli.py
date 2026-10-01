@@ -21,13 +21,14 @@ from n1mm_scope_bridge.bridge import (
     COMBINE_MODES,
     DEFAULT_RATE_HZ,
     DEFAULT_SCALING,
-    BridgeConfig,
     build_pipeline,
 )
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT, N1mmSender
 from n1mm_scope_bridge.pipeline import Pipeline
 from n1mm_scope_bridge.radios import RADIOS, get_radio
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
+from n1mm_scope_bridge.settings import Settings, settings_path
+from n1mm_scope_bridge.settings import load as load_settings
 from n1mm_scope_bridge.transport.ft4222 import (
     DEFAULT_DESCRIPTION,
     Ft4222Api,
@@ -73,11 +74,17 @@ class _LicenseAction(argparse.Action):
         parser.exit()
 
 
-def _radio_args(p: argparse.ArgumentParser, *, device: bool = True) -> None:
-    p.add_argument("--radio", default="ft710", help="radio model (see list-radios)")
-    if device:
-        p.add_argument("--ftdi-lib-dir", help="folder containing LibFT4222 and ftd2xx")
-        p.add_argument("--device", default=DEFAULT_DESCRIPTION, help="FT4222 device description")
+def _radio_args(p: argparse.ArgumentParser, *, from_settings: bool = False) -> None:
+    # With from_settings, unset options fall back to the settings file (see cmd_run).
+    p.add_argument(
+        "--radio", default=None if from_settings else "ft710", help="radio model (see list-radios)"
+    )
+    p.add_argument("--ftdi-lib-dir", help="folder containing LibFT4222 and ftd2xx")
+    p.add_argument(
+        "--device",
+        default=None if from_settings else DEFAULT_DESCRIPTION,
+        help="FT4222 device description",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,17 +102,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    run = sub.add_parser("run", help="stream the radio's scope to N1MM+")
-    _radio_args(run)
+    run = sub.add_parser(
+        "run",
+        help="stream the radio's scope to N1MM+",
+        description="Options not given fall back to --settings (if used), then the defaults.",
+    )
+    _radio_args(run, from_settings=True)
+    run.add_argument(
+        "--settings",
+        nargs="?",
+        type=Path,
+        const=settings_path(),
+        help="use the GUI's saved settings (optionally from PATH)",
+    )
     run.add_argument("--replay", type=Path, help="replay a capture file instead of the radio")
     run.add_argument("--loop", action="store_true", help="loop the replay")
     run.add_argument("--fps", type=float, default=20.0, help="replay speed in frames/s")
-    run.add_argument("--host", default=DEFAULT_HOST, help="N1MM+ PC (default: this PC)")
-    run.add_argument("--port", type=int, default=DEFAULT_PORT, help="N1MM+ spectrum UDP port")
+    run.add_argument("--host", help=f"N1MM+ PC (default {DEFAULT_HOST}, this PC)")
+    run.add_argument("--port", type=int, help=f"N1MM+ spectrum UDP port (default {DEFAULT_PORT})")
     run.add_argument("--name", help="source name shown in N1MM+ (default: the radio model)")
-    run.add_argument("--rate", type=float, default=DEFAULT_RATE_HZ, help="updates/s to N1MM+")
-    run.add_argument("--scaling", type=float, default=DEFAULT_SCALING, help="dB per level")
-    run.add_argument("--combine", choices=COMBINE_MODES, default="latest")
+    run.add_argument("--rate", type=float, help=f"updates/s to N1MM+ (default {DEFAULT_RATE_HZ:g})")
+    run.add_argument("--scaling", type=float, help=f"dB per level (default {DEFAULT_SCALING})")
+    run.add_argument("--combine", choices=COMBINE_MODES, help="latest (default), average, or peak")
     run.add_argument("--duration", type=float, help="stop after this many seconds")
 
     record = sub.add_parser("record", help="save raw scope frames to a capture file")
@@ -181,8 +199,38 @@ def supervise(
         pipe.join(timeout=5)
 
 
+def resolve_settings(args: argparse.Namespace, err: TextIO) -> Settings:
+    """Settings file (if requested) overridden by any options given on the command line."""
+    base = Settings()
+    if args.settings is not None:
+        base, warnings = load_settings(args.settings)
+        for warning in warnings:
+            print(f"warning: {warning}", file=err)
+    overrides = {
+        "radio": args.radio,
+        "device": args.device,
+        "ftdi_lib_dir": args.ftdi_lib_dir,
+        "n1mm_host": args.host,
+        "n1mm_port": args.port,
+        "source_name": args.name,
+        "rate_hz": args.rate,
+        "scaling": args.scaling,
+        "combine": args.combine,
+    }
+    settings = base.replace(**{k: v for k, v in overrides.items() if v is not None})
+    if args.name == "":
+        raise UserError("--name must not be empty")
+    problems = settings.validate()
+    if problems:
+        raise UserError("; ".join(f"{field}: {why}" for field, why in problems.items()))
+    return settings
+
+
 def cmd_run(args: argparse.Namespace, api_loader: ApiLoader, err: TextIO) -> int:
-    profile = get_radio(args.radio)
+    settings = resolve_settings(args, err)
+    args.radio, args.device = settings.radio, settings.device
+    args.ftdi_lib_dir = settings.ftdi_lib_dir or None
+    profile = get_radio(settings.radio)
     source: Iterable[bytes]
     if args.replay is not None:
         replay = CaptureReader(args.replay, fps=args.fps, loop=args.loop)
@@ -194,15 +242,10 @@ def cmd_run(args: argparse.Namespace, api_loader: ApiLoader, err: TextIO) -> int
     else:
         radio = _open_radio(args, api_loader)
         source, close = radio, radio.stop
-    config = BridgeConfig(
-        profile,
-        profile.model if args.name is None else args.name,
-        scaling=args.scaling,
-        rate_hz=args.rate,
-        combine=args.combine,
-    )
+    config = settings.to_bridge_config()
     latest = LatestStatus()
-    with N1mmSender(args.host, args.port) as sender:
+    host, port = settings.n1mm_host, settings.n1mm_port
+    with N1mmSender(host, port) as sender:
         pipe = build_pipeline(
             config,
             source,
@@ -212,7 +255,7 @@ def cmd_run(args: argparse.Namespace, api_loader: ApiLoader, err: TextIO) -> int
             warn=lambda m: print(f"warning: {m}", file=err),
         )
         print(
-            f"Streaming {profile.model} to N1MM+ at {args.host}:{args.port} as {config.name!r}",
+            f"Streaming {profile.model} to N1MM+ at {host}:{port} as {config.name!r}",
             file=err,
         )
         pipe.start()

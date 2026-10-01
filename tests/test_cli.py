@@ -15,6 +15,7 @@ from fakes import FakeApi
 from frames import make_ft4222_frame
 
 from n1mm_scope_bridge import __version__
+from n1mm_scope_bridge import settings as st
 from n1mm_scope_bridge.cli import LatestStatus, format_status, main, supervise
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.transport.ft4222 import LibraryNotFound
@@ -256,3 +257,41 @@ def test_latest_status_holder() -> None:
     status = ScopeStatus(1, 2, "center", "x")
     holder.update(status)
     assert holder.value is status
+
+
+# --- settings integration -------------------------------------------------------------
+
+
+def test_run_uses_saved_settings_with_cli_overrides(
+    listener: socket.socket, tmp_path: Path
+) -> None:
+    port = listener.getsockname()[1]
+    path = tmp_path / "settings.json"
+    st.save(st.Settings(source_name="From GUI", n1mm_port=port, rate_hz=10.0), path)
+    code, _, err = cli(
+        "run", "--settings", str(path), "--replay", str(FIXTURE), "--loop", "--duration", "0.5"
+    )
+    assert code == 0, err
+    assert ET.fromstring(listener.recvfrom(65535)[0]).findtext("Name") == "From GUI"
+    code, _, _ = cli(
+        "run", "--settings", str(path), "--name", "Override", "--replay", str(FIXTURE),
+        "--loop", "--duration", "0.5",
+    )  # fmt: skip
+    assert code == 0
+    names = set()
+    listener.settimeout(0.2)
+    try:
+        while True:
+            names.add(ET.fromstring(listener.recvfrom(65535)[0]).findtext("Name"))
+    except TimeoutError:
+        pass
+    assert "Override" in names
+
+
+def test_run_reports_settings_warnings_and_problems(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    path.write_text('{"n1mm_port": 0, "rate_hz": "x"}', encoding="utf-8")
+    code, _, err = cli("run", "--settings", str(path), "--replay", str(FIXTURE))
+    assert code == 1
+    assert "warning: ignored invalid 'rate_hz'" in err
+    assert "n1mm_port: port must be 1-65535" in err
