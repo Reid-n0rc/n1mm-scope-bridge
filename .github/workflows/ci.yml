@@ -44,6 +44,13 @@ jobs:
         # Windows is where N1MM+ runs, so it is a first-class target.
         os: [windows-latest, ubuntu-latest, macos-latest]
         python: ["3.10", "3.13"]
+        include:
+          # Free-threaded CPython (no GIL): the pipeline's stages and radios
+          # run truly in parallel here, so race conditions surface (issue #8).
+          - os: ubuntu-latest
+            python: "3.14t"
+          - os: windows-latest
+            python: "3.14t"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
