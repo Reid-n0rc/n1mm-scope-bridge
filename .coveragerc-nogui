@@ -1,0 +1,12 @@
+# Coverage settings for free-threaded Python jobs, where PySide6 (the GUI) is
+# not installable: same as pyproject.toml, minus the GUI package.
+[run]
+source = n1mm_scope_bridge
+branch = true
+omit =
+    */__main__.py
+    */n1mm_scope_bridge/gui/*
+
+[report]
+show_missing = true
+fail_under = 90

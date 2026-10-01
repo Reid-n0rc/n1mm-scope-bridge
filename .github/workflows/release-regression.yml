@@ -32,7 +32,7 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, python: "3.13", flags: "" }
-          - { os: windows-latest, python: "3.14t", flags: "" }
+          - { os: windows-latest, python: "3.14t", flags: "--skip-gui" }
           - { os: ubuntu-latest, python: "3.13", flags: "--skip-windows-only" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,8 +41,13 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           python-version: ${{ matrix.python }}
+      - name: Qt runtime libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
       - name: Run full regression
         shell: bash
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: >
           uv run --no-project python scripts/release_regression.py
           --report regression-report.md ${{ matrix.flags }}

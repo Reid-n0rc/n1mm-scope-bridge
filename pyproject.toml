@@ -8,6 +8,7 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md"]
 authors = [{ name = "Reid Crowe, N0RC" }]
 requires-python = ">=3.10"
 dependencies = []
+
 keywords = ["ham radio", "amateur radio", "n1mm", "yaesu", "ft-710", "spectrum", "waterfall", "contesting"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -20,6 +21,10 @@ classifiers = [
     "Topic :: Communications :: Ham Radio",
 ]
 
+[project.optional-dependencies]
+# Qt 6 GUI. PySide6 is used under GPL-3.0-only (it is also offered under LGPL-3.0).
+gui = ["PySide6-Essentials>=6.8"]
+
 [project.urls]
 Homepage = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
 Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
@@ -28,7 +33,13 @@ Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
 n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
 
 [dependency-groups]
+# PySide6 ships abi3 wheels only, which free-threaded CPython cannot load:
+# free-threaded jobs use `uv sync --no-group gui-dev` and the GUI tests skip.
+gui-dev = ["PySide6-Essentials>=6.8", "pytest-qt>=4.4"]
 dev = ["pytest>=8", "pytest-cov>=5", "pytest-timeout>=2.3", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.uv]
+default-groups = ["dev", "gui-dev"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -64,6 +75,7 @@ addopts = "-ra --strict-markers"
 timeout = 60
 markers = [
     "slow: builds the package (runs in CI, a few seconds)",
+    "gui: needs PySide6 (skipped on free-threaded Python)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
 ]
 

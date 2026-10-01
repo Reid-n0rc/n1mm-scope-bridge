@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 import pytest
 
-from n1mm_scope_bridge.demo import build_frame, demo_frames, encode_bcd
+from n1mm_scope_bridge.demo import DemoStream, build_frame, demo_frames, encode_bcd
 from n1mm_scope_bridge.radios import yaesu_scope as ys
 from n1mm_scope_bridge.radios.ft710 import FT710
 
@@ -45,3 +45,20 @@ def test_demo_frames_are_deterministic_and_parse() -> None:
 def test_demo_frames_needs_positive_count() -> None:
     with pytest.raises(ValueError, match="count"):
         demo_frames(0)
+
+
+def test_demo_stream_loops_until_stopped() -> None:
+    stream = DemoStream(fps=1000, frames=2)
+    got = []
+    for frame in stream:
+        got.append(frame)
+        if len(got) == 5:
+            stream.stop()
+    assert len(got) == 5
+    assert got[0] == got[2]
+    assert list(stream) == []  # stays stopped
+
+
+def test_demo_stream_rejects_bad_fps() -> None:
+    with pytest.raises(ValueError, match="fps"):
+        DemoStream(fps=0)

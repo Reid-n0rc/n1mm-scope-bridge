@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import itertools
+import os
 import socket
 import tarfile
 import zipfile
@@ -314,3 +315,22 @@ def test_e2e_step_is_enabled() -> None:
     step = next(s for s in rr.default_steps(fake_runner()) if s.name.startswith("End-to-end"))
     assert step.action is not None
     assert not step.disabled_reason
+
+
+def test_skip_gui_drops_gui_group_and_is_allowed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    steps = rr.default_steps(fake_runner(), skip_gui=True)
+    assert steps[0].command[-2:] == ("--no-group", "gui-dev")
+    gui = next(s for s in steps if s.name == "GUI self-test")
+    assert gui.disabled_reason == rr.GUI_SKIP
+    monkeypatch.delenv("UV_NO_GROUP", raising=False)
+    code = rr.main(
+        ["--report", str(tmp_path / "r.md"), "--skip-gui"],
+        steps=[rr.Step("gui", disabled_reason=rr.GUI_SKIP)],
+        meta={},
+        runner=fake_runner(),
+    )
+    assert code == 0
+    assert os.environ["UV_NO_GROUP"] == "gui-dev"
+    capsys.readouterr()

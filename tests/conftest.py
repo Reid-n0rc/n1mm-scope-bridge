@@ -6,6 +6,9 @@ import os
 
 import pytest
 
+# GUI tests run headless everywhere (CI and local) unless a platform is forced.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Hardware tests run only with N1MM_BRIDGE_HARDWARE=1 (never in CI)."""

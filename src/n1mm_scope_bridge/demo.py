@@ -9,6 +9,8 @@ a few CW carriers) without a radio.
 from __future__ import annotations
 
 import random
+import threading
+from collections.abc import Iterator
 
 from n1mm_scope_bridge.radios import yaesu_scope as ys
 
@@ -69,3 +71,27 @@ def demo_frames(
                     levels[b] = min(255, max(levels[b], strength + rng.randint(-6, 6)))
         frames.append(build_frame(bytes(levels), vfo_a_hz=vfo_a_hz, span_index=span_index))
     return frames
+
+
+class DemoStream:
+    """Endless, paced stream of demo frames (self-tests, screenshots, demo mode).
+
+    Iterate from one thread; ``stop()`` may be called from any thread.
+    """
+
+    def __init__(self, fps: float = 20.0, frames: int = 16, seed: int = 710) -> None:
+        if fps <= 0:
+            raise ValueError("fps must be greater than 0")
+        self._frames = demo_frames(frames, seed=seed)
+        self._period = 1.0 / fps
+        self._stop = threading.Event()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def __iter__(self) -> Iterator[bytes]:
+        while True:
+            for frame in self._frames:
+                if self._stop.wait(self._period):
+                    return
+                yield frame
