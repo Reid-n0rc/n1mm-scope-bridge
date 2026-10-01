@@ -71,11 +71,11 @@ class LatestQueue(Generic[T]):
 class Accumulator(Protocol[R]):
     """Combines processed items between sender ticks. Must be thread-safe."""
 
-    def add(self, item: R) -> None: ...
+    def add(self, item: R) -> None:
+        """Fold one processed item into the pending result."""
 
     def take(self) -> R | None:
         """Return the combined item since the last take, or None if there is none."""
-        ...
 
 
 class LatestAccumulator(Generic[R]):
