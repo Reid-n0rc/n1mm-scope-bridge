@@ -180,10 +180,35 @@ version, and a short trimmed capture, so the result can be reproduced.
 
 ## Release process
 
-1. Open a PR from `dev` to `master` titled `Release vX.Y.Z`. The maintainer
-   chooses the version.
-2. Paste the full regression output and the on-air check result into it.
-3. The maintainer merges, then creates the tag and GitHub release from
-   `master`. Agents never tag or release.
-4. Update [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format) in the
-   release PR.
+Releases are gated by the **full release regression**
+(`scripts/release_regression.py`, workflow `Release regression`). It runs
+automatically on every PR into `master` and on every `v*` tag, and on demand:
+
+```bash
+uv run --no-project python scripts/release_regression.py --report regression-report.md
+# off Windows (development only, not releasable):
+uv run --no-project python scripts/release_regression.py --skip-windows-only
+```
+
+It covers: a locked clean environment, lint, format, strict mypy, every test
+including slow and licensing tests with coverage, hook tests, sdist and wheel
+build plus content checks (licenses, source, no FTDI binaries), a wheel
+install smoke test, and (as each feature lands) end-to-end replay, the
+Windows app, the GUI self-test, the installer install/run/uninstall, and the
+website build. **Every new user-facing feature adds its regression step in
+the same PR.** A Windows run with no skipped Windows steps is required.
+
+1. **Release candidate.** Open a PR from `dev` to `master` titled
+   `Release vX.Y.Z`. The maintainer chooses the version. The Release
+   regression must be green on Windows. Paste its report (job summary or
+   artifact) into the PR, and update [CHANGELOG.md](CHANGELOG.md).
+2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The regression
+   runs again on the tag, and the release workflow publishes a GitHub
+   **pre-release**.
+3. **On-air check.** The maintainer installs the RC on the station PC and
+   verifies the waterfall with a real FT-710 and N1MM+. Fixes go through
+   `dev` as usual, followed by another RC.
+4. **Release.** The maintainer tags `vX.Y.Z` on the same commit as the
+   accepted RC. The regression runs on the tag, and the release and website
+   publish.
+5. Agents never tag, release, or bump versions.
