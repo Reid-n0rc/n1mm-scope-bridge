@@ -299,3 +299,21 @@ def test_multi_pipeline_stop() -> None:
 def test_multi_pipeline_requires_pipelines() -> None:
     with pytest.raises(ValueError, match="at least one"):
         MultiPipeline([])
+
+
+def test_process_stage_waits_through_idle_periods() -> None:
+    """The process thread keeps polling while the source is quiet (Empty path)."""
+    resume = threading.Event()
+
+    def quiet_source() -> Iterator[bytes]:
+        resume.wait(5)  # longer than the process stage's 0.1 s poll
+        yield b"\x00\x09"
+
+    out: list[int] = []
+    p = Pipeline("idle", quiet_source(), as_int, out.append, rate_hz=FAST)
+    p.start()
+    time.sleep(0.3)
+    assert p.alive
+    resume.set()
+    p.join(timeout=5)
+    assert out == [9]

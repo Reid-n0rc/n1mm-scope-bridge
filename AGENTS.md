@@ -189,6 +189,20 @@ version, and a short trimmed capture, so the result can be reproduced.
 - Default N1MM update rate: about 3 to 5 packets per second, never more than
   10. This follows the N1MM team's guidance.
 
+## Documentation
+
+**Every user-facing change updates the user documentation in the same PR.**
+That covers a CLI command or option, a setting, a GUI behaviour, a UDP
+control command, or an error message. The user docs live in `docs/user/`,
+and the website (#21–#23) is rendered from them.
+
+`tests/test_docs.py` fails CI when:
+- a command, option, or setting is missing from `cli.md` or `settings.md`;
+- a user-facing error message is missing from `troubleshooting.md`;
+- a link is broken.
+
+New error messages go into `USER_MESSAGES` in that test.
+
 ## Release process
 
 Releases are gated by the **full release regression**
