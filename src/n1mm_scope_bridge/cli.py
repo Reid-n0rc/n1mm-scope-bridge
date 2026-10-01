@@ -23,6 +23,7 @@ from n1mm_scope_bridge.bridge import (
     DEFAULT_SCALING,
     build_pipeline,
 )
+from n1mm_scope_bridge.emulator import SCENARIOS, make_emulator
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT, N1mmSender
 from n1mm_scope_bridge.pipeline import Pipeline
 from n1mm_scope_bridge.radios import RADIOS, get_radio
@@ -39,6 +40,7 @@ from n1mm_scope_bridge.transport.ft4222 import (
 from n1mm_scope_bridge.transport.replay import CaptureError, CaptureReader, CaptureWriter
 
 SOURCE_URL = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
+EMULATOR_FPS = 20.0  # about the rate the FT-710 produces; UNVERIFIED (#36)
 
 # Appropriate Legal Notices (GPLv3 section 5(d)).
 LEGAL_NOTICE = f"""\
@@ -84,6 +86,14 @@ def _radio_args(p: argparse.ArgumentParser, *, from_settings: bool = False) -> N
         "--device",
         default=None if from_settings else DEFAULT_DESCRIPTION,
         help="FT4222 device description",
+    )
+    p.add_argument(
+        "--emulator", action="store_true", help="use the built-in FT-710 emulator (no radio needed)"
+    )
+    p.add_argument(
+        "--scenario",
+        choices=sorted(SCENARIOS),
+        help="emulator scenario (implies --emulator; default: steady)",
     )
 
 
@@ -156,7 +166,11 @@ ApiLoader = Callable[[str | None], Ft4222Api]
 
 
 def _open_radio(args: argparse.Namespace, api_loader: ApiLoader) -> Ft4222Reader:
-    return Ft4222Reader(api_loader(args.ftdi_lib_dir), description=args.device)
+    if args.emulator or args.scenario:
+        api: Ft4222Api = make_emulator(args.scenario or "steady", fps=EMULATOR_FPS)
+    else:
+        api = api_loader(args.ftdi_lib_dir)
+    return Ft4222Reader(api, description=args.device)
 
 
 def format_status(status: ScopeStatus | None, pipe: Pipeline[Any]) -> str:
@@ -285,7 +299,8 @@ def cmd_record(args: argparse.Namespace, api_loader: ApiLoader, err: TextIO) -> 
 def cmd_probe(args: argparse.Namespace, api_loader: ApiLoader, out: TextIO) -> int:
     profile = get_radio(args.radio)
     radio = _open_radio(args, api_loader)
-    print("FTDI libraries loaded.", file=out)
+    emulated = bool(args.emulator or args.scenario)
+    print("Using the built-in FT-710 emulator." if emulated else "FTDI libraries loaded.", file=out)
     parsed: ParsedFrame | None = None
     for frame in radio:
         parsed = profile.parse(frame)

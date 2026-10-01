@@ -19,6 +19,7 @@
 | `radios/ft710.py` | FT-710 profile (span table, scope modes) | No |
 | `transport/ft4222.py` | `ctypes` binding to LibFT4222/D2XX, SPI setup, 4096-byte reads, resync | Yes |
 | `transport/replay.py` | Read and write raw-frame capture files, for `--record` and `--replay` | Yes |
+| `emulator/` | Software FT-710 behind `Ft4222Api`, with scenarios and fault injection ([emulator.md](emulator.md)) | No |
 | `demo.py` | Deterministic synthetic FT-710 frames (demo mode, screenshots, test fixture) | No |
 | `pipeline.py` | Threaded reader → process → sender stages, drop-oldest queue, per-radio pipelines (`MultiPipeline`) | No (injected) |
 | `bridge.py` | Wires a radio's transport, parser, combiner (latest/average/peak) and N1MM sender into a `Pipeline` | No (injected) |

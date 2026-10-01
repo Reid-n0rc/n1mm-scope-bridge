@@ -295,3 +295,37 @@ def test_run_reports_settings_warnings_and_problems(tmp_path: Path) -> None:
     assert code == 1
     assert "warning: ignored invalid 'rate_hz'" in err
     assert "n1mm_port: port must be 1-65535" in err
+
+
+# --- emulator ----------------------------------------------------------------------------
+
+
+def test_run_with_emulator(listener: socket.socket) -> None:
+    port = listener.getsockname()[1]
+    code, _, err = cli(
+        "run", "--emulator", "--duration", "0.6", "--port", str(port), "--rate", "10"
+    )
+    assert code == 0, err
+    assert ET.fromstring(listener.recvfrom(65535)[0]).findtext("DataCount") == "850"
+
+
+def test_probe_with_emulator_scenarios() -> None:
+    code, out, _ = cli("probe", "--emulator")
+    assert code == 0
+    assert "Using the built-in FT-710 emulator." in out
+    code, _, err = cli("probe", "--scenario", "not-connected")
+    assert code == 1
+    assert "Could not open" in err
+
+
+def test_record_from_emulator(tmp_path: Path) -> None:
+    out = tmp_path / "emu.cap"
+    code, _, _ = cli("record", "--scenario", "band-scan", "--frames", "3", str(out))
+    assert code == 0
+    assert len(list(CaptureReader(out))) == 3
+
+
+def test_run_exits_1_when_the_radio_stream_fails() -> None:
+    code, _, err = cli("run", "--scenario", "usb-unplug", "--duration", "10", "--port", "9")
+    assert code == 1
+    assert "error: FT4222_SPIMaster_SingleRead failed" in err

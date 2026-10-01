@@ -138,6 +138,9 @@ version, and a short trimmed capture, so the result can be reproduced.
 
 ## Testing policy
 
+0. **No automated test may need a radio.** Use the FT-710 emulator
+   ([docs/emulator.md](docs/emulator.md)), captures, or fakes. Only
+   `@pytest.mark.hardware` tests touch a real radio.
 1. **Every function has thorough unit tests**: the happy path, boundaries,
    invalid input, and every error path. Tests never need a radio, FTDI
    libraries, N1MM, or the network. Use synthetic frames built in the test,

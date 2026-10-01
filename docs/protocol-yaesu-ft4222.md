@@ -41,10 +41,21 @@ macOS loads `libft4222.dylib`, plus `libftd2xx.dylib` if D2XX is not built in.
 
 ### Resynchronisation
 
-A frame is valid only if it ends with `FF 01 EE 01`. If it does not, wfview
-reads 1 byte at a time (giving up after 8192 bytes) until it has seen 16
-consecutive bytes equal to `FF 01 EE 01` repeated four times, then resumes
-4096-byte reads. If that fails, it re-initialises the device.
+A frame is valid only if it ends with `FF 01 EE 01`.
+
+- **wfview** reads 1 byte at a time (up to 8192) until it sees 16 bytes of
+  `FF 01 EE 01` repeated four times, then resumes 4096-byte reads.
+- **This bridge** locks on a single `FF 01 EE 01`, consumes any further
+  repeats (padding), and treats the next 4 bytes as the start of the next
+  frame.
+
+The difference matters. If the radio pads the unused region with the
+pattern, wfview can lock in the middle of the padding and accept frames
+shifted by up to 1 KiB. If the radio does not pad, wfview never finds 16
+pattern bytes. The bridge handles both cases (tested with the emulator's
+`padding="sync"` and `padding="zero"`). After 16 resyncs without a valid frame
+it re-opens the device, and after 3 re-opens it reports
+`No valid scope frames`. UNVERIFIED (#36): which padding the real radio uses.
 
 ### Status block (`data`, offsets relative to byte 2900)
 

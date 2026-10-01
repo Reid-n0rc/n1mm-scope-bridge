@@ -42,6 +42,8 @@ VFO 14.074000 MHz, span 20 kHz, Center (Normal) | read 412 | sent 40 | dropped 0
 | `--combine MODE` | `latest` | How frames between updates are combined: `latest`, `average` (smoother), or `peak` (holds short signals) |
 | `--ftdi-lib-dir DIR` | system search path | Folder containing FTDI's `LibFT4222-64.dll` and `ftd2xx.dll` |
 | `--device TEXT` | `FT4222 A` | The FT4222 device description to open |
+| `--emulator` | off | Use the built-in FT-710 emulator instead of a radio: for trying the bridge, demos, and N1MM+ setup without the radio connected |
+| `--scenario NAME` | `steady` | Emulator scenario (implies `--emulator`): `steady`, `band-scan`, `span-steps`, `mode-change`, `tx-burst`, `misaligned-start`, `corrupt-frames`, `usb-unplug`, `silent-radio`, `not-connected` |
 | `--replay FILE` | radio | Replay a capture file (see `record`) instead of reading the radio |
 | `--loop` | off | With `--replay`, start again at the end of the file |
 | `--fps N` | `20` | With `--replay`, frames per second to replay |
@@ -54,6 +56,7 @@ n1mm-scope-bridge run
 n1mm-scope-bridge run --settings
 n1mm-scope-bridge run --host 192.168.1.20 --name "Shack FT-710" --combine peak
 n1mm-scope-bridge run --replay my-ft710.cap --loop
+n1mm-scope-bridge run --emulator          # no radio: test your N1MM+ setup
 ```
 
 ## `record`: save raw scope frames
@@ -66,7 +69,7 @@ n1mm-scope-bridge record [--radio MODEL] [--frames N] [--ftdi-lib-dir DIR] [--de
 |---|---|---|
 | `--frames N` | `50` | Number of frames to save (at least 1) |
 | `OUT` | required | Capture file to write |
-| `--radio`, `--ftdi-lib-dir`, `--device` | as for `run` | |
+| `--radio`, `--ftdi-lib-dir`, `--device`, `--emulator`, `--scenario` | as for `run` | |
 
 A short capture is the most useful thing to attach to a bug report or a
 radio support request. Note what the radio's display showed at the time
@@ -75,7 +78,7 @@ radio support request. Note what the radio's display showed at the time
 ## `probe`: check the setup
 
 ```
-n1mm-scope-bridge probe [--radio MODEL] [--ftdi-lib-dir DIR] [--device TEXT]
+n1mm-scope-bridge probe [--radio MODEL] [--ftdi-lib-dir DIR] [--device TEXT] [--emulator] [--scenario NAME]
 ```
 
 Loads the FTDI libraries, opens the radio, reads one frame, and prints the
