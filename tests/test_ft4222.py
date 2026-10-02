@@ -635,3 +635,39 @@ def test_ftdi_package_root(tmp_path: Path) -> None:
     lone.mkdir()
     assert ft.ftdi_package_root(str(lone), max_up=1) is None
     assert ft.ftdi_package_root(os.path.abspath(os.sep)) is None
+
+
+# --- path normalization (#146 follow-up) ------------------------------------------------------
+
+
+def test_normalize_dir_expands_home_and_native_separators(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    assert ft.normalize_dir("") == ""
+    assert ft.normalize_dir(None) == ""
+    assert ft.normalize_dir("  ") == ""
+    got = ft.normalize_dir("~/Downloads/LibFT4222-v1.4.8/imports//LibFT4222/dll/./amd64/ ")
+    assert got == os.path.join(
+        str(tmp_path), "Downloads", "LibFT4222-v1.4.8", "imports", "LibFT4222", "dll", "amd64"
+    )
+    assert "~" not in got
+
+
+def test_load_api_expands_user_typed_home_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    ftdi_package(tmp_path / "Downloads" / "LibFT4222-v1.4.8")
+    tried: list[str] = []
+    ft.load_api(
+        "~/Downloads/LibFT4222-v1.4.8/imports/LibFT4222/dll/amd64",
+        loader=path_loader(LIBS, tried),
+        platform="win32",
+        add_dll_directory=None,
+        arch="x64",
+    )
+    assert all(p.startswith(str(tmp_path)) and "~" not in p for p in tried)
+    assert all(os.path.normpath(p) == p for p in tried)  # consistent separators in messages

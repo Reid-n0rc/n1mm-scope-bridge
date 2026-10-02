@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -165,3 +166,17 @@ def test_control_off_by_default_and_lan_with_allow_list_ok() -> None:
 def test_wildcard_bind_message_is_specific() -> None:
     problems = Settings(control_bind="0.0.0.0", control_allow="192.168.1.20").validate()
     assert "not all interfaces" in problems["control_bind"]
+
+
+def test_ftdi_folder_is_normalized(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    s = Settings(ftdi_lib_dir="~/ftdi//dll/./amd64/")
+    assert s.ftdi_lib_dir == os.path.join(str(tmp_path), "ftdi", "dll", "amd64")
+    (tmp_path / "ftdi" / "dll" / "amd64").mkdir(parents=True)
+    assert "ftdi_lib_dir" not in s.validate()
+    assert (
+        Settings.from_dict({"ftdi_lib_dir": "~/ftdi/dll/amd64"})[0].ftdi_lib_dir == s.ftdi_lib_dir
+    )
+    assert Settings().replace(ftdi_lib_dir="~/x/").ftdi_lib_dir == os.path.join(str(tmp_path), "x")
+    assert Settings(ftdi_lib_dir="").ftdi_lib_dir == ""

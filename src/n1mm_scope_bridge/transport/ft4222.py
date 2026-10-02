@@ -227,6 +227,12 @@ def _default_loader(name: str) -> Any:  # pragma: no cover - needs the real libr
     return loader(name)
 
 
+def normalize_dir(path: str | None) -> str:
+    """Expand ``~`` and use the platform's own separators (Qt's picker returns ``/``)."""
+    text = (path or "").strip()
+    return os.path.normpath(os.path.expanduser(text)) if text else ""
+
+
 # Windows DLL architectures (PE "Machine" field) and FTDI's package folder names.
 PE_MACHINES = {0x014C: "x86", 0x8664: "x64", 0xAA64: "ARM64"}
 ARCH_DIRS = {"x64": "amd64", "x86": "i386", "ARM64": "arm64"}
@@ -419,8 +425,7 @@ def load_api(
     With no folder given, the packaged Windows app first looks in its own
     program folder, where the installer puts FTDI's DLLs (#133).
     """
-    if not lib_dir:
-        lib_dir = app_folder_with_ftdi(platform)
+    lib_dir = normalize_dir(lib_dir) or app_folder_with_ftdi(platform)
     if lib_dir and not os.path.isdir(lib_dir):
         raise LibraryNotFound(f"FTDI library folder does not exist: {lib_dir}")
     d2xx_names, ft_names = library_names(platform, is_64bit)
