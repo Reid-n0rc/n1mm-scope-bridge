@@ -41,6 +41,11 @@ USER_MESSAGES = [
     "--frames must be at least 1",
     "--name must not be empty",
     "port must be 1-65535",
+    "Could not start remote control on",
+    "No reply from n1mm-scope-bridge at",
+    "control port must",
+    "control address must",
+    "a non-loopback control address needs",
 ]
 USER_ERROR_RAISE = re.compile(
     r"raise (?:UserError|LibraryNotFound|DeviceNotFound|CaptureError)\(\s*f?\"([^\"{]{6,})"

@@ -3,6 +3,7 @@
 - [Command line](cli.md): every command and option
 - [Settings](settings.md): every setting, where it is stored, and its command-line equivalent
 - [GUI](gui.md): the window, Start/Stop, closing, and the system tray
+- [UDP remote control](udp-control.md): optional, off by default
 - [Troubleshooting](troubleshooting.md): every error message, what causes it, and how to fix it
 - [Setting up N1MM Logger+](../n1mm-setup.md)
 
