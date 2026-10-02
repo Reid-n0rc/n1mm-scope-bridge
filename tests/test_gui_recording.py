@@ -123,5 +123,6 @@ def test_record_flag_reports_errors(
     tmp_path: Path, qtbot: QtBot, capsys: pytest.CaptureFixture[str]
 ) -> None:
     del qtbot
-    assert gui_app.main(["--record", str(tmp_path), "--seconds", "0"]) == 1
+    code = gui_app.main(["--record", str(tmp_path), "--seconds", "0"])
+    assert code == 1
     assert "error:" in capsys.readouterr().err
