@@ -183,8 +183,19 @@ jobs:
           set -euo pipefail
           title="N1MM Scope Bridge $TAG"
           pre=""; [ "$PRERELEASE" = "true" ] && pre="--prerelease"
-          gh release create "$TAG" bundle/release/* --repo "$REPO" --verify-tag \
-            --title "$title" --notes-file bundle/notes.md $pre
+          # A release may already exist for the tag (for example one made in the
+          # GitHub web UI, which also pushes the tag and starts this workflow).
+          # `gh release create` would then fail and leave it with no assets, so
+          # fill in the existing release instead.
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" bundle/release/* --repo "$REPO" --clobber
+            gh release edit "$TAG" --repo "$REPO" --title "$title" \
+              --notes-file bundle/notes.md --draft=false \
+              --prerelease="$PRERELEASE"
+          else
+            gh release create "$TAG" bundle/release/* --repo "$REPO" --verify-tag \
+              --title "$title" --notes-file bundle/notes.md $pre
+          fi
       # A release created with GITHUB_TOKEN does not trigger other workflows, so
       # ask the Pages workflow to rebuild the site from this final release.
       - name: Rebuild the website (final releases only)
