@@ -36,6 +36,22 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="save website screenshots of the window and dialogs into DIR, then exit",
     )
+    parser.add_argument(
+        "--source",
+        choices=("emulator", "radio"),
+        default="emulator",
+        help="with --screenshot: data from the built-in emulator (default) or the radio",
+    )
+    parser.add_argument(
+        "--ftdi-lib-dir", help="with --source radio: folder containing LibFT4222 and D2XX"
+    )
+    parser.add_argument(
+        "--settle",
+        type=float,
+        default=20.0,
+        metavar="SECONDS",
+        help="with --source radio: stream this long first so the waterfall fills (default 20)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -85,9 +101,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     app = application()
     if args.screenshot is not None:
-        from n1mm_scope_bridge.gui.screenshot import capture  # noqa: PLC0415 - only for this mode
+        from n1mm_scope_bridge.gui import screenshot  # noqa: PLC0415 - only for this mode
 
-        paths = capture(args.screenshot, app)
+        source = None
+        if args.source == "radio":
+            try:
+                source = screenshot.radio_source(args.ftdi_lib_dir, args.settle)
+            except (ValueError, OSError, RuntimeError) as err:
+                print(f"error: {err}", file=sys.stderr)
+                return 1
+        paths = screenshot.capture(args.screenshot, app, source=source)
         print(f"Saved {len(paths)} screenshots to {args.screenshot}")
         return 0
     if args.self_test:

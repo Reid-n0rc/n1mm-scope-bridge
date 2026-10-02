@@ -33,6 +33,12 @@ def test_gui_passes_options_to_the_app(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert seen == [["--settings", str(tmp_path / "s.json"), "--self-test"]]
     cli("gui")
     assert seen[-1] == []
+    cli("gui", "--screenshot", str(tmp_path / "shots"), "--source", "radio",
+        "--ftdi-lib-dir", str(tmp_path), "--settle", "5")  # fmt: skip
+    assert seen[-1] == [
+        "--screenshot", str(tmp_path / "shots"), "--source", "radio",
+        "--ftdi-lib-dir", str(tmp_path), "--settle", "5.0",
+    ]  # fmt: skip
 
 
 @pytest.mark.gui

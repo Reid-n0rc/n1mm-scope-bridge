@@ -194,6 +194,8 @@ def write_shots(directory: Path, *, dark: bool = False, **override: object) -> P
         "alt": 'The "main" window & status',
         "caption": "The main window.",
     }
+    if "real_radio" not in override:
+        entry["simulated"] = True  # streaming scenes must state their source
     (directory / "main-window.png").write_bytes(b"png")
     if dark:
         entry["dark"] = "main-window-dark.png"
@@ -231,10 +233,42 @@ def test_simulated_screenshot_is_labelled(tmp_path: Path, ctx: dict[str, str]) -
     assert "emulator" in text
 
 
-def test_real_screenshot_has_no_simulated_label(tmp_path: Path) -> None:
+def test_real_screenshot_is_labelled_real(tmp_path: Path) -> None:
     out = tmp_path / "out"
-    bs.build(out, DEV, write_site(tmp_path / "src", SHOT_PAGE), write_shots(tmp_path / "shots"))
-    assert bs.SIMULATED_LABEL not in (out / "index.html").read_text(encoding="utf-8")
+    shots = write_shots(tmp_path / "shots", real_radio=True)
+    bs.build(out, DEV, write_site(tmp_path / "src", SHOT_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert bs.SIMULATED_LABEL not in text
+    assert bs.REAL_LABEL in text
+
+
+def test_streaming_screenshot_must_state_its_source(tmp_path: Path) -> None:
+    shots = write_shots(tmp_path / "shots", real_radio=False)
+    with pytest.raises(bs.SiteError, match="does not state its source"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", SHOT_PAGE), shots)
+
+
+def test_committed_real_screenshots_replace_generated(tmp_path: Path) -> None:
+    src = write_site(tmp_path / "src", SHOT_PAGE)
+    real = write_shots(src / bs.REAL_DIR, dark=True, real_radio=True, caption="Real FT-710.")
+    (real / "main-window.png").write_bytes(b"real-png")
+    out = tmp_path / "out"
+    bs.build(out, DEV, src, write_shots(tmp_path / "shots"))
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert "Real FT-710." in text
+    assert bs.REAL_LABEL in text
+    assert bs.SIMULATED_LABEL not in text
+    assert (out / bs.SHOTS_DIR / "main-window.png").read_bytes() == b"real-png"
+    assert (out / bs.SHOTS_DIR / "main-window-dark.png").exists()
+    assert not (out / bs.REAL_DIR).exists()  # source folder is not published as-is
+
+
+def test_real_folder_ignored_without_screenshots(tmp_path: Path) -> None:
+    src = write_site(tmp_path / "src", SHOT_PAGE)
+    write_shots(src / bs.REAL_DIR, real_radio=True)
+    out = tmp_path / "out"
+    bs.build(out, DEV, src)
+    assert not (out / bs.SHOTS_DIR).exists()
 
 
 def test_dark_variant_uses_picture_source(tmp_path: Path) -> None:
@@ -296,6 +330,7 @@ def test_real_site_with_screenshots(tmp_path: Path) -> None:
             "height": 10,
             "alt": name,
             "caption": name,
+            **({"simulated": True} if name == "main-window" else {}),
         }
     (shots / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     pages = bs.build(tmp_path / "out", DEV, screenshots=shots)
@@ -322,6 +357,7 @@ def write_group(directory: Path, scenes: list[str]) -> Path:
             "height": 4,
             "alt": scene,
             "caption": scene,
+            **({"simulated": True} if scene == "main-window" else {}),
         }
     (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return directory
