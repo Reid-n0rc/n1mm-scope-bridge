@@ -117,16 +117,29 @@ def test_main_writes_report_and_exit_codes(
     capsys.readouterr()
 
 
-def test_main_skipped_windows_steps_are_not_releasable(
+def test_explicit_portable_run_passes_but_is_not_releasable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     steps = [
         rr.Step("win", ("w",), windows_only=True),
         rr.Step("later", disabled_reason="added by #6"),
     ]
+    report = tmp_path / "r.md"
     code = rr.main(
-        ["--report", str(tmp_path / "r.md"), "--skip-windows-only"],
-        steps=steps,
+        ["--report", str(report), "--skip-windows-only"], steps=steps, meta={}, runner=fake_runner()
+    )
+    assert code == 0
+    assert "not releasable" in report.read_text(encoding="utf-8")
+    assert "NOT RELEASABLE" in capsys.readouterr().err
+
+
+def test_windows_steps_skipped_off_windows_without_flag_fail(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("sys.platform", "linux")
+    code = rr.main(
+        ["--report", str(tmp_path / "r.md")],
+        steps=[rr.Step("win", ("w",), windows_only=True)],
         meta={},
         runner=fake_runner(),
     )
