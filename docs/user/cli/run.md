@@ -49,8 +49,19 @@ when the scope frames show Center:
 
 ```
 Set the FT-710's scope to Center mode for exact N1MM+ frequencies (currently Cursor (Normal)). Streaming continues meanwhile.
+N1MM+ function-key macros (paste into the F-key editor; UNVERIFIED #62):
+Scope Center,{CAT1ASC SS0640000;}
+Scope restore,{CAT1ASC SS0670000;}
 FT-710 scope is in Center mode: N1MM+ frequencies are exact.
 ```
+
+**N1MM+ macros.** Paste the two lines into N1MM+'s function-key editor
+(Config → Change CW/SSB/Digital Function Key Definitions) to get a
+**Scope Center** key and a **Scope restore** key. *Scope restore* returns to
+the mode the scope was in when streaming started. N1MM+ sends these over its
+own CAT connection; the bridge never sends CAT. The `SS06…;` command comes
+from wfview's FT-710 definition; its exact format on the FT-710 is not yet
+confirmed on a real radio (#62).
 
 The bridge never changes the radio's scope mode itself and never opens the
 radio's COM ports, because N1MM+ needs both of them.
