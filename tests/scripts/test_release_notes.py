@@ -184,3 +184,35 @@ def test_download_names_match_the_built_artifacts() -> None:
     assert f"`{bwa.zip_name('0.1.0')}`" in notes
     assert "`n1mm-scope-bridge-0.1.0-win64.zip`" in notes
     assert "windows.zip" not in notes
+
+
+def test_required_assets_include_screenshots_and_sources() -> None:
+    names = rn.required_assets("0.1.0")
+    assert "screenshots.zip" in names
+    assert "regression-report.md" in names
+    assert bwa.zip_name("0.1.0") in names
+    assert "n1mm-scope-bridge-setup-0.1.0.exe" in names
+    assert "n1mm_scope_bridge-0.1.0.tar.gz" in names  # GPLv3 corresponding source
+    assert "n1mm_scope_bridge-0.1.0-py3-none-any.whl" in names
+
+
+def test_missing_assets() -> None:
+    all_names = rn.required_assets("0.1.0")
+    assert rn.missing_assets("0.1.0", all_names) == []
+    assert rn.missing_assets("0.1.0", [n for n in all_names if n != "screenshots.zip"]) == [
+        "screenshots.zip"
+    ]
+
+
+def test_assets_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    for name in rn.required_assets("0.1.0"):
+        (tmp_path / name).write_bytes(b"x")
+    assert rn.main(["assets", "--tag", "v0.1.0-rc1", str(tmp_path)]) == 0
+    assert "required release files present" in capsys.readouterr().out
+    (tmp_path / "screenshots.zip").unlink()
+    assert rn.main(["assets", "--tag", "v0.1.0-rc1", str(tmp_path)]) == 1
+    assert "missing required files: screenshots.zip" in capsys.readouterr().err
+
+
+def test_release_notes_list_screenshots() -> None:
+    assert "`screenshots.zip`" in rn.release_notes(rn.parse_tag("v0.1.0"), CHANGELOG)
