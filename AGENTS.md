@@ -397,7 +397,7 @@ has the `no-changelog` label.
    GitHub's Source code archives as the GPL source. If the release already
    exists (made in the web UI), it is filled in instead of failing: other
    files are removed, the maintainer's notes are kept, and only the highest
-   final version is marked Latest. A missing CHANGELOG section is noted in the
+   final version is marked Latest and rebuilds the website. A missing CHANGELOG section is noted in the
    release, not fatal. Rehearse first with a dry run (builds everything,
    publishes nothing): `gh workflow run release.yml --ref dev -f tag=vX.Y.Z-rc1`.
    To repair a release that has no installer:
