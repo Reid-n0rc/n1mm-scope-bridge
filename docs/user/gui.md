@@ -141,6 +141,20 @@ Startup and closing stays editable.
 | Start hidden in the system tray | `start_minimized` | Opens straight to the tray icon, without the window |
 | Close button | `on_close` | **Ask me**, **Keep running in tray**, or **Exit** |
 
+**Remote control** (off by default; see [UDP remote control](udp-control.md))
+
+| Control | Setting | What it does |
+|---|---|---|
+| Enable remote control (UDP) | `control_enabled` | Lets scripts, N1MM+ `{EXEC}` macros, or a Stream Deck send `status`, `start`, `stop`, and `set` commands while the window runs |
+| Port | `control_port` | The UDP port for commands, normally 13070 (must differ from the N1MM+ port) |
+| Listen on | `control_bind` | `127.0.0.1` = this PC only. For another PC, enter **this PC's own LAN IP**; all-interfaces addresses (`0.0.0.0`, `::`) are refused |
+| Allowed clients | `control_allow` | Comma-separated IP addresses allowed to send commands; required when *Listen on* isn't `127.0.0.1` |
+| Status | — | *Off*, *Listening on …*, or why it couldn't listen (for example, the port is in use) |
+
+Changes apply immediately, even while streaming. Remote `set rate` or
+`set combine` restarts the stream so the new value takes effect, and the
+window's controls update to match.
+
 **Advanced** (rarely needed)
 
 | Control | Setting | What it does |
