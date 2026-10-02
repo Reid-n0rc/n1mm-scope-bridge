@@ -580,7 +580,7 @@ def test_bad_exe_format_from_loader_is_an_arch_error(tmp_path: Path) -> None:
 
     def loader(path: str) -> FakeLib:
         err = OSError("not a valid Win32 application")
-        err.winerror = 193  # type: ignore[attr-defined,unused-ignore]  # exists only on Windows
+        err.winerror = 193  # type: ignore[attr-defined,unused-ignore]  # only typed on Windows
         raise err
 
     with pytest.raises(LibraryNotFound, match="runs as x64"):
