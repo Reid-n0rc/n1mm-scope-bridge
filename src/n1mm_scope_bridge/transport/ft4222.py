@@ -310,8 +310,9 @@ class Ft4222Reader:
             raise DeviceNotFound(
                 f"Could not open {self._description!r} ({status_name(status)}). Is the radio "
                 "on and connected by USB, with FTDI's D2XX driver installed? On the FT-710, "
-                "also set the radio's menu OPERATION SETTING > GENERAL > SCU-LAN10 to ON "
-                "(no adapter needed); it is what makes the scope available over USB."
+                "set the menu OPERATION SETTING > GENERAL > SCU-LAN10 to ON (no adapter "
+                "needed), then turn the radio off and on and unplug and replug its USB "
+                "cable so the scope device appears."
             )
         self._handle = handle
         steps: list[tuple[str, Callable[[], int]]] = [
