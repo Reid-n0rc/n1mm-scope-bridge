@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import io
+import struct
 import threading
 from pathlib import Path
 
 import pytest
+from fakes import FakeApi
 
 from n1mm_scope_bridge.transport.replay import (
+    MAX_RAW_CHUNK,
     CaptureError,
     CaptureReader,
     CaptureWriter,
+    RawChunk,
+    RawStreamApi,
+    RawStreamWriter,
+    RecordingApi,
     format_header,
     parse_header,
+    read_raw_stream,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ft710_synthetic.cap"
@@ -115,3 +123,81 @@ def test_committed_fixture_is_valid() -> None:
     assert reader.model == "FT-710"
     assert len(frames) == 8
     assert FIXTURE.stat().st_size < 64 * 1024
+
+
+# --- raw stream captures (#36) -----------------------------------------------------------
+
+
+def test_raw_stream_round_trip(tmp_path: Path) -> None:
+    ticks = iter([0.0, 0.5, 1.25])
+    buf = io.BytesIO()
+    writer = RawStreamWriter(buf, "FT-710", 4096, clock=lambda: next(ticks))
+    writer.write(0, b"abc")
+    writer.write(4, b"")
+    assert (writer.chunks, writer.bytes) == (2, 3)
+    path = tmp_path / "r.raw"
+    path.write_bytes(buf.getvalue())
+    model, size, chunks = read_raw_stream(path)
+    assert (model, size) == ("FT-710", 4096)
+    assert chunks == [RawChunk(0.5, 0, b"abc"), RawChunk(1.25, 4, b"")]
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (b"N1MMSB1 FT-710 4096\n", "not an n1mm-scope-bridge raw stream capture"),
+        (b"N1MMSB1-RAW FT-710 4096\n\x00\x01", "truncated raw record header"),
+        (
+            b"N1MMSB1-RAW FT-710 4096\n" + struct.pack("<dII", 0.0, 0, 10) + b"abc",
+            "truncated raw chunk",
+        ),
+        (
+            b"N1MMSB1-RAW FT-710 4096\n" + struct.pack("<dII", 0.0, 0, 1 << 20),
+            "too large",
+        ),
+    ],
+)
+def test_raw_stream_errors(tmp_path: Path, content: bytes, message: str) -> None:
+    path = tmp_path / "bad.raw"
+    path.write_bytes(content)
+    with pytest.raises(CaptureError, match=message):
+        read_raw_stream(path)
+
+
+def test_raw_writer_rejects_oversized_chunk() -> None:
+    writer = RawStreamWriter(io.BytesIO(), "FT-710", 4096)
+    with pytest.raises(CaptureError, match="raw chunk of"):
+        writer.write(0, b"\x00" * (MAX_RAW_CHUNK + 1))
+
+
+def test_recording_api_records_reads_and_passes_through() -> None:
+    buf = io.BytesIO()
+    inner = FakeApi(b"hello world")
+    api = RecordingApi(inner, RawStreamWriter(buf, "FT-710", 4096))
+    status, handle = api.open_ex("FT4222 A")  # passed through
+    assert status == 0
+    assert api.spi_read(handle, 5) == (0, b"hello")
+    assert buf.getvalue().endswith(b"hello")
+
+
+def test_raw_stream_api_serves_bytes_across_chunk_boundaries() -> None:
+    api = RawStreamApi([RawChunk(0, 0, b"abc"), RawChunk(1, 0, b"defg"), RawChunk(2, 4, b"")])
+    status, handle = api.open_ex("FT4222 A")
+    setup = [
+        api.set_timeouts(handle, 1, 1),
+        api.set_latency_timer(handle, 2),
+        api.spi_master_init(handle),
+        api.set_clock(handle),
+    ]
+    reads = [api.spi_read(handle, 5) for _ in range(4)]
+    teardown = [api.uninitialize(handle), api.close(handle)]
+    assert status == 0
+    assert setup == [0, 0, 0, 0]
+    assert reads == [
+        (0, b"abcde"),
+        (0, b"fg"),  # bytes before the error come first
+        (4, b""),  # then the recorded error
+        (0, b""),  # then end of capture
+    ]
+    assert teardown == [0, 0]
+    assert api.calls == ["open", "close"]

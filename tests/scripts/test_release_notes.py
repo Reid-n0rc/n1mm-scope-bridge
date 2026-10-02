@@ -6,6 +6,7 @@ import hashlib
 import re
 from pathlib import Path
 
+import build_windows_app as bwa
 import pytest
 import release_notes as rn
 
@@ -175,3 +176,11 @@ def test_main_meta_uses_repo_pyproject(capsys: pytest.CaptureFixture[str]) -> No
     assert f"version={version[1]}" in out
     assert "prerelease=true" in out
     assert rn.main(["meta", "--tag", "v999.0.0"]) == 1
+
+
+def test_download_names_match_the_built_artifacts() -> None:
+    """The notes name the zip exactly as build_windows_app.py produces it."""
+    notes = rn.release_notes(rn.parse_tag("v0.1.0"), CHANGELOG)
+    assert f"`{bwa.zip_name('0.1.0')}`" in notes
+    assert "`n1mm-scope-bridge-0.1.0-win64.zip`" in notes
+    assert "windows.zip" not in notes

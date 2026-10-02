@@ -147,3 +147,4 @@ On a system with no tray (rare), Close exits and Minimize minimizes normally.
 | `--settings PATH` | Use a different settings file |
 | `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression) |
 | `--version` | Print the version |
+
