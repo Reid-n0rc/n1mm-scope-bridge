@@ -2,14 +2,27 @@
 # GitHub pre-releases) and releases (vX.Y.Z) from tags the MAINTAINER pushes
 # on master. Agents never tag or release (AGENTS.md).
 #
-# Every release is gated on the full Release regression for the tagged commit,
-# and ships: the Windows installer, the portable app zip, the wheel, the sdist
-# (GPLv3 section 6 corresponding source), SHA256SUMS, build-provenance
-# attestations, and the regression report. FTDI's LibFT4222 is never included.
+# Every release is gated on the full Release regression for the tagged commit.
+# A release carries exactly ONE file, the universal Windows installer, with a
+# build-provenance attestation; its notes give the installer's SHA-256 and link
+# this run, whose artifacts hold everything else (portable zips, wheel, sdist,
+# regression report, screenshots). The complete corresponding source (GPLv3
+# section 6) is GitHub's automatic "Source code" archives of the tag. FTDI's
+# LibFT4222 is never included.
 #
-# workflow_dispatch is a dry run: it builds and uploads everything as workflow
-# artifacts for a rehearsal tag name, but never creates a tag, a release, or an
-# attestation.
+# The version always comes from the tag (v0.1.2 -> 0.1.2, v0.1.2-rc1 -> 0.1.2rc1)
+# and is stamped into the build, so a tag and pyproject.toml can never disagree.
+# A release created by hand in the GitHub web UI (which also pushes the tag) is
+# filled in with the assets instead of failing.
+#
+# workflow_dispatch:
+#   - publish=false (default): a dry run of the current branch under a rehearsal
+#     tag name. Builds and uploads everything as workflow artifacts; never creates
+#     a tag, a release, or an attestation.
+#   - publish=true: rebuilds an EXISTING tag (which must be on master) and attaches
+#     the installer to its release, creating the release if needed. Use it to repair a
+#     release that has no installer: gh workflow run release.yml --ref master
+#     -f tag=v0.1.2 -f publish=true
 name: Release
 
 on:
@@ -18,9 +31,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to rehearse, for example v0.1.0-rc1 (dry run: nothing is published)"
+        description: "Tag, for example v0.1.2 or v0.1.3-rc1"
         required: true
         default: v0.1.0-rc1
+      publish:
+        description: "Rebuild this existing tag and attach the files to its release (false = dry run)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,8 +53,10 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      base_version: ${{ steps.meta.outputs.base_version }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       publish: ${{ steps.meta.outputs.publish }}
+      source: ${{ steps.meta.outputs.source }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,25 +68,40 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "push" ]; then tag=$REF_NAME; publish=true; else tag=$INPUT_TAG; publish=false; fi
+          if [ "$EVENT" = "push" ]; then
+            tag=$REF_NAME; publish=true; source=$GITHUB_SHA
+          elif [ "$INPUT_PUBLISH" = "true" ]; then
+            tag=$INPUT_TAG; publish=true
+            git fetch --force --tags origin
+            if ! source=$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}"); then
+              echo "::error::Tag $tag does not exist. Create the release (and its tag) in the GitHub web UI targeting master, or push the tag, then re-run."
+              exit 1
+            fi
+          else
+            tag=$INPUT_TAG; publish=false; source=$GITHUB_SHA
+          fi
           {
             echo "tag=$tag"
             echo "publish=$publish"
+            echo "source=$source"
             python3 scripts/release_notes.py meta --tag "$tag"
           } >> "$GITHUB_OUTPUT"
       - name: Tagged commit must be on master
-        if: github.event_name == 'push'
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SOURCE: ${{ steps.meta.outputs.source }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin master
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-            echo "::error::Release tag points at ${GITHUB_SHA::7}, which is not on master, so no assets were built or attached. Merge dev into master (the release PR) with a merge commit, then re-run this workflow, or re-tag a commit that is on master."
+          if ! git merge-base --is-ancestor "$SOURCE" origin/master; then
+            echo "::error::Tag $TAG points at ${SOURCE::7}, which is not on master, so no files were built or attached. In the GitHub web UI, create the release with 'Target: master' (or merge dev into master first), then re-run: gh workflow run release.yml --ref master -f tag=$TAG -f publish=true"
             exit 1
           fi
-      - name: CHANGELOG has this version's section
-        if: github.event_name == 'push'
+      - name: CHANGELOG section (a missing one is noted in the release, not fatal)
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: python3 scripts/release_notes.py notes --tag "$TAG" --out "$RUNNER_TEMP/notes.md"
@@ -76,11 +110,17 @@ jobs:
     name: Release regression
     needs: prepare
     uses: ./.github/workflows/release-regression.yml
+    with:
+      ref: ${{ needs.prepare.outputs.source }}
+      version: ${{ needs.prepare.outputs.version }}
 
   installer:
     name: Windows app and installer
     needs: prepare
     uses: ./.github/workflows/windows-installer.yml
+    with:
+      ref: ${{ needs.prepare.outputs.source }}
+      version: ${{ needs.prepare.outputs.version }}
 
   dists:
     name: Wheel and sdist
@@ -89,7 +129,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.source }}
           persist-credentials: false
+      - name: Stamp the release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re
+          v = os.environ["VERSION"]
+          for rel, pat in (("pyproject.toml", r'(?m)^(version\s*=\s*")[^"]+(")'),
+                           ("src/n1mm_scope_bridge/__init__.py", r'(?m)^(__version__\s*=\s*")[^"]+(")'),
+                           ("uv.lock", r'(?m)^(name = "n1mm-scope-bridge"\nversion = ")[^"]+(")')):
+              p = pathlib.Path(rel)
+              t, n = re.subn(pat, r"\g<1>" + v + r"\g<2>", p.read_text(encoding="utf-8"), count=1)
+              if n != 1:
+                  raise SystemExit(f"no version found in {rel}")
+              p.write_text(t, encoding="utf-8")
+          print("stamped", v)
+          PY
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv build --out-dir dist/release
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -107,43 +167,45 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # One portable zip per architecture (#149): -win64, -winarm64, -win32.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: windows-app-*
-          path: release
-          merge-multiple: true
+      # The release is the installer only. The zips, dists and regression output
+      # stay on this run as their own artifacts (linked from the notes).
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-installer
           path: release
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: python-dists
-          path: release
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
           name: regression-windows-latest-3.13
           path: regression
-      - name: Checksums and release notes
+      - name: Release notes and file check
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
           PUBLISH: ${{ needs.prepare.outputs.publish }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          cp regression/regression-report.md release/
-          # GUI + installer screenshots from release-regression steps 77/85 (#128);
-          # the website's Pages build downloads this asset.
-          cp regression/dist/regression/screenshots.zip release/
           if find release -iname '*ft4222*' -o -iname '*ftd2xx*' | grep -q .; then
             echo "::error::FTDI binaries must never be released."; exit 1
           fi
+          installer="release/n1mm-scope-bridge-setup-$VERSION.exe"
           dry=""; [ "$PUBLISH" = "true" ] || dry="--dry-run"
-          python3 scripts/release_notes.py notes --tag "$TAG" --out notes.md --report release/regression-report.md $dry
+          python3 scripts/release_notes.py notes --tag "$TAG" --out notes.md \
+            --report regression/regression-report.md --installer "$installer" \
+            --run-url "$RUN_URL" $dry
           python3 scripts/release_notes.py assets --tag "$TAG" release
-          python3 scripts/release_notes.py sums --out release/SHA256SUMS release/*
           ls -l release
-          { echo "## Release files for $TAG"; echo; echo '```'; cat release/SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## Release file for $TAG"; echo; echo '```'; (cd release && sha256sum -- *); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # The website takes the release's GUI and installer screenshots (#128) from
+      # this artifact, found by name (pages.yml).
+      - name: Screenshots for the website
+        run: mkdir -p screenshots && unzip -q regression/dist/regression/screenshots.zip -d screenshots
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screenshots-${{ needs.prepare.outputs.tag }}
+          path: screenshots/
+          if-no-files-found: error
+          retention-days: 90
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-bundle
@@ -165,6 +227,9 @@ jobs:
       attestations: write
       actions: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-bundle
@@ -172,7 +237,7 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: bundle/release/*
-      - name: Create the GitHub release
+      - name: Publish the installer
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -182,20 +247,38 @@ jobs:
         run: |
           set -euo pipefail
           title="N1MM Scope Bridge $TAG"
-          pre=""; [ "$PRERELEASE" = "true" ] && pre="--prerelease"
+          installer="n1mm-scope-bridge-setup-$VERSION.exe"
+          # "Latest" is the highest final version, so republishing an older
+          # release never takes the badge from a newer one.
+          newest=$(gh api "repos/$REPO/tags" --paginate --jq '.[].name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          latest=false
+          if [ "$PRERELEASE" = "false" ] && [ "$TAG" = "$newest" ]; then latest=true; fi
           # A release may already exist for the tag (for example one made in the
           # GitHub web UI, which also pushes the tag and starts this workflow).
-          # `gh release create` would then fail and leave it with no assets, so
-          # fill in the existing release instead.
+          # Fill it in instead of failing, and leave it holding the installer only.
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" bundle/release/* --repo "$REPO" --clobber
+            gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' \
+              | { grep -vxF "$installer" || true; } | while IFS= read -r name; do
+                  echo "Removing release file $name (the release is the installer only)"
+                  gh release delete-asset "$TAG" "$name" --repo "$REPO" --yes
+                done
+            gh release upload "$TAG" "bundle/release/$installer" --repo "$REPO" --clobber
+            # Keep notes the maintainer wrote; refresh only our section in them.
+            author=$(gh release view "$TAG" --repo "$REPO" --json author --jq .author.login)
+            gh release view "$TAG" --repo "$REPO" --json body --jq .body > old-notes.md
+            replace=""; [ "$author" = "github-actions[bot]" ] && replace="--replace"
+            python3 scripts/release_notes.py merge --existing old-notes.md \
+              --new bundle/notes.md --out notes.md $replace
             gh release edit "$TAG" --repo "$REPO" --title "$title" \
-              --notes-file bundle/notes.md --draft=false \
-              --prerelease="$PRERELEASE"
+              --notes-file notes.md --draft=false \
+              --prerelease="$PRERELEASE" --latest="$latest"
           else
-            gh release create "$TAG" bundle/release/* --repo "$REPO" --verify-tag \
-              --title "$title" --notes-file bundle/notes.md $pre
+            pre=""; [ "$PRERELEASE" = "true" ] && pre="--prerelease"
+            gh release create "$TAG" "bundle/release/$installer" --repo "$REPO" --verify-tag \
+              --title "$title" --notes-file bundle/notes.md $pre --latest="$latest"
           fi
+          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'
       # A release created with GITHUB_TOKEN does not trigger other workflows, so
       # ask the Pages workflow to rebuild the site from this final release.
       - name: Rebuild the website (final releases only)

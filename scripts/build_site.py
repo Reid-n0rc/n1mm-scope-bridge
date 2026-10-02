@@ -54,7 +54,8 @@ SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
 MARKDOWN = re.compile(r"<!-- markdown:(docs/user/[a-z0-9_-]+\.md) -->")
 # All screenshots whose scene starts with PREFIX-, in manifest (capture) order,
 # or a note when the build has none (for example installer pages, which are
-# captured on Windows by the release regression and arrive via screenshots.zip).
+# captured on Windows by the release regression and arrive via the release run's
+# screenshots artifact).
 SCREENSHOT_GROUP = re.compile(r"<!-- screenshots:([a-z0-9]+) -->")
 GROUP_FALLBACK = '<p class="note">Screenshots of these steps are added from each release build.</p>'
 SHOTS_DIR = "assets/screenshots"
