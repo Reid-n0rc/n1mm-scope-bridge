@@ -146,3 +146,22 @@ def test_radio_setup_page_documents_scu_lan10() -> None:
     assert "radio-setup.md" in read("README.md")
     for linked in (ROOT / "README.md", ROOT / "docs" / "n1mm-setup.md"):
         assert "radio-setup.md" in linked.read_text(encoding="utf-8"), linked.name
+
+
+def test_code_signing_policy_and_privacy_pages() -> None:
+    """SignPath Foundation requires a public code signing policy and privacy statement."""
+    policy = (ROOT / "docs" / "code-signing-policy.md").read_text(encoding="utf-8")
+    assert "Free code signing provided by SignPath.io, certificate by SignPath Foundation" in policy
+    for role in ("Authors", "Reviewers", "Approvers"):
+        assert role in policy
+    assert "multi-factor authentication" in policy
+    privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
+    assert "no personal data" in privacy
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/code-signing-policy.md" in readme
+    assert "docs/privacy.md" in readme
+    footer = (ROOT / "site" / "_partials" / "footer.html").read_text(encoding="utf-8")
+    assert "code-signing.html" in footer
+    assert "privacy.html" in footer
+    site_policy = (ROOT / "site" / "code-signing.html").read_text(encoding="utf-8")
+    assert "Free code signing provided by" in site_policy
