@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
+import os
 import socket
 from collections.abc import Iterator
 from pathlib import Path
@@ -133,6 +134,19 @@ def test_browse_sets_folder(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_p
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a: "")
     window._browse_ftdi()
     assert window.ftdi_dir.text() == str(tmp_path)
+
+
+def test_browse_normalizes_qt_folder_path(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Qt's picker returns "/" separators on Windows; the setting stores native ones (#146).
+    window, _ = make_window(qtbot)
+    picked = str(tmp_path).replace(os.sep, "/") + "/imports//LibFT4222/./dll/amd64/"
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a: picked)
+    window._browse_ftdi()
+    assert window.ftdi_dir.text() == os.path.join(
+        str(tmp_path), "imports", "LibFT4222", "dll", "amd64"
+    )
 
 
 def test_setup_guide_menu_opens_docs(qtbot: QtBot) -> None:

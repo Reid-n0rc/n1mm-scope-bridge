@@ -21,8 +21,11 @@ Do this once per radio, before the first time you start the bridge.
    program folder. (Its licence doesn't let us ship it inside this GPL
    program.) If you installed without it, run setup again with the option
    ticked, or get LibFT4222 from <https://ftdichip.com/products/ft4222h/> and
-   set **FTDI library folder** in Settings. The USB driver itself normally
-   comes from Windows Update automatically.
+   set **FTDI library folder** in Settings to the unzipped package folder
+   (for example `LibFT4222-v1.4.8`). The bridge finds the right DLLs inside it
+   for you: the package keeps `LibFT4222-64.dll` and `ftd2xx.dll` in different
+   folders, and the app always needs the `amd64` ones, even on Windows on ARM.
+   The USB driver itself normally comes from Windows Update automatically.
 4. **Make the PC see the new scope device.** After turning SCU-LAN10 on:
    1. Turn the radio **off and back on**.
    2. **Unplug the USB cable and plug it back in.** A power cycle alone is not

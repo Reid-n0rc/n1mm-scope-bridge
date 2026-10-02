@@ -24,6 +24,7 @@ USER_MESSAGES = [
     "The window needs PySide6",
     "Could not load FTDI's LibFT4222/D2XX libraries",
     "FTDI library folder does not exist",
+    "Found FTDI DLLs built for",
     "FTDI library is missing a required function",
     "Could not open",
     "No valid scope frames from",

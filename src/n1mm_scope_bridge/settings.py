@@ -35,7 +35,7 @@ from n1mm_scope_bridge.control import (
 )
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT
 from n1mm_scope_bridge.radios import get_radio
-from n1mm_scope_bridge.transport.ft4222 import DEFAULT_DESCRIPTION
+from n1mm_scope_bridge.transport.ft4222 import DEFAULT_DESCRIPTION, normalize_dir
 
 APP_DIR = "n1mm-scope-bridge"
 SCHEMA_VERSION = 1
@@ -71,6 +71,10 @@ class Settings:
     control_allow: str = ""
     """Extra client IPs allowed to send commands (required for a non-loopback bind)."""
 
+    def __post_init__(self) -> None:
+        # One spelling for the FTDI folder everywhere: "~" expanded, native separators.
+        object.__setattr__(self, "ftdi_lib_dir", normalize_dir(self.ftdi_lib_dir))
+
     def effective_name(self) -> str:
         if self.source_name:
             return self.source_name
@@ -103,7 +107,7 @@ class Settings:
             problems["combine"] = f"choose one of: {', '.join(COMBINE_MODES)}"
         if self.on_close not in ON_CLOSE_CHOICES:
             problems["on_close"] = f"choose one of: {', '.join(ON_CLOSE_CHOICES)}"
-        if self.ftdi_lib_dir and not os.path.isdir(self.ftdi_lib_dir):
+        if self.ftdi_lib_dir and not os.path.isdir(normalize_dir(self.ftdi_lib_dir)):
             problems["ftdi_lib_dir"] = "folder does not exist"
         problems.update(self._validate_control())
         if profile is not None and not problems:
