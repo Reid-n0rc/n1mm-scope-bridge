@@ -1,5 +1,7 @@
 # Third-party material and notices
 
+> Independent project — not affiliated with or endorsed by the N1MM Logger+ project, N1MM, Yaesu, FTDI, or wfview. See [docs/legal-notices.md](docs/legal-notices.md).
+
 This file is the **single ledger** of material from other projects that is
 copied into, adapted into, or bundled with this repository or its releases.
 Third-party material keeps its original license.

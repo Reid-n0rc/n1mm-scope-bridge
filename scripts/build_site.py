@@ -40,6 +40,9 @@ import site_markdown
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 REPO_URL = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
+# Every page must carry the non-affiliation notice from the footer partial (#140).
+# Kept in sync with n1mm_scope_bridge.legal.SHORT_DISCLAIMER by tests.
+DISCLAIMER_MARKER = "not affiliated with or endorsed by the N1MM Logger+ project"
 PARTIALS = "_partials"
 TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -367,6 +370,12 @@ def build(
         written.append(target)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     problems = check_site(out)
+    if "footer" in partials:  # the real site: every page must show the disclaimer
+        problems += [
+            f"{p.name}: missing the non-affiliation disclaimer (include the footer partial)"
+            for p in written
+            if DISCLAIMER_MARKER not in p.read_text(encoding="utf-8")
+        ]
     if problems:
         raise SiteError("site check failed:\n" + "\n".join(problems))
     return written

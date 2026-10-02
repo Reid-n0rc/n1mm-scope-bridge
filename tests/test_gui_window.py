@@ -396,3 +396,19 @@ def test_window_shows_center_prompt_for_cursor_mode(qtbot: QtBot) -> None:
     assert "Scope Center" in window.center_panel.macro_fields
     window._on_started()
     assert not window.center_panel.isVisible()
+
+
+def test_about_dialog_shows_non_affiliation_disclaimer(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox  # noqa: PLC0415
+
+    from n1mm_scope_bridge.legal import DISCLAIMER  # noqa: PLC0415
+
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "about", lambda _parent, _title, body: shown.append(body))
+    window, _ = make_window(qtbot)
+    window.show_about()
+    assert len(shown) == 1
+    assert DISCLAIMER in shown[0]
+    assert "ABSOLUTELY NO WARRANTY" in shown[0]

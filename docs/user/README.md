@@ -14,3 +14,7 @@ latest release, so it matches the version you can download. Until the first
 release it is marked "In development". CI fails if a
 command-line option, setting, or user-facing error is missing from these
 pages.
+
+## Disclaimer
+
+N1MM Scope Bridge is an independent open-source project. It is not affiliated with, endorsed by, or supported by the N1MM Logger+ project, its developers, or N1MM. It uses N1MM Logger+'s publicly documented external UDP interface. N1MM Logger+ is the work of its own authors. Yaesu and FT-710 are trademarks of Yaesu Musen Co., Ltd.; this project is not affiliated with Yaesu, FTDI, or the wfview project. Other names are trademarks of their respective owners.
