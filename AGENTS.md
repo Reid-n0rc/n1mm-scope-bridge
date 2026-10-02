@@ -109,7 +109,15 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     `github-advanced-security` run (GitHub's optional Copilot AI review, which
     fails when the Copilot quota runs out) does not block when the real
     `CodeQL` check passed, because open CodeQL alerts are still checked.
-11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+11. **Privacy by design (GDPR).** No telemetry, analytics, update checks or
+    other network use in the app, and no third-party resources (fonts,
+    scripts, images, embeds, analytics) on the website, unless an approved
+    issue says so **and** [docs/privacy.md](docs/privacy.md) is updated in the
+    same PR. Diagnostics and logs must not contain personal data (home paths,
+    non-loopback IPs, host names, call signs) unless the user opts in.
+    Enforced by `tests/test_privacy.py` and the site build's
+    `check_privacy`.
+12. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
 ## Task sizing (context-window budget)

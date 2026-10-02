@@ -282,10 +282,40 @@ def render(
     return PLACEHOLDER.sub(value, text)
 
 
+# Tags/attributes that make the browser fetch something (privacy: GDPR, #142).
+_RESOURCE_ATTRS = {
+    "script": ("src",),
+    "img": ("src", "srcset"),
+    "source": ("src", "srcset"),
+    "video": ("src", "poster"),
+    "audio": ("src",),
+    "iframe": ("src",),
+    "embed": ("src",),
+    "object": ("data",),
+    "track": ("src",),
+}
+_LINK_RESOURCE_RELS = {"stylesheet", "icon", "preload", "prefetch", "preconnect", "dns-prefetch",
+                       "modulepreload", "manifest", "apple-touch-icon", "mask-icon"}  # fmt: skip
+_CSS_EXTERNAL = re.compile(r"(?:url\(\s*['\"]?|@import\s+['\"])\s*(?:https?:)?//", re.IGNORECASE)
+
+
+def _is_external(ref: str) -> bool:
+    ref = ref.strip()
+    return any(
+        bool(urlsplit(part.strip().split(" ")[0]).netloc)
+        or part.strip().lower().startswith(("http:", "https:", "//"))
+        for part in ref.split(",")
+        if part.strip()
+    )
+
+
 class _Links(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.refs: list[str] = []
+        self.external_resources: list[str] = []
+        self._in_style = False
+        self.style_text: list[str] = []
         self.ids: set[str] = set()
         self.images_without_alt = 0
         self.images_without_size = 0
@@ -297,20 +327,58 @@ class _Links(html.parser.HTMLParser):
         for key in ("href", "src", "srcset"):
             if a.get(key):
                 self.refs.append(a[key] or "")
+        for attr in _RESOURCE_ATTRS.get(tag, ()):
+            if a.get(attr) and _is_external(a[attr] or ""):
+                self.external_resources.append(f"<{tag} {attr}={a[attr]!r}>")
+        rel = set((a.get("rel") or "").lower().split())
+        if tag == "link" and rel & _LINK_RESOURCE_RELS and _is_external(a.get("href") or ""):
+            self.external_resources.append(f"<link rel={a.get('rel')!r} href={a.get('href')!r}>")
+        if a.get("style") and _CSS_EXTERNAL.search(a["style"] or ""):
+            self.external_resources.append(f"<{tag} style=...> loads an external URL")
+        if tag == "style":
+            self._in_style = True
         if tag == "img" and a.get("alt") is None:
             self.images_without_alt += 1
         if tag == "img" and (not a.get("width") or not a.get("height")):
             self.images_without_size += 1
 
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "style":
+            self._in_style = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_style:
+            self.style_text.append(data)
+
+
+def check_privacy(out: Path) -> list[str]:
+    """Pages and stylesheets must not load anything from another site (GDPR, #142).
+
+    Third-party fonts, scripts, images or embeds would send visitors' IP addresses
+    to someone else. Plain hyperlinks are fine.
+    """
+    problems = []
+    for page in sorted(out.rglob("*.html")):
+        parser = _Links()
+        parser.feed(page.read_text(encoding="utf-8"))
+        name = page.relative_to(out).as_posix()
+        problems += [f"{name}: external resource {r}" for r in parser.external_resources]
+        if _CSS_EXTERNAL.search("".join(parser.style_text)):
+            problems.append(f"{name}: <style> loads an external URL")
+    for css in sorted(out.rglob("*.css")):
+        if _CSS_EXTERNAL.search(css.read_text(encoding="utf-8")):
+            problems.append(f"{css.relative_to(out).as_posix()}: CSS loads an external URL")
+    return problems
+
 
 def check_site(out: Path) -> list[str]:
-    """Broken internal links or anchors, and images without alt text."""
+    """Broken internal links or anchors, images without alt text, third-party loads."""
     pages: dict[str, _Links] = {}
     for page in sorted(out.glob("*.html")):
         parser = _Links()
         parser.feed(page.read_text(encoding="utf-8"))
         pages[page.name] = parser
-    problems = []
+    problems = check_privacy(out)
     for name, parsed in pages.items():
         if parsed.images_without_alt:
             problems.append(f"{name}: {parsed.images_without_alt} image(s) without alt text")

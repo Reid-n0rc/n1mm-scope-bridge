@@ -226,6 +226,9 @@ class MainWindow(QMainWindow):
         self.menu = QMenu(self.menu_button)
         self.action_settings = self._action("Settings…", self.open_settings)
         self.action_diagnostics = self._action("Copy diagnostics", self.copy_diagnostics)
+        self.action_diagnostics_named = self._action(
+            "Copy diagnostics including source name", self.copy_diagnostics_with_name
+        )
         self.action_guide = self._action(
             "N1MM+ setup guide", lambda: self._open_url(QUrl(SETUP_GUIDE_URL))
         )
@@ -324,6 +327,7 @@ class MainWindow(QMainWindow):
         for action, name in (
             (self.action_settings, "settings"),
             (self.action_diagnostics, "copy"),
+            (self.action_diagnostics_named, "copy"),
             (self.action_guide, "book-open"),
             (self.action_about, "info"),
         ):
@@ -401,11 +405,19 @@ class MainWindow(QMainWindow):
         self.log_view.appendPlainText(line)
         self.activity_last.setText(line)
 
-    def copy_diagnostics(self) -> str:
-        text = diagnostics(self._settings, self.model, self.log)
+    def copy_diagnostics(self, include_identity: bool = False) -> str:
+        """Copy redacted diagnostics; the source name only if the operator chooses."""
+        text = diagnostics(self._settings, self.model, self.log, include_identity=include_identity)
         QApplication.clipboard().setText(text)
-        self._log("info", "Diagnostics copied to the clipboard")
+        self._log(
+            "info",
+            "Diagnostics copied to the clipboard"
+            + (" (including source name)" if include_identity else " (personal details redacted)"),
+        )
         return text
+
+    def copy_diagnostics_with_name(self) -> str:
+        return self.copy_diagnostics(include_identity=True)
 
     def show_about(self) -> None:
         from n1mm_scope_bridge.cli import LEGAL_NOTICE  # noqa: PLC0415 - avoid import cycle

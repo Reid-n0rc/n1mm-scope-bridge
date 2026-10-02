@@ -2,6 +2,10 @@ name: Feature request
 description: Suggest a new capability or improvement (intake only; it does not authorize work)
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Issues are public.** Please don't include personal data (addresses, e-mail, phone numbers, full logs from other programs). Your call sign is fine if you choose to share it. **Copy diagnostics** in the app already redacts your user name, home folder, IP addresses, PC name and source name. See the [privacy notice](https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html).
   - type: textarea
     id: problem
     attributes:

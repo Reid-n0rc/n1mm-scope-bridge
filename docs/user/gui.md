@@ -32,8 +32,8 @@ bottom:
      **Error** (red);
    - **Start** / **Stop**;
    - the **gear**, which opens [Settings](#settings);
-   - the **⋯** menu: **Settings…**, **Copy diagnostics**, **N1MM+ setup
-     guide**, and **About and license**.
+   - the **⋯** menu: **Settings…**, **Copy diagnostics**, **Copy diagnostics
+     including source name**, **N1MM+ setup guide**, and **About and license**.
 2. **Preview.** A live spectrum line over a waterfall of the radio's scope,
    updated with every frame the radio sends (about 11 per second on an
    FT-710, so it scrolls smoothly) while N1MM+ gets its own steadier rate
@@ -59,8 +59,13 @@ bottom:
 
 **Copy diagnostics** (in the Activity bar and the ⋯ menu) copies the version,
 your settings, the status, and the last 50 log lines to the clipboard, ready
-to paste into a bug report. Your Windows account name is replaced with `~` in
-any folder path.
+to paste into a bug report. Personal details are redacted: your Windows
+account name is replaced with `~` in folder paths, and IP addresses (other
+than this PC's `127.0.0.1`), this PC's network name and the N1MM+ source name
+(often your call sign) are replaced with placeholders. Choose **Copy
+diagnostics including source name** only if you want to share it. Nothing
+is sent anywhere: it only goes to your clipboard. See the
+[privacy notice](../privacy.md).
 
 The tray icon's tooltip shows a one-line summary, for example *Streaming
 FT-710 to N1MM+, 4.0 per second*.

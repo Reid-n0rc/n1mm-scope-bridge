@@ -165,3 +165,29 @@ def test_code_signing_policy_and_privacy_pages() -> None:
     assert "privacy.html" in footer
     site_policy = (ROOT / "site" / "code-signing.html").read_text(encoding="utf-8")
     assert "Free code signing provided by" in site_policy
+
+
+def test_privacy_notice_covers_gdpr_topics() -> None:
+    """GDPR-style privacy notice (issue #142)."""
+    privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
+    for topic in (
+        "Last updated:",
+        "## Who is responsible",
+        "## Third parties",
+        "## Your rights",
+        "## Children",
+        "## Changes",
+        "no cookies",
+        "PyPI",
+        "GitHub Pages",
+        "Copy diagnostics",
+    ):
+        assert topic in privacy, topic
+    site_page = (ROOT / "site" / "privacy.html").read_text(encoding="utf-8")
+    assert "Last updated: " + privacy.split("Last updated: ", 1)[1].split("_", 1)[0] in site_page
+
+
+def test_issue_templates_warn_about_personal_data() -> None:
+    for name in ("bug_report.yml", "feature_request.yml", "radio_support.yml"):
+        text = (ROOT / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8")
+        assert "Issues are public" in text, name
