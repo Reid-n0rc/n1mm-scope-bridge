@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 #
-# Installer helper (issue #133): extract FTDI's LibFT4222-64.dll and ftd2xx.dll
+# Installer helper (issues #133, #149): extract FTDI's LibFT4222 DLL (-LibName:
+# LibFT4222-64.dll for 64-bit apps, LibFT4222.dll for the 32-bit app) and ftd2xx.dll
 # from the wheel the installer just downloaded (SHA-256 already verified by
 # Inno Setup), check both Authenticode signatures, and copy them into the
 # program folder. Writes "OK" or "ERROR: <reason>" to -Result and exits 0/1.
@@ -10,6 +11,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Wheel,
     [Parameter(Mandatory = $true)][string]$Dest,
+    [string]$LibName = 'LibFT4222-64.dll',
     [Parameter(Mandatory = $true)][string]$LibSigner,
     [Parameter(Mandatory = $true)][string]$D2xxSigner,
     [Parameter(Mandatory = $true)][string]$Result
@@ -32,7 +34,7 @@ try {
     Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     New-Item -ItemType Directory -Path $work | Out-Null
-    $wanted = @{ 'LibFT4222-64.dll' = $LibSigner; 'ftd2xx.dll' = $D2xxSigner }
+    $wanted = @{ $LibName = $LibSigner; 'ftd2xx.dll' = $D2xxSigner }
     $zip = [IO.Compression.ZipFile]::OpenRead($Wheel)
     try {
         foreach ($name in $wanted.Keys) {

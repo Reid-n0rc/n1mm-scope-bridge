@@ -1,5 +1,8 @@
-# Builds the Windows installer (Inno Setup) around the PyInstaller app and runs
-# the silent install -> run -> uninstall smoke test on a clean runner. Issue #20.
+# Builds the Windows installer (Inno Setup) around the PyInstaller apps and runs
+# the silent install -> run -> uninstall smoke test on clean runners. Issue #20.
+# One installer holds the x64, native ARM64 and 32-bit x86 apps (#149); it is
+# smoke-tested on windows-latest (default x64 payload, and x86 forced with
+# /PAYLOAD) and on windows-11-arm (default x64 payload, emulated, and arm64).
 #
 # Inno Setup is downloaded from its official GitHub release and pinned by
 # SHA-256. FTDI's LibFT4222 is never bundled.
@@ -34,7 +37,7 @@ jobs:
     uses: ./.github/workflows/windows-app.yml
 
   installer:
-    name: Build and smoke-test installer
+    name: Build installer
     needs: app
     runs-on: windows-latest
     timeout-minutes: 30
@@ -47,11 +50,14 @@ jobs:
           python-version: "3.13"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: windows-app
-          path: dist/windows
-      - name: Unpack the app
+          pattern: windows-app-*
+          path: dist/apps
+      - name: Unpack the apps
         shell: pwsh
-        run: Get-ChildItem dist/windows/*.zip | ForEach-Object { Expand-Archive $_ -DestinationPath dist/windows -Force }
+        run: |
+          foreach ($arch in 'x64', 'arm64', 'x86') {
+            Get-ChildItem "dist/apps/windows-app-$arch/*.zip" | ForEach-Object { Expand-Archive $_ -DestinationPath "dist/apps/$arch" -Force }
+          }
       - name: Install Inno Setup (pinned)
         shell: pwsh
         run: |
@@ -63,15 +69,45 @@ jobs:
           $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/CURRENTUSER',"/DIR=`"$dir`"" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Inno Setup install failed: $($p.ExitCode)" }
           "ISCC=$dir\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Build installer
+      - name: Build installer (all architectures)
         shell: bash
-        run: uv run --no-project python scripts/build_installer.py
-      - name: Smoke test (install, run, uninstall)
-        shell: pwsh
-        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName
+        run: |
+          set -o pipefail
+          uv run --no-project python scripts/build_installer.py --require-all \
+            --app-dir dist/apps/x64/n1mm-scope-bridge \
+            --app-arm64 dist/apps/arm64/n1mm-scope-bridge \
+            --app-x86 dist/apps/x86/n1mm-scope-bridge
+          ls -l dist/windows/n1mm-scope-bridge-setup-*.exe | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-installer
           path: dist/windows/n1mm-scope-bridge-setup-*.exe
           if-no-files-found: error
           retention-days: 30
+
+  smoke:
+    name: Installer smoke test (${{ matrix.os }}, ${{ matrix.payload || 'default' }} payload)
+    needs: installer
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, payload: "" }
+          - { os: windows-latest, payload: x86 }
+          - { os: windows-11-arm, payload: "" }
+          - { os: windows-11-arm, payload: arm64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-installer
+          path: dist/windows
+      - name: Smoke test (install, run, uninstall)
+        shell: pwsh
+        env:
+          PAYLOAD: ${{ matrix.payload }}
+        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName -Payload $env:PAYLOAD

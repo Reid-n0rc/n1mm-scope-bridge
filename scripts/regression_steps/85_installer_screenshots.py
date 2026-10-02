@@ -12,11 +12,23 @@ from __future__ import annotations
 
 import json
 import shutil
+import sysconfig
 import zipfile
 from pathlib import Path
 
-from regression_core import DIST, GUI_SKIP, ROOT, CheckFailed, Runner, Step, StepContext, tail
+from regression_core import (
+    ARM_SCREENSHOT_SKIP,
+    DIST,
+    GUI_SKIP,
+    ROOT,
+    CheckFailed,
+    Runner,
+    Step,
+    StepContext,
+    tail,
+)
 
+ARM_SKIP = ARM_SCREENSHOT_SKIP
 SCRIPT = ROOT / "packaging" / "windows" / "installer_screenshots.ps1"
 INSTALLERS = ROOT / "dist" / "windows"
 INSTALLER_GLOB = "n1mm-scope-bridge-setup-*.exe"
@@ -88,8 +100,12 @@ def generate(runner: Runner, installers: Path = INSTALLERS, raw: Path = RAW) -> 
     merge(raw, SHOTS, ZIP)  # module globals at call time (patchable in tests)
 
 
-def steps(ctx: StepContext) -> list[Step]:
+def steps(ctx: StepContext, platform: str | None = None) -> list[Step]:
     name = "Installer screenshots for the website"
     if ctx.skip_gui:
         return [Step(name, windows_only=True, disabled_reason=GUI_SKIP)]
+    if platform is None:
+        platform = sysconfig.get_platform()
+    if platform == "win-arm64":
+        return [Step(name, windows_only=True, disabled_reason=ARM_SKIP)]
     return [Step(name, action=lambda: generate(ctx.runner), windows_only=True)]

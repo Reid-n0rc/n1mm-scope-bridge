@@ -47,7 +47,16 @@ def test_installer_smoke_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     step.action()
     assert calls[0][-1] == "scripts/build_installer.py"
     assert calls[1][0] == "pwsh"
-    assert calls[1][-1].endswith("n1mm-scope-bridge-setup-0.1.0.exe")
+    assert calls[1][-3].endswith("n1mm-scope-bridge-setup-0.1.0.exe")
+    assert calls[1][-2:] == ("-Payload", inst_step.local_payload())
+
+
+@pytest.mark.parametrize(
+    ("platform", "payload"),
+    [("win-amd64", "x64"), ("win-arm64", "arm64"), ("win32", "x86"), ("linux-x86_64", "x64")],
+)
+def test_installer_smoke_forces_the_local_payload(platform: str, payload: str) -> None:
+    assert inst_step.local_payload(platform) == payload
 
 
 @pytest.mark.parametrize(

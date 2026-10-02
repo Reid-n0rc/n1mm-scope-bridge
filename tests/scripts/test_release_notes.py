@@ -181,7 +181,9 @@ def test_main_meta_uses_repo_pyproject(capsys: pytest.CaptureFixture[str]) -> No
 def test_download_names_match_the_built_artifacts() -> None:
     """The notes name the zip exactly as build_windows_app.py produces it."""
     notes = rn.release_notes(rn.parse_tag("v0.1.0"), CHANGELOG)
-    assert f"`{bwa.zip_name('0.1.0')}`" in notes
+    for arch in ("x64", "ARM64", "x86"):
+        assert f"`{bwa.zip_name('0.1.0', arch)}`" in notes
+    assert "one installer for all Windows PCs" in notes
     assert "`n1mm-scope-bridge-0.1.0-win64.zip`" in notes
     assert "windows.zip" not in notes
 
@@ -190,7 +192,8 @@ def test_required_assets_include_screenshots_and_sources() -> None:
     names = rn.required_assets("0.1.0")
     assert "screenshots.zip" in names
     assert "regression-report.md" in names
-    assert bwa.zip_name("0.1.0") in names
+    for arch in ("x64", "ARM64", "x86"):
+        assert bwa.zip_name("0.1.0", arch) in names
     assert "n1mm-scope-bridge-setup-0.1.0.exe" in names
     assert "n1mm_scope_bridge-0.1.0.tar.gz" in names  # GPLv3 corresponding source
     assert "n1mm_scope_bridge-0.1.0-py3-none-any.whl" in names

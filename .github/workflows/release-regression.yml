@@ -33,6 +33,8 @@ jobs:
         include:
           - { os: windows-latest, python: "3.13", flags: "" }
           - { os: windows-latest, python: "3.14t", flags: "--skip-gui" }
+          # Windows on ARM, native ARM64 Python: app, GUI and installer built and run natively (#149).
+          - { os: windows-11-arm, python: "3.13", flags: "" }
           - { os: ubuntu-latest, python: "3.13", flags: "--skip-windows-only" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

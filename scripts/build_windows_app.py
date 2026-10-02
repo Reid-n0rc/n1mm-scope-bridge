@@ -8,7 +8,9 @@ Steps: write the Windows version resource, run PyInstaller on
 packaging/windows/n1mm_scope_bridge.spec (one-folder), copy the license
 files into the app, refuse FTDI binaries, smoke-test the built CLI (legal
 notices, then emulator frames into a UDP listener), and zip the result as
-dist/windows/n1mm-scope-bridge-<version>-win64.zip.
+dist/windows/n1mm-scope-bridge-<version>-<arch>.zip, where <arch> is win64
+(x64), winarm64 (native ARM64) or win32 (32-bit x86, command line only:
+Qt 6 has no 32-bit Windows build) for the Python that runs the build (#149).
 
 Standard library only. Windows is the product platform; on other systems the
 same steps build a native app for development (with --allow-non-windows).
@@ -24,6 +26,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import sysconfig
 import zipfile
 from collections.abc import Callable, Iterable, Sequence
 from importlib import metadata
@@ -145,8 +148,26 @@ def collect_licenses(
     return copied
 
 
-def zip_name(version: str) -> str:
-    return f"{APP_NAME}-{version}-win64.zip"
+ARCH_SUFFIX = {"x64": "win64", "ARM64": "winarm64", "x86": "win32"}
+"""Zip-name suffix for each Windows architecture of the built app (#149)."""
+
+
+def build_arch(platform_tag: str | None = None) -> str:
+    """Architecture of the Python running the build: "x64", "ARM64" or "x86".
+
+    PyInstaller freezes that interpreter, so this is the app's architecture.
+    Mirrors ``n1mm_scope_bridge.transport.ft4222.process_arch``.
+    """
+    tag = (platform_tag or sysconfig.get_platform()).lower()
+    if tag.endswith("arm64"):
+        return "ARM64"
+    if tag.endswith(("amd64", "x86_64")):
+        return "x64"
+    return "x86"
+
+
+def zip_name(version: str, arch: str = "x64") -> str:
+    return f"{APP_NAME}-{version}-{ARCH_SUFFIX[arch]}.zip"
 
 
 def make_zip(app_dir: Path, out: Path) -> Path:
@@ -207,6 +228,7 @@ def smoke_test(cli: Path, runner: Runner = run_command) -> None:
 def build(
     *,
     gui: bool,
+    arch: str = "x64",
     out: Path = OUT,
     work: Path = WORK,
     smoke: bool = True,
@@ -239,7 +261,7 @@ def build(
         smoke_test(exe_path(app_dir), runner)
         if gui:
             gui_self_test(exe_path(app_dir, GUI_EXE), runner)
-    return make_zip(app_dir, out / zip_name(version))
+    return make_zip(app_dir, out / zip_name(version, arch))
 
 
 def main(argv: Sequence[str] | None = None, *, runner: Runner = run_command) -> int:
@@ -260,13 +282,19 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = run_command) -> 
             "error: build on Windows, or pass --allow-non-windows for a dev build", file=sys.stderr
         )
         return 2
+    arch = build_arch()
     gui = args.gui == "on" or (args.gui == "auto" and GUI_MODULE.exists())
+    if arch == "x86" and gui:
+        if args.gui == "on":
+            print("error: the GUI needs 64-bit Windows (Qt 6 has no 32-bit build)", file=sys.stderr)
+            return 2
+        gui = False  # 32-bit x86: command-line app only
     try:
-        zipped = build(gui=gui, smoke=not args.no_smoke, runner=runner)
+        zipped = build(gui=gui, arch=arch, smoke=not args.no_smoke, runner=runner)
     except BuildError as err:
         print(f"error: {err}", file=sys.stderr)
         return 1
-    print(f"built {zipped} (GUI exe: {'yes' if gui else 'not yet, see #18'})")
+    print(f"built {zipped} for {arch} (GUI exe: {'yes' if gui else 'no'})")
     return 0
 
 

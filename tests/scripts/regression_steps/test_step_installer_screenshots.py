@@ -121,3 +121,10 @@ def test_steps(skip_gui: bool) -> None:
     (only,) = step.steps(StepContext(runner=fake_runner(), skip_gui=skip_gui))
     assert only.windows_only
     assert (only.disabled_reason == GUI_SKIP) is skip_gui
+
+
+def test_skipped_on_windows_on_arm() -> None:
+    (only,) = step.steps(StepContext(runner=fake_runner()), platform="win-arm64")
+    assert only.disabled_reason == step.ARM_SKIP
+    (x64,) = step.steps(StepContext(runner=fake_runner()), platform="win-amd64")
+    assert x64.action is not None
