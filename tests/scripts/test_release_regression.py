@@ -93,7 +93,12 @@ def test_default_steps_cover_the_release_checklist() -> None:
     assert "Installer silent install/run/uninstall" in {s.name for s in steps if s.windows_only}
     assert "GUI self-test" in names  # runs on every OS (Qt offscreen)
     pending = [s for s in steps if s.disabled_reason]
-    assert all(s.disabled_reason.startswith("added by #") for s in pending)
+    # Placeholders only, plus the one deliberate Windows-on-ARM skip (#149): the
+    # website's installer screenshots come from the x64 job.
+    arm_skip = load_step("85_installer_screenshots").ARM_SKIP
+    assert all(
+        s.disabled_reason.startswith("added by #") or s.disabled_reason == arm_skip for s in pending
+    )
 
 
 def test_main_writes_report_and_exit_codes(
