@@ -266,7 +266,9 @@ def test_write_gif_shrinks_until_it_fits(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(rec, "MAX_FILE_BYTES", 400_000)
     size = rec.write_gif(noisy, tmp_path / "n", 5)
     assert size <= 400_000
-    assert Image.open(tmp_path / "n.gif").width < rec.GIF_WIDTH
+    with Image.open(tmp_path / "n.gif") as shrunk:
+        width = shrunk.width
+    assert width < rec.GIF_WIDTH
     monkeypatch.setattr(rec, "MAX_FILE_BYTES", 10)
     with pytest.raises(ValueError, match="smallest size"):
         rec.write_gif(noisy, tmp_path / "n", 5)
