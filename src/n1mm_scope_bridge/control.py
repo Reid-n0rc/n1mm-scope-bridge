@@ -3,7 +3,8 @@
 """Optional UDP remote control (issue #30, docs/user/udp-control.md).
 
 Off by default. When enabled it listens on 127.0.0.1 only, unless the operator
-sets another bind address *and* an allow-list of client IPs. Requests from
+sets one specific interface address *and* an allow-list of client IPs. Binding
+to all interfaces (0.0.0.0 or ::) is always refused. Requests from
 any other address are ignored. One UTF-8 command per datagram; each reply is
 one line of JSON sent back to the requester.
 
@@ -28,6 +29,10 @@ DEFAULT_CONTROL_PORT = 13070
 DEFAULT_CONTROL_BIND = "127.0.0.1"
 MAX_REQUEST = 512
 LOOPBACK = ("127.0.0.1", "::1")
+WILDCARD_ERROR = (
+    "control address must be one specific interface IP (for example 127.0.0.1 or "
+    "192.168.1.5), not all interfaces (0.0.0.0 or ::)"
+)
 SETTABLE = ("name", "rate", "combine", "scaling")
 HELP = (
     "commands: status | start | stop | ping | help | "
@@ -113,6 +118,20 @@ def is_loopback(address: str) -> bool:
     return ipaddress.ip_address(address).is_loopback
 
 
+def interface_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """The control bind address: one specific interface IP, never a wildcard.
+
+    Raises ValueError for ``0.0.0.0``, ``::``, or an empty string (all
+    interfaces) and for anything that is not an IP address.
+    """
+    if not text.strip():
+        raise ValueError(WILDCARD_ERROR)
+    address = ipaddress.ip_address(text.strip())
+    if address.is_unspecified:
+        raise ValueError(WILDCARD_ERROR)
+    return address
+
+
 def parse_allow(text: str) -> tuple[str, ...]:
     """Comma- or space-separated client IPs; raises ValueError on a bad entry."""
     entries = [e for e in text.replace(",", " ").split() if e]
@@ -131,14 +150,14 @@ class ControlServer:
         allow: Iterable[str] = (),
         log: Callable[[str], object] = lambda _: None,
     ) -> None:
-        bind_ip = ipaddress.ip_address(bind)
+        bind_ip = interface_address(bind)
         allowed = set(allow)
         if not bind_ip.is_loopback and not allowed:
             raise ValueError("a non-loopback control address needs an allow-list of client IPs")
         self._allowed = allowed | set(LOOPBACK) if bind_ip.is_loopback else allowed
         family = socket.AF_INET6 if bind_ip.version == 6 else socket.AF_INET
         self._sock = socket.socket(family, socket.SOCK_DGRAM)
-        self._sock.bind((bind, port))
+        self._sock.bind((str(bind_ip), port))  # one specific interface, never all of them
         self._sock.settimeout(0.2)
         self.address: tuple[str, int] = self._sock.getsockname()[:2]
         self._controller = controller
