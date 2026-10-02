@@ -17,6 +17,15 @@ Try it without a radio first:
 
     uv run python scripts/capture_golden.py --dry-run --yes
 
+Unattended mode (development): with ``--auto --cat-port <device>`` the tool sets
+the scope span and mode itself over CAT using ``dev_cat.py`` (whitelisted:
+it reads VFO-A, span and scope mode and sets ONLY span and scope mode, never
+transmits), confirms each case from both the CAT readback and the scope stream,
+and restores the original span and mode at the end, even on errors or Ctrl-C.
+Operator-only cases (transmit, power-on, USB re-plug) are skipped. Needs the
+dev dependency group ``hardware`` (pyserial): ``uv sync --group hardware``.
+Dry run of the unattended flow: ``--auto --dry-run``.
+
 Captures are written to tests/fixtures/golden/ (each under 256 KiB) with a
 manifest.json; commit them in a PR for #36.
 """
@@ -33,6 +42,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from dev_cat import CatError, DevCat, EmulatorCatPort, ScopeRestorer, connect
 
 from n1mm_scope_bridge.cli.common import EMULATOR_FPS
 from n1mm_scope_bridge.emulator import Ft710Emulator, RadioState
@@ -51,6 +62,8 @@ GOLDEN_DIR = ROOT / "tests" / "fixtures" / "golden"
 PARSER_FILE = ROOT / "src" / "n1mm_scope_bridge" / "radios" / "yaesu_scope.py"
 MAX_FIXTURE_BYTES = 256 * 1024
 CASE_SECONDS = 2.0
+SETTLE_SECONDS = 1.0
+"""Wait after a CAT scope change before recording, so the stream reflects it."""
 SCHEMA = 1
 
 
@@ -60,6 +73,17 @@ class Case:
     instructions: str
     state: RadioState
     """The state the emulator uses for this case in --dry-run."""
+    operator_only: bool = False
+    """Needs a person at the radio (transmit, power cycle, USB re-plug); --auto skips it."""
+
+    @property
+    def auto_span(self) -> int:
+        return self.state.span_index
+
+    @property
+    def auto_mode(self) -> str:
+        """Scope mode code as the parser reports it (first hex digit of status byte 17)."""
+        return f"{self.state.scope_mode:X}"[0]
 
 
 def _cases() -> list[Case]:
@@ -87,16 +111,19 @@ def _cases() -> list[Case]:
             "Connect a DUMMY LOAD. After pressing Enter, key the radio yourself at low power "
             "(e.g. 5 W tune carrier) for the whole 2 seconds. This tool never transmits.",
             RadioState(tx=True),
+            operator_only=True,
         ),
         Case(
             "power-on-startup",
             "Turn the radio OFF, then ON. As soon as it has booted, press Enter.",
             RadioState(),
+            operator_only=True,
         ),
         Case(
             "usb-replug",
             "Unplug the radio's USB cable, plug it back in, wait 3 seconds, then press Enter.",
             RadioState(),
+            operator_only=True,
         ),
     ]
     return cases
@@ -165,6 +192,7 @@ def decode(path: Path) -> dict[str, Any]:
         "span_hz": last.span_hz,
         "mode_name": last.mode_name,
         "mode_family": last.mode_family,
+        "mode_code": getattr(last, "scope_mode_code", ""),
         "first_vfo_hz": first.vfo_hz,
     }
 
@@ -172,7 +200,7 @@ def decode(path: Path) -> dict[str, Any]:
 Ask = Callable[[str], str]
 
 
-def run_session(
+def run_session(  # noqa: PLR0913 - collaborators injected for tests and dry runs
     api_factory: Callable[[Case], Ft4222Api],
     out_dir: Path,
     *,
@@ -182,9 +210,16 @@ def run_session(
     dry_run: bool,
     cases: list[Case] | None = None,
     seconds: float = CASE_SECONDS,
+    cat: DevCat | None = None,
+    firmware: str | None = None,
+    settle: Callable[[], object] = lambda: time.sleep(SETTLE_SECONDS),
 ) -> dict[str, Any]:
+    """Record every case. With ``cat`` (unattended mode) the tool sets the scope span
+    and mode itself, confirms each case from CAT readback and the scope stream, skips
+    operator-only cases, and always restores the radio's original span and mode."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    firmware = "emulator" if dry_run else ask("Radio main firmware version (Menu > Version): ")
+    if firmware is None:
+        firmware = "emulator" if dry_run else ask("Radio main firmware version (Menu > Version): ")
     manifest: dict[str, Any] = {
         "schema": SCHEMA,
         "radio": FT710.model,
@@ -192,8 +227,23 @@ def run_session(
         "dry_run": dry_run,
         "captured_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "validated_against": git_blob_hash(PARSER_FILE),
+        "mode": "auto" if cat is not None else "interactive",
         "cases": [],
     }
+    if cat is not None:
+        with ScopeRestorer(cat) as original:
+            manifest["original_scope"] = {"span_index": original.span_index, "mode": original.mode}
+            manifest["vfo_a_hz"] = cat.read_vfo_a_hz()
+            for n, case in enumerate(cases or CASES, 1):
+                say(f"\n[{n}/{len(cases or CASES)}] {case.name} (auto)")
+                manifest["cases"].append(
+                    _auto_case(case, cat, api_factory, out_dir, say, seconds, settle)
+                )
+        say(
+            f"Restored the radio's scope to span index {original.span_index}, mode {original.mode}."
+        )
+        _write_manifest(out_dir, manifest, say)
+        return manifest
     for n, case in enumerate(cases or CASES, 1):
         say(f"\n[{n}/{len(cases or CASES)}] {case.name}\n  {case.instructions}")
         if not auto_yes and ask("  Press Enter to record (or type 's' to skip): ").strip() == "s":
@@ -230,9 +280,61 @@ def run_session(
                 "decoded": d,
             }
         )
+    _write_manifest(out_dir, manifest, say)
+    return manifest
+
+
+def _write_manifest(out_dir: Path, manifest: dict[str, Any], say: Callable[[str], object]) -> None:
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     say(f"\nWrote {len(manifest['cases'])} cases and manifest.json to {out_dir}")
-    return manifest
+
+
+def _auto_case(
+    case: Case,
+    cat: DevCat,
+    api_factory: Callable[[Case], Ft4222Api],
+    out_dir: Path,
+    say: Callable[[str], object],
+    seconds: float,
+    settle: Callable[[], object],
+) -> dict[str, Any]:
+    """Set the scope for ``case`` over CAT, record it, and confirm it two ways."""
+    if case.operator_only:
+        say("  Skipped: needs an operator at the radio.")
+        return {"name": case.name, "skipped": True, "reason": "operator-only"}
+    try:
+        cat.set_scope_mode(case.auto_mode)
+        cat.set_span_index(case.auto_span)
+        settle()
+        cat_state = {"span_index": cat.read_span_index(), "mode": cat.read_scope_mode()}
+        path = out_dir / f"{case.name}.raw"
+        result = record_case(api_factory(case), path, seconds=seconds)
+    except (CatError, Ft4222Error) as err:
+        say(f"  Could not record: {err}")
+        return {"name": case.name, "error": str(err)}
+    d = result.decoded
+    from_stream = bool(d.get("frames")) and (
+        d.get("span_hz") == FT710.spans_hz[case.auto_span] and d.get("mode_code") == case.auto_mode
+    )
+    from_cat = cat_state == {"span_index": case.auto_span, "mode": case.auto_mode}
+    confirmed = from_stream and from_cat
+    say(
+        f"  Recorded {result.frames} frames. Scope stream {'OK' if from_stream else 'MISMATCH'}, "
+        f"CAT readback {'OK' if from_cat else 'MISMATCH'}."
+    )
+    return {
+        "name": case.name,
+        "file": path.name,
+        "confirmed": confirmed,
+        "confirmed_by": "cat+scope-stream" if confirmed else "",
+        "expected": {"span_index": case.auto_span, "mode": case.auto_mode},
+        "cat_readback": cat_state,
+        "frames": result.frames,
+        "chunks": result.chunks,
+        "bytes": result.size,
+        "seconds": round(result.seconds, 3),
+        "decoded": d,
+    }
 
 
 def _emulator_for(case: Case) -> Ft4222Api:
@@ -247,7 +349,15 @@ def main(argv: list[str] | None = None, *, ask: Ask = input) -> int:
     parser.add_argument("--out", type=Path, help=f"output folder (default {GOLDEN_DIR})")
     parser.add_argument("--only", nargs="*", help="record only these case names")
     parser.add_argument("--seconds", type=float, default=CASE_SECONDS, help="seconds per case")
+    parser.add_argument(
+        "--auto", action="store_true", help="unattended: set span/mode over CAT (dev_cat.py)"
+    )
+    parser.add_argument("--cat-port", help="--auto: the radio's CAT (Enhanced) serial port")
+    parser.add_argument("--firmware", help="radio firmware version for the manifest")
     args = parser.parse_args(argv)
+    if args.auto and not args.dry_run and not args.cat_port:
+        print("error: --auto needs --cat-port (the radio's CAT/Enhanced port)")
+        return 1
     if args.dry_run and args.out is None:
         args.out = Path("golden-dry-run")  # never overwrite real fixtures with emulator data
     out_dir = args.out or GOLDEN_DIR
@@ -255,8 +365,13 @@ def main(argv: list[str] | None = None, *, ask: Ask = input) -> int:
     if not cases:
         print(f"error: no cases match {args.only}; choose from {[c.name for c in CASES]}")
         return 1
-    if args.dry_run:
-        factory: Callable[[Case], Ft4222Api] = _emulator_for
+    cat: DevCat | None = None
+    if args.auto and args.dry_run:
+        emulator = Ft710Emulator(RadioState(), fps=EMULATOR_FPS)
+        cat = DevCat(EmulatorCatPort(emulator), sleep=lambda _: None)
+        factory: Callable[[Case], Ft4222Api] = _iter_same(emulator)
+    elif args.dry_run:
+        factory = _emulator_for
     else:
         try:
             real = load_api(args.ftdi_lib_dir)
@@ -264,17 +379,42 @@ def main(argv: list[str] | None = None, *, ask: Ask = input) -> int:
             print(f"error: {err}")
             return 1
         factory = _iter_same(real)
+        if args.auto:
+            try:
+                cat, baud = connect(args.cat_port)
+            except (CatError, OSError) as err:
+                print(f"error: {err}")
+                return 1
+            print(f"CAT connected on {args.cat_port} at {baud} baud (span/mode only).")
+    try:
+        _run(args, factory, out_dir, cases, cat, ask)
+    finally:
+        if cat is not None:
+            cat.close()
+    return 0
+
+
+def _run(
+    args: argparse.Namespace,
+    factory: Callable[[Case], Ft4222Api],
+    out_dir: Path,
+    cases: list[Case],
+    cat: DevCat | None,
+    ask: Ask,
+) -> None:
     run_session(
         factory,
         out_dir,
         ask=ask,
         say=print,
-        auto_yes=args.yes,
+        auto_yes=args.yes or args.auto,
         dry_run=args.dry_run,
         cases=cases,
         seconds=args.seconds,
+        cat=cat,
+        firmware=args.firmware or ("emulator" if args.dry_run else None),
+        settle=(lambda: None) if args.dry_run else (lambda: time.sleep(SETTLE_SECONDS)),
     )
-    return 0
 
 
 def _iter_same(api: Ft4222Api) -> Callable[[Case], Ft4222Api]:

@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 from pathlib import Path
+from typing import Any
 
+import pytest
 from cliutil import FIXTURE, cli
 
 from n1mm_scope_bridge import control as ctl
+from n1mm_scope_bridge.cli.commands import run as run_cmd
+from n1mm_scope_bridge.cli.session import StreamSession
 
 
 def free_port() -> int:
@@ -24,37 +29,62 @@ def test_ctl_reports_no_bridge() -> None:
     assert "No reply from n1mm-scope-bridge at 127.0.0.1:" in err
 
 
-def test_run_with_remote_control_stop_start_set(tmp_path: Path) -> None:
-    """Headless run with --control-port, driven by `ctl` from another thread."""
+def test_run_with_remote_control_stop_start_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Headless run with --control-port, driven by `ctl` from another thread.
+
+    The run ends when the driver is done (not after a fixed time), so a slow
+    runner can't cut the command sequence short (#108).
+    """
     port = free_port()
     replies: dict[str, dict[str, object]] = {}
+    errors: list[Exception] = []
     done = threading.Event()
 
+    class DrivenSession(StreamSession):
+        """The session's deadline passes once the driver has finished."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            kwargs["clock"] = lambda: time.monotonic() + (1e6 if done.is_set() else 0.0)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(run_cmd, "StreamSession", DrivenSession)
+
     def drive() -> None:
-        for _ in range(50):
-            try:
-                ctl.request("ping", port=port, timeout=0.2)
-                break
-            except OSError:
-                continue
-        for name, cmd in [
-            ("stop", "stop"),
-            ("set", "set rate 5"),
-            ("start", "start"),
-            ("status", "status"),
-        ]:
-            code, out, _ = cli("ctl", "--port", str(port), *cmd.split())
-            replies[name] = json.loads(out) | {"exit": code}
-        done.set()
+        try:
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    ctl.request("ping", port=port, timeout=0.5)
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise
+            for name, cmd in [
+                ("stop", "stop"),
+                ("set", "set rate 5"),
+                ("start", "start"),
+                ("status", "status"),
+            ]:
+                code, out, err = cli("ctl", "--port", str(port), "--timeout", "10", *cmd.split())
+                assert out, f"no reply to {cmd!r}: {err}"
+                replies[name] = json.loads(out) | {"exit": code}
+        except Exception as exc:  # re-raised in the test thread below
+            errors.append(exc)
+        finally:
+            done.set()
 
     t = threading.Thread(target=drive)
     t.start()
     code, _, err = cli(
-        "run", "--replay", str(FIXTURE), "--loop", "--duration", "3", "--port", str(free_port()),
+        "run", "--replay", str(FIXTURE), "--loop", "--duration", "60", "--port", str(free_port()),
         "--rate", "10", "--control-port", str(port),
     )  # fmt: skip
-    t.join(5)
-    assert done.is_set()
+    t.join(30)
+    assert not t.is_alive()
+    if errors:
+        raise errors[0]
     assert code == 0, err
     assert f"Remote control listening on 127.0.0.1:{port}" in err
     assert replies["stop"]["streaming"] is False

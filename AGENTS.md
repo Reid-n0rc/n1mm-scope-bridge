@@ -86,8 +86,30 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    FT-710 COM ports (Enhanced for CAT, Standard for PTT/keying), so the bridge
    never opens either, not even briefly (maintainer decision on #62; enforced by
    `tests/test_no_com_ports.py`). It sends no CAT commands.
+   **Bench-only exception (development tooling, never shipped):**
+   `scripts/dev_cat.py`, used by `capture_golden.py --auto` and
+   `hardware_smoke.py --cat-port`, may open the radio's CAT (Enhanced) port, but
+   only with N1MM+, flrig and wfview closed. It holds RTS/DTR low, whitelists
+   reads of `FA;`, `SS05;` and `SS06;`, sets only scope span (`SS05`) and scope
+   mode (`SS06`), and always restores them. The package never imports it
+   (enforced by `tests/scripts/test_dev_cat.py`).
 9. **Test everything, and regress before merging.** See the Testing policy.
-10. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+10. **Never merge with a red check or an open security finding.** Before any
+    merge, including `gh pr merge --admin` (which bypasses the ruleset), run
+    `python scripts/ready_to_merge.py <PR>` and merge only if it prints
+    `READY`. It requires every check on the PR head to be green (CodeQL,
+    Analyze, secret scan, and dependency review included), **zero open
+    CodeQL alerts on the PR**, no open secret-scanning alerts, no merge
+    conflicts, and an approved, assigned linked issue. Resolve every CodeQL
+    alert and security finding first: fix it, or, for a genuine false
+    positive, dismiss it with a written justification
+    (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
+    -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    One narrow exception is printed as a `NOTE`: a failed
+    `github-advanced-security` run (GitHub's optional Copilot AI review, which
+    fails when the Copilot quota runs out) does not block when the real
+    `CodeQL` check passed, because open CodeQL alerts are still checked.
+11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
 ## Task sizing (context-window budget)
@@ -149,7 +171,8 @@ does not authorize work.
    check (`.github/workflows/issue-policy.yml`) fails a PR whose linked issue
    lacks `plan-approved` or an assignee. CI must be green.
 6. The maintainer (or an agent the maintainer has explicitly authorized)
-   merges.
+   merges, only after `python scripts/ready_to_merge.py <PR>` prints `READY`
+   (rule 10).
 
 Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware

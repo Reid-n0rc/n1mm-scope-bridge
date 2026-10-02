@@ -62,6 +62,13 @@ mode. This was reverse-engineered by the
 [docs/protocol-yaesu-ft4222.md](docs/protocol-yaesu-ft4222.md). Put the
 FT-710's scope in **Center** mode for exact frequencies in N1MM+.
 
+**Required radio setting:** the FT-710 only exposes its FT4222 scope interface
+over USB when the menu item **OPERATION SETTING → GENERAL → SCU-LAN10** is
+**ON**. You don't need the SCU-LAN10 adapter; the setting alone turns on the
+scope output (wfview documents the same requirement). If it is OFF, the
+radio's USB connection shows only the COM ports and audio, and the bridge
+reports `Could not open 'FT4222 A'`.
+
 More detail: [docs/architecture.md](docs/architecture.md).
 
 ## Supported radios

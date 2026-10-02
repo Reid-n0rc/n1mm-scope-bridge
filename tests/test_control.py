@@ -148,7 +148,20 @@ def test_server_ignores_addresses_not_allowed() -> None:
 
 def test_non_loopback_bind_requires_allow_list() -> None:
     with pytest.raises(ValueError, match="allow-list"):
-        ctl.ControlServer(FakeController(), port=0, bind="0.0.0.0")
+        ctl.ControlServer(FakeController(), port=0, bind="192.0.2.10")
+
+
+@pytest.mark.parametrize("wildcard", ["0.0.0.0", "::", "", "  "])
+def test_wildcard_binds_are_refused_even_with_an_allow_list(wildcard: str) -> None:
+    with pytest.raises(ValueError, match="not all interfaces"):
+        ctl.ControlServer(FakeController(), port=0, bind=wildcard, allow=("192.0.2.20",))
+
+
+def test_interface_address() -> None:
+    assert str(ctl.interface_address(" 192.168.1.5 ")) == "192.168.1.5"
+    assert ctl.interface_address("::1").is_loopback
+    with pytest.raises(ValueError, match="does not appear to be"):
+        ctl.interface_address("localhost")
 
 
 def test_reply_is_one_json_line() -> None:

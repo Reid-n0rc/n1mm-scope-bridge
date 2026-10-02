@@ -9,7 +9,8 @@ security-relevant surface is:
 - **Network output.** The bridge *sends* UDP to N1MM+. Its only listening
   socket is the optional **UDP remote control** (#30), which is **off by
   default**. When enabled it binds to `127.0.0.1` unless the operator sets
-  another address *and* an allow-list of client IPs; requests from any other
+  one specific interface IP *and* an allow-list of client IPs. Binding to all
+  interfaces (`0.0.0.0`, `::`, or empty) is always refused; requests from any other
   address are ignored; requests are capped at 512 bytes; and no command can
   transmit or change radio state. A way around these limits is a
   vulnerability.

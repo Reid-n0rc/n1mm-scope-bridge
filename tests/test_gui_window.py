@@ -12,14 +12,21 @@ import pytest
 pytest.importorskip("PySide6", reason="GUI needs PySide6 (not available on free-threaded Python)")
 
 from PySide6.QtCore import QUrl
-from PySide6.QtWidgets import QApplication, QFileDialog, QGroupBox, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from pytestqt.qtbot import QtBot
 
 from n1mm_scope_bridge.gui import app as gui_app
 from n1mm_scope_bridge.gui import main_window as mw
 from n1mm_scope_bridge.gui.controller import StreamController
 from n1mm_scope_bridge.gui.main_window import MainWindow
-from n1mm_scope_bridge.gui.style import Theme, apply_style, build_stylesheet, choose_style
+from n1mm_scope_bridge.gui.style import (
+    Theme,
+    apply_style,
+    build_stylesheet,
+    choose_style,
+    dark_palette,
+)
+from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader, LibraryNotFound
@@ -109,8 +116,12 @@ def test_start_with_invalid_settings_shows_error(qtbot: QtBot) -> None:
     window.host.setText("")
     window.toggle_streaming()
     assert window.chip.text() == "Error"
+    assert window.chip.kind == "danger"
     assert "Fix the highlighted settings" in window.status.text()
     assert not window.controller.running
+    dialog = window.settings_dialog
+    assert dialog.isVisible()  # opened on the page with the problem
+    assert dialog.stack.currentWidget() is dialog.pages["N1MM+"]
 
 
 def test_browse_sets_folder(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -123,11 +134,23 @@ def test_browse_sets_folder(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_p
     assert window.ftdi_dir.text() == str(tmp_path)
 
 
-def test_setup_guide_button_opens_docs(qtbot: QtBot) -> None:
+def test_setup_guide_menu_opens_docs(qtbot: QtBot) -> None:
     window, rec = make_window(qtbot)
-    guide = next(b for b in window.findChildren(QPushButton) if b.text() == "N1MM+ setup guide")
-    guide.click()
+    assert window.action_guide in window.menu.actions()
+    window.action_guide.trigger()
     assert rec.urls == [mw.SETUP_GUIDE_URL]
+
+
+def test_menu_actions(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    window, _ = make_window(qtbot)
+    texts = [a.text() for a in window.menu.actions()]
+    assert texts == ["Settings…", "Copy diagnostics", "N1MM+ setup guide", "About and license"]
+    window.action_settings.trigger()
+    assert window.settings_dialog.isVisible()
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "about", lambda parent, title, text: shown.append(text))
+    window.action_about.trigger()
+    assert "GNU General Public License" in shown[0]
 
 
 def test_save_failure_is_reported(qtbot: QtBot) -> None:
@@ -150,17 +173,23 @@ def test_start_stop_with_emulator(qtbot: QtBot, listener: socket.socket) -> None
         window.start_stop.click()
     assert window.chip.text() == "Streaming"
     assert window.start_stop.text() == "Stop"
-    boxes = {box.objectName(): box.isEnabled() for box in window.findChildren(QGroupBox)}
-    assert all(boxes[name] for name in mw.ALWAYS_ENABLED)  # status, log, closing stay usable
-    assert not any(enabled for name, enabled in boxes.items() if name not in mw.ALWAYS_ENABLED)
+    pages = window.settings_dialog.pages
+    assert pages["Startup and closing"].fields.isEnabled()  # closing stays editable
+    assert not pages["Radio"].fields.isEnabled()
+    assert pages["Radio"].locked.isVisibleTo(pages["Radio"])
     assert b"<Spectrum>" in listener.recvfrom(65535)[0]
-    qtbot.waitUntil(lambda: window.status.text().startswith("VFO 14.074000 MHz"), timeout=3000)
-    qtbot.waitUntil(lambda: "total" in window.status_rows["Sent to N1MM+"].text(), timeout=3000)
+    qtbot.waitUntil(
+        lambda: window.cards["frequency"].value.text() == "14.074 000 MHz", timeout=3000
+    )
+    qtbot.waitUntil(lambda: window.spectrum.frame is not None, timeout=3000)
+    qtbot.waitUntil(lambda: "total" in window.status_rows["Sent to N1MM+"], timeout=3000)
+    assert window.status.text().startswith("Streaming to N1MM+ at 127.0.0.1:")
     assert rec.saved  # settings saved on Start
     with qtbot.waitSignal(window.controller.stopped, timeout=6000):
         window.start_stop.click()
     assert window.chip.text() == "Stopped"
     assert window.start_stop.text() == "Start"
+    assert pages["Radio"].fields.isEnabled()
 
 
 def test_missing_ftdi_library_offers_download(qtbot: QtBot) -> None:
@@ -190,6 +219,60 @@ def test_non_center_mode_hint(qtbot: QtBot) -> None:
     window, _ = make_window(qtbot)
     window._on_status(ScopeStatus(1_000_000, 1_000, "cursor", "Cursor (Normal)"))
     assert "Center mode" in window.status.text()
+    mode = window.cards["mode"]
+    assert mode.value.text() == "Cursor"
+    assert mode.chip.kind == "warning"
+    window._on_status(ScopeStatus(1_000_000, 1_000, "center", "Center (Normal)"))
+    assert mode.chip.kind == "success"
+
+
+def test_frequency_and_mode_text() -> None:
+    assert mw.frequency_text(14_074_000) == "14.074 000 MHz"
+    assert mw.frequency_text(7_000_001) == "7.000 001 MHz"
+    assert mw.short_mode("Center (Normal)") == "Center"
+    assert mw.short_mode("3DSS Center") == "3DSS Center"
+
+
+def test_health_card_reports_problems(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    window.model.started()
+    window.model.stats = PipelineStats(frames_read=10, frames_dropped=2, bad_frames=1, emitted=3)
+    window._refresh_status()
+    assert window.cards["health"].value.text() == "Degraded"
+    assert window.cards["health"].detail.text() == "2 dropped · 1 bad"
+    window.model.stopped("USB unplugged")
+    window._refresh_status()
+    assert window.cards["health"].value.text() == "Problem"
+    assert window.cards["health"].chip.kind == "danger"
+
+
+def test_activity_drawer_collapsed_by_default(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    window.show()
+    assert not window.log_view.isVisible()
+    window.activity_toggle.click()
+    assert window.log_view.isVisible()
+    window._log("info", "hello")
+    assert window.activity_last.text().endswith("info: hello")
+    window.set_activity_open(False)
+    assert not window.log_view.isVisible()
+
+
+def test_settings_dialog_round_trips_new_fields(qtbot: QtBot) -> None:
+    original = Settings(device="FT4222 B", rate_hz=2.5, combine="average")
+    window, _ = make_window(qtbot, original)
+    assert window.form_settings() == original
+    assert window.settings_dialog.rate_label.text() == "2.5 per second"
+    window.rate.setValue(7)
+    assert window.form_settings().rate_hz == 3.5
+    assert window.settings_dialog.rate_label.text() == "3.5 per second"
+
+
+def test_palette_change_reapplies_icons(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    before = window.start_stop.icon().cacheKey()
+    window.setPalette(dark_palette())
+    assert window.start_stop.icon().cacheKey() != before
 
 
 def test_close_stops_and_saves(qtbot: QtBot) -> None:
@@ -289,10 +372,8 @@ def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.
     qtbot.addWidget(window)
     with qtbot.waitSignal(window.controller.started, timeout=3000):
         window.toggle_streaming()
-    qtbot.waitUntil(lambda: window.status_rows["VFO"].text() == "14.074000 MHz", timeout=3000)
-    qtbot.waitUntil(
-        lambda: "per second" in window.status_rows["Sent to N1MM+"].text(), timeout=3000
-    )
+    qtbot.waitUntil(lambda: window.status_rows["VFO"] == "14.074000 MHz", timeout=3000)
+    qtbot.waitUntil(lambda: "per second" in window.status_rows["Sent to N1MM+"], timeout=3000)
     assert window.tray is not None
     assert window.tray.icon.toolTip().startswith("N1MM Scope Bridge: Streaming FT-710 to N1MM+")
     assert "Streaming to N1MM+" in window.log_view.toPlainText()

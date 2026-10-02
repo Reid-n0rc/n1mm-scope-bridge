@@ -146,6 +146,9 @@ def test_settings_path_defaults_to_current_environment() -> None:
         ({"control_bind": "localhost"}, "control_bind"),
         ({"control_allow": "1.2.3.x"}, "control_allow"),
         ({"control_bind": "192.168.1.5"}, "control_allow"),
+        ({"control_bind": "0.0.0.0", "control_allow": "192.168.1.20"}, "control_bind"),
+        ({"control_bind": "::", "control_allow": "192.168.1.20"}, "control_bind"),
+        ({"control_bind": ""}, "control_bind"),
     ],
 )
 def test_control_settings_validation(change: dict[str, object], field: str) -> None:
@@ -157,3 +160,8 @@ def test_control_off_by_default_and_lan_with_allow_list_ok() -> None:
     assert Settings().control_bind == "127.0.0.1"
     ok = Settings(control_enabled=True, control_bind="192.168.1.5", control_allow="192.168.1.20")
     assert ok.validate() == {}
+
+
+def test_wildcard_bind_message_is_specific() -> None:
+    problems = Settings(control_bind="0.0.0.0", control_allow="192.168.1.20").validate()
+    assert "not all interfaces" in problems["control_bind"]

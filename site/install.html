@@ -19,10 +19,10 @@
 
   <h3 id="ft-710">Yaesu FT-710</h3>
   <ul>
-    <li>Connect the radio to the PC with a USB cable. Windows installs its drivers automatically.</li>
-    <li>Download FTDI's <strong>LibFT4222</strong> library from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a> and unzip it. The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it.</li>
+    <li>Connect the radio to the PC with a USB cable.</li>
+    <li>On the radio, set <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. With it OFF, the scope interface doesn't appear on the PC at all.</li>
+    <li>Install FTDI's <strong>LibFT4222</strong> library from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>. The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. It's free, but its license doesn't let us include it with this GPL program, so you install it yourself.</li>
   </ul>
-  <p class="note">Why isn't LibFT4222 included? It's free, but FTDI's license doesn't allow it to be bundled with this GPL-licensed program. Setup can copy it into place for you from the folder you unzipped.</p>
   <p>Setup steps for other Yaesu models will be added here as they become supported.</p>
 
   <!-- if:prerelease -->
@@ -35,6 +35,10 @@
   <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
   <p>The release page lists the installer and SHA-256 checksums. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
   <!-- endif:release -->
+
+  <h2 id="setup-wizard">The setup wizard</h2>
+  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, offers a desktop shortcut and an option to start with Windows, and asks where you unzipped FTDI's LibFT4222 (you can skip that and set it later in the app).</p>
+  <!-- screenshots:installer -->
 
   <h2 id="smartscreen">If Windows warns about the installer</h2>
   <p>The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose <strong>More info</strong>, then <strong>Run anyway</strong>. Each release lists SHA-256 checksums so you can check the download.</p>

@@ -8,8 +8,14 @@ by this project on real hardware.
 
 ## USB device
 
-When connected over USB, the FT-710 enumerates an FTDI **FT4222** in addition
-to the CAT and audio devices. wfview opens it with D2XX by description
+When connected over USB, and with the radio menu **OPERATION SETTING → GENERAL
+→ SCU-LAN10** set to **ON** (CAT `EX030126;` reads `EX0301261;`), the FT-710
+enumerates an FTDI **FT4222** (USB ID 0403:601c, "FT4222H") in addition to the
+CAT and audio devices. With SCU-LAN10 OFF (`EX0301260;`) the FT4222 is not
+present at all: verified on a real FT-710 on 2026-10-02, whose USB tree then
+showed only the CP2105 dual UART and the USB audio codec. The SCU-LAN10
+adapter itself is not needed. Source for the requirement: wfview's FT-710
+setup page; menu number from Yaesu's FT-710 CAT manual (EX menu 03-01-26). wfview opens it with D2XX by description
 **`"FT4222 A"`** and sets it up as follows:
 
 | Step | Call | Value |
