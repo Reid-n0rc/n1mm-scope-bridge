@@ -18,7 +18,13 @@ from typing import Literal, Protocol, get_args
 
 from n1mm_scope_bridge.n1mm import DEFAULT_APP, encode_spectrum
 from n1mm_scope_bridge.pipeline import Pipeline
-from n1mm_scope_bridge.radios.base import ParsedFrame, RadioProfile, ScopeStatus
+from n1mm_scope_bridge.radios.base import (
+    FrameDecoder,
+    ParsedFrame,
+    RadioProfile,
+    ScopeStatus,
+    SpanUnavailable,
+)
 from n1mm_scope_bridge.spectrum import SpectrumFrame
 
 Combine = Literal["latest", "average", "peak"]
@@ -151,10 +157,21 @@ def build_pipeline(
         if on_frame is not None:  # exactly what was just sent (the GUI preview)
             on_frame(item)
 
+    decoder = FrameDecoder(config.profile)
+    span_limiter = RateLimiter(5.0, clock)
+
+    def process(raw: bytes) -> ParsedFrame:
+        try:
+            return decoder(raw)
+        except SpanUnavailable as exc:  # counted as a bad frame; tell the operator why
+            if span_limiter.allow():
+                warn(str(exc))
+            raise
+
     return Pipeline(
         config.profile.key,
         source,
-        config.profile.parse,
+        process,
         emit,
         rate_hz=config.rate_hz,
         accumulator=SpectrumCombiner(config.combine),

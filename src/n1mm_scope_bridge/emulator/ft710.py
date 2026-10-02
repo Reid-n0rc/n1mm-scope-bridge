@@ -31,6 +31,11 @@ RX_STATUS = (0x00, 0x08)
 SETUP_STEPS = ("timeouts", "latency", "spi_init", "clock")
 
 
+# 10th-percentile level per span index, measured on a real FT-710 on 40 m
+# (7.074 MHz, evening, issue #111). Wider spans fold more bandwidth into each bin.
+NOISE_FLOOR_BY_SPAN: tuple[int, ...] = (37, 44, 47, 52, 57, 70, 77, 83, 88, 90)
+
+
 @dataclass
 class RadioState:
     """What the operator has set on the radio. Change it through the emulator's methods."""
@@ -100,7 +105,7 @@ class Ft710Emulator:
         fps: float = 0.0,
         seed: int = 710,
         on_frame: FrameHook | None = None,
-        padding: Literal["sync", "zero"] = "sync",
+        padding: Literal["tail", "sync", "zero"] = "tail",
         sleep: Callable[[float], object] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -108,8 +113,9 @@ class Ft710Emulator:
         self.signals = signals
         self.faults = faults or Faults()
         self.on_frame = on_frame
-        # Bytes between the status block and the sync tail. wfview's resync waits for
-        # the sync pattern repeated, which suggests "sync" padding. UNVERIFIED (#36).
+        # Bytes between the status block and the sync tail. A real FT-710 (#111)
+        # sends zeros and ends each frame with the sync pattern four times ("tail");
+        # "sync" and "zero" remain for resync tests.
         self.padding = padding
         self._period = 1.0 / fps if fps > 0 else 0.0
         self._sleep = sleep
@@ -151,7 +157,10 @@ class Ft710Emulator:
         span = FT710.spans_hz[st.span_index]
         low = st.vfo_a_hz - span // 2
         hz_per_bin = span / ys.BINS
-        levels = [self._rng.randint(18, 34) for _ in range(ys.BINS)]
+        floor = NOISE_FLOOR_BY_SPAN[st.span_index]
+        # Uniform noise whose 10th percentile matches the measured floor (#111).
+        levels = [self._rng.randint(floor - 4, floor + 36) for _ in range(ys.BINS)]
+        lift = floor - NOISE_FLOOR_BY_SPAN[0]  # keep signals above the floor at wide spans
         signals = list(self.signals)
         if st.tx:
             signals.append(Signal(st.vfo_a_hz, 230, 2_400, 1.0))
@@ -162,7 +171,8 @@ class Ft710Emulator:
             first = int((sig.freq_hz - sig.width_hz / 2 - low) / hz_per_bin)
             last = int((sig.freq_hz + sig.width_hz / 2 - low) / hz_per_bin)
             for b in range(max(first, 0), min(max(last, first) + 1, ys.BINS)):
-                levels[b] = min(255, max(levels[b], sig.level + self._rng.randint(-6, 6)))
+                level = sig.level + lift + self._rng.randint(-6, 6)
+                levels[b] = min(255, max(levels[b], level))
         return bytes(levels)
 
     def _next_frame(self) -> bytes:
@@ -182,9 +192,21 @@ class Ft710Emulator:
             )
             frame[ys.DATA + 22 : ys.DATA + 24] = bytes(TX_STATUS if st.tx else RX_STATUS)
             frame[ys.DATA + ys.STATUS_S_METER] = st.s_meter
+            family = ys.mode_family(FT710.scope_mode_name(ys.scope_mode_code(st.scope_mode)))
+            flags = {"cursor": 0x40, "fixed": 0x80}.get(family, 0x00)
+            frame[ys.DATA + ys.STATUS_SPAN] = st.span_index | flags
+            frame[ys.DATA + ys.STATUS_MODE_FAMILY] = {"cursor": 1, "fixed": 2}.get(family, 0)
+            vfo = st.vfo_a_hz.to_bytes(4, "big")
+            start = (st.vfo_a_hz // 100_000 * 100_000) if family == "fixed" else st.vfo_a_hz
+            frame[ys.DATA + ys.STATUS_VFO_A_BIN : ys.DATA + ys.STATUS_VFO_A_BIN + 4] = vfo
+            frame[ys.DATA + ys.STATUS_SCOPE_START : ys.DATA + ys.STATUS_SCOPE_START + 4] = (
+                start.to_bytes(4, "big")
+            )
             if self.padding == "sync":
                 repeats = (ys.FRAME_SIZE - ys.DATA - ys.DATA_LEN) // len(ys.SYNC)
                 frame[ys.FRAME_SIZE - repeats * len(ys.SYNC) :] = ys.SYNC * repeats
+            elif self.padding == "tail":  # verified on a real FT-710 (#111)
+                frame[ys.FRAME_SIZE - 4 * len(ys.SYNC) :] = ys.SYNC * 4
         corrupt = self.faults.corrupt_every
         if corrupt and (index + 1) % corrupt == 0:
             frame[-1] ^= 0xFF

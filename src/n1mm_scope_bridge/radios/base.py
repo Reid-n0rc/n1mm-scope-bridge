@@ -23,6 +23,10 @@ class FrameError(ValueError):
     """A raw frame could not be parsed. The pipeline skips it and counts it."""
 
 
+class SpanUnavailable(FrameError):
+    """A frame from a scope mode that doesn't report the span, with no earlier span to reuse."""
+
+
 @dataclass(frozen=True)
 class ScopeStatus:
     """What the radio's scope was showing when the frame was captured."""
@@ -58,10 +62,29 @@ class RadioProfile:
     """Span in Hz, indexed by the radio's span code."""
     scope_modes: tuple[tuple[str, str], ...]
     """``(code, name)`` pairs for the radio's scope modes."""
-    parser: Callable[[bytes, RadioProfile], ParsedFrame] = field(repr=False, compare=False)
+    parser: Callable[..., ParsedFrame] = field(repr=False, compare=False)
+    """``parser(raw, profile, *, span_fallback_hz=None)``."""
 
     def parse(self, raw: bytes) -> ParsedFrame:
         return self.parser(raw, self)
 
     def scope_mode_name(self, code: str) -> str | None:
         return dict(self.scope_modes).get(code)
+
+
+class FrameDecoder:
+    """Stateful frame parser for one stream (one per pipeline).
+
+    Some scope modes don't report the span (Cursor/Fixed on the FT-710, #111);
+    the decoder remembers the last span seen and passes it to the parser.
+    """
+
+    def __init__(self, profile: RadioProfile) -> None:
+        self.profile = profile
+        self.last_span_hz: int | None = None
+
+    def __call__(self, raw: bytes) -> ParsedFrame:
+        parsed = self.profile.parser(raw, self.profile, span_fallback_hz=self.last_span_hz)
+        if parsed.status.mode_family == "center":
+            self.last_span_hz = parsed.status.span_hz
+        return parsed

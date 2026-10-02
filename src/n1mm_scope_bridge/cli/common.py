@@ -16,7 +16,7 @@ from n1mm_scope_bridge.pipeline import Pipeline
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.transport.ft4222 import DEFAULT_DESCRIPTION, Ft4222Api, Ft4222Reader
 
-EMULATOR_FPS = 20.0  # about the rate the FT-710 produces; UNVERIFIED (#36)
+EMULATOR_FPS = 11.2  # measured on a real FT-710 (#111)
 
 ApiLoader = Callable[[str | None], Ft4222Api]
 

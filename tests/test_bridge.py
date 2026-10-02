@@ -17,6 +17,7 @@ from n1mm_scope_bridge.bridge import (
     build_pipeline,
 )
 from n1mm_scope_bridge.n1mm import N1mmSender
+from n1mm_scope_bridge.radios import yaesu_scope as ys
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
 from n1mm_scope_bridge.radios.ft710 import FT710
 from n1mm_scope_bridge.spectrum import SpectrumFrame
@@ -197,3 +198,18 @@ def test_on_frame_receives_exactly_what_was_sent() -> None:
     assert len(seen) == len(sender.payloads) >= 1
     root = ET.fromstring(sender.payloads[-1])
     assert root.findtext("DataCount") == str(len(seen[-1].spectrum.levels))
+
+
+def test_span_unavailable_warns_and_counts_bad_frames() -> None:
+    raw = bytearray(make_ft4222_frame(scope_mode=0x07))
+    raw[ys.DATA + ys.STATUS_SPAN] = 0x4C
+    sender = FakeSender()
+    warnings: list[str] = []
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=10), [bytes(raw)] * 3, sender, warn=warnings.append
+    )
+    pipe.start()
+    pipe.join(timeout=5)
+    assert pipe.stats().bad_frames == 3
+    assert len(warnings) == 1
+    assert "Center mode" in warnings[0]

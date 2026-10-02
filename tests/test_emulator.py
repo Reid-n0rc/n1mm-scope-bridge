@@ -45,7 +45,8 @@ def test_signals_appear_where_they_are_tuned() -> None:
     spectrum = read_parsed(emu, 1)[0].spectrum
     centre = len(spectrum.levels) // 2
     assert max(spectrum.levels[centre - 3 : centre + 4]) >= 190
-    assert max(spectrum.levels[:100]) < 60  # just noise away from the signal
+    floor = emu_mod.NOISE_FLOOR_BY_SPAN[emu.state.span_index]
+    assert max(spectrum.levels[:100]) <= floor + 36  # just noise away from the signal
 
 
 def test_retuning_moves_signals() -> None:

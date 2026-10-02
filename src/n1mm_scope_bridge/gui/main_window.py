@@ -53,7 +53,7 @@ from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader
 APP_TITLE = "N1MM Scope Bridge"
 SETUP_GUIDE_URL = "https://reid-n0rc.github.io/n1mm-scope-bridge/n1mm.html"
 SAVE_DELAY_MS = 400
-EMULATOR_FPS = 20.0
+EMULATOR_FPS = 11.2  # measured on a real FT-710 (#111)
 DEFAULT_SIZE = (960, 640)
 MINIMUM_SIZE = (760, 540)
 STATES = {

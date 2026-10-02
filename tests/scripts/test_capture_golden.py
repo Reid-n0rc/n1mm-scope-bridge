@@ -96,7 +96,7 @@ def test_recording_error_is_noted(tmp_path: Path) -> None:
 def test_decode_of_capture_without_frames(tmp_path: Path) -> None:
     path = tmp_path / "empty.raw"
     path.write_bytes(b"N1MMSB1-RAW FT-710 4096\n")
-    assert cg.decode(path) == {"frames": 0}
+    assert cg.decode(path) == {"frames": 0, "span_unavailable_frames": 0}
 
 
 def test_main_dry_run_never_writes_to_the_fixture_folder(

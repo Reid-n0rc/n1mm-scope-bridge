@@ -18,7 +18,7 @@ from n1mm_scope_bridge.radios.ft710 import FT710
 from n1mm_scope_bridge.transport.ft4222 import Ft4222Error, Ft4222Reader
 from n1mm_scope_bridge.transport.replay import RawChunk, RawStreamApi
 
-Padding = Literal["sync", "zero", "other"]
+Padding = Literal["tail", "sync", "zero", "other"]
 FPS_TOLERANCE = 0.10
 NOISE_FLOOR_TOLERANCE = 20  # levels (0-255): bands differ, so this is a sanity bound
 
@@ -49,6 +49,8 @@ def padding_style(frame: bytes) -> Padding:
     tail = frame[ys.FRAME_SIZE - repeats * len(ys.SYNC) : -len(ys.SYNC)]
     if tail == ys.SYNC * (repeats - 1):
         return "sync"
+    if not any(tail[: -3 * len(ys.SYNC)]) and frame.endswith(ys.SYNC * 4):
+        return "tail"
     if not any(tail):
         return "zero"
     return "other"
@@ -68,7 +70,7 @@ def noise_floor(levels: tuple[int, ...]) -> int:
     return ordered[len(ordered) // 10]
 
 
-def emulator_like(frame: bytes, *, padding: Padding = "sync") -> Ft710Emulator:
+def emulator_like(frame: bytes, *, padding: Padding = "tail") -> Ft710Emulator:
     """An emulator set to the radio state decoded from a real frame."""
     parsed = FT710.parse(frame)
     status = frame[ys.DATA : ys.DATA + ys.DATA_LEN]
@@ -78,11 +80,12 @@ def emulator_like(frame: bytes, *, padding: Padding = "sync") -> Ft710Emulator:
         scope_mode=status[ys.STATUS_SCOPE_MODE],
         tx=status[22] & 0x80 != 0,
     )
-    return Ft710Emulator(state, padding="zero" if padding == "zero" else "sync")
+    style = padding if padding in ("tail", "sync", "zero") else "tail"
+    return Ft710Emulator(state, padding=style)
 
 
 def compare(
-    chunks: list[RawChunk], *, emulator_fps: float, emulator_padding: Padding = "sync"
+    chunks: list[RawChunk], *, emulator_fps: float, emulator_padding: Padding = "tail"
 ) -> list[str]:
     """Differences between a real capture and the emulator (empty when they agree)."""
     decoded = decode_frames(chunks)
