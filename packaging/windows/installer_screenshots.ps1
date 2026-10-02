@@ -74,9 +74,16 @@ $Pages = [ordered]@{
 }
 $Required = 'installer-license', 'installer-tasks', 'installer-ftdi', 'installer-finished'
 
+function Get-TopWindows {
+    return @($UIA::RootElement.FindAll($Tree::Children, [System.Windows.Automation.Condition]::TrueCondition))
+}
+
 function Find-Wizard {
-    $cond = New-Object System.Windows.Automation.PropertyCondition($Prop::NameProperty, 'Setup - N1MM Scope Bridge')
-    return $UIA::RootElement.FindFirst($Tree::Children, $cond)
+    # Inno Setup titles the wizard "Setup - <app name>" (some versions append the version).
+    foreach ($w in Get-TopWindows) {
+        if ($w.Current.Name -like 'Setup - N1MM Scope Bridge*') { return $w }
+    }
+    return $null
 }
 
 function Get-Names($window) {
@@ -114,11 +121,26 @@ $proc = Start-Process -FilePath $Installer -ArgumentList '/CURRENTUSER', "/DIR=`
 $manifest = [ordered]@{}
 $deadline = (Get-Date).AddSeconds($TimeoutSec)
 $last = $null
+$lastLog = Get-Date
+$dumped = @{}
 try {
     while ((Get-Date) -lt $deadline) {
         $window = Find-Wizard
+        if ((Get-Date) -gt $lastLog.AddSeconds(10)) {
+            # Diagnostics for CI logs: what the desktop and the wizard expose.
+            $lastLog = Get-Date
+            Write-Host ('top-level windows: ' + ((Get-TopWindows | ForEach-Object { "'" + $_.Current.Name + "'" }) -join ', '))
+            if ($window) { Write-Host ('wizard names: ' + ((Get-Names $window | Select-Object -First 40) -join ' | ')) }
+        }
         if (-not $window) { Start-Sleep -Milliseconds 300; continue }
         $page = Get-Page $window
+        if (-not $page) {
+            $key = (Get-Names $window | Select-Object -First 6) -join '|'
+            if (-not $dumped.ContainsKey($key)) {
+                $dumped[$key] = $true
+                Write-Host ('unrecognised wizard page, names: ' + ((Get-Names $window | Select-Object -First 40) -join ' | '))
+            }
+        }
         if (-not $page -or $page -eq $last -or $page -eq 'Installing') { Start-Sleep -Milliseconds 300; continue }
         Start-Sleep -Milliseconds 700   # let the page finish painting
         $scene, $alt, $caption = $Pages[$page]
