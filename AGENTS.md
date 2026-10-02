@@ -85,7 +85,18 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    data. Do not add code that sends CAT commands that change radio state
    unless an approved issue says so explicitly.
 9. **Test everything, and regress before merging.** See the Testing policy.
-10. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+10. **Never merge with a red check or an open security finding.** Before any
+    merge, including `gh pr merge --admin` (which bypasses the ruleset), run
+    `python scripts/ready_to_merge.py <PR>` and merge only if it prints
+    `READY`. It requires every check on the PR head to be green (CodeQL,
+    Analyze, secret scan, and dependency review included), **zero open
+    CodeQL alerts on the PR**, no open secret-scanning alerts, no merge
+    conflicts, and an approved, assigned linked issue. Resolve every CodeQL
+    alert and security finding first: fix it, or, for a genuine false
+    positive, dismiss it with a written justification
+    (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
+    -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
 ## Task sizing (context-window budget)
@@ -147,7 +158,8 @@ does not authorize work.
    check (`.github/workflows/issue-policy.yml`) fails a PR whose linked issue
    lacks `plan-approved` or an assignee. CI must be green.
 6. The maintainer (or an agent the maintainer has explicitly authorized)
-   merges.
+   merges, only after `python scripts/ready_to_merge.py <PR>` prints `READY`
+   (rule 10).
 
 Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware
