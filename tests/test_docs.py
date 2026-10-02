@@ -21,6 +21,7 @@ SRC = ROOT / "src" / "n1mm_scope_bridge"
 # Every message a user can see. Each must exist in the source (so this list
 # can't go stale) and in troubleshooting.md (so users can look it up).
 USER_MESSAGES = [
+    "The window needs PySide6",
     "Could not load FTDI's LibFT4222/D2XX libraries",
     "FTDI library folder does not exist",
     "FTDI library is missing a required function",

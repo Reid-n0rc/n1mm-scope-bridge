@@ -33,7 +33,7 @@ jobs:
         include:
           - { os: windows-latest, python: "3.13", flags: "" }
           - { os: windows-latest, python: "3.14t", flags: "--skip-gui" }
-          - { os: ubuntu-latest, python: "3.13", flags: "--portable" }
+          - { os: ubuntu-latest, python: "3.13", flags: "--skip-windows-only" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

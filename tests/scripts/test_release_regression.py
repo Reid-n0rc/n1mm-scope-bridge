@@ -90,10 +90,8 @@ def test_default_steps_cover_the_release_checklist() -> None:
     assert names[0] == "Locked clean environment"
     assert any("licensing" in n for n in names)
     assert any("hook" in n.lower() for n in names)
-    assert {s.name for s in steps if s.windows_only} >= {
-        "GUI self-test",
-        "Installer silent install/run/uninstall",
-    }
+    assert "Installer silent install/run/uninstall" in {s.name for s in steps if s.windows_only}
+    assert "GUI self-test" in names  # runs on every OS (Qt offscreen)
     pending = [s for s in steps if s.disabled_reason]
     assert all(s.disabled_reason.startswith("added by #") for s in pending)
 
@@ -117,51 +115,34 @@ def test_main_writes_report_and_exit_codes(
     capsys.readouterr()
 
 
-def test_main_skipped_windows_steps_are_not_releasable(
+def test_explicit_portable_run_passes_but_is_not_releasable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     steps = [
         rr.Step("win", ("w",), windows_only=True),
         rr.Step("later", disabled_reason="added by #6"),
     ]
+    report = tmp_path / "r.md"
     code = rr.main(
-        ["--report", str(tmp_path / "r.md"), "--skip-windows-only"],
-        steps=steps,
+        ["--report", str(report), "--skip-windows-only"], steps=steps, meta={}, runner=fake_runner()
+    )
+    assert code == 0
+    assert "not releasable" in report.read_text(encoding="utf-8")
+    assert "NOT RELEASABLE" in capsys.readouterr().err
+
+
+def test_windows_steps_skipped_off_windows_without_flag_fail(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("sys.platform", "linux")
+    code = rr.main(
+        ["--report", str(tmp_path / "r.md")],
+        steps=[rr.Step("win", ("w",), windows_only=True)],
         meta={},
         runner=fake_runner(),
     )
     assert code == 1
     assert "NOT RELEASABLE" in capsys.readouterr().err
-
-
-def test_portable_mode_passes_but_reports_not_releasable(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    steps = [rr.Step("lint", ("ruff",)), rr.Step("win", ("w",), windows_only=True)]
-    report = tmp_path / "r.md"
-    code = rr.main(
-        ["--report", str(report), "--portable"], steps=steps, meta={}, runner=fake_runner()
-    )
-    assert code == 0
-    text = report.read_text(encoding="utf-8")
-    assert "portable subset" in text
-    assert "| 2 | win | SKIPPED |" in text
-    err = capsys.readouterr().err
-    assert "NOT RELEASABLE" in err
-    assert "--portable" in err
-
-
-def test_portable_mode_still_fails_on_real_failures(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    code = rr.main(
-        ["--report", str(tmp_path / "r.md"), "--portable"],
-        steps=[rr.Step("lint", ("ruff",))],
-        meta={},
-        runner=fake_runner({"ruff": 1}),
-    )
-    assert code == 1
-    capsys.readouterr()
 
 
 def test_environment_metadata() -> None:

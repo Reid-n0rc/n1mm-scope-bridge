@@ -15,6 +15,7 @@ connection in one step. Every error the program can show is listed below.
 | `… failed (FT_IO_ERROR)` | USB communication failed during setup or reading | Reconnect the USB cable (avoid unpowered hubs) and try again |
 | `No valid scope frames from 'FT4222 A'` | The radio is connected but isn't sending scope data | Make sure the radio's scope display is on, power-cycle the radio, then try again |
 | `scope is in … mode; frequency edges are only exact in Center mode` | The radio's scope is in Cursor or Fixed mode | Set the FT-710's scope to **Center** mode for an accurate N1MM+ display |
+| `The window needs PySide6, which is not installed` | `n1mm-scope-bridge gui` was run from a pip install without the GUI package | Use the Windows installer, or `pip install "n1mm-scope-bridge[gui]"` |
 | `unknown radio` | The `--radio` value or `radio` setting isn't supported | Run `list-radios` |
 | `was recorded from a … not a …` | The replayed capture came from a different radio model | Use `--radio` matching the capture |
 | `not an n1mm-scope-bridge capture` | The file given to `--replay` isn't a capture | Record one with `record` |

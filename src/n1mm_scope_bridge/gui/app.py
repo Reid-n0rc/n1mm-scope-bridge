@@ -66,9 +66,7 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
             except BlockingIOError:
                 time.sleep(0.02)
         status_ok = window.status.text().startswith(("VFO", "Streaming"))
-        # quit_app, not close(): with a system tray, close() would open the
-        # "keep running in the tray?" prompt and block the unattended test.
-        window.quit_app()
+        window.quit_app()  # never prompts, even when a system tray exists
         app.processEvents()
     if packets < SELF_TEST_PACKETS:
         return False, f"self-test: received {packets} N1MM packets, expected {SELF_TEST_PACKETS}"

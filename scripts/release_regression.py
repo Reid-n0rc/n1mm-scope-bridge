@@ -48,6 +48,9 @@ __all__ = ["CheckFailed", "Result", "Runner", "Step", "StepContext", "default_st
 STEPS_DIR = Path(__file__).resolve().parent / "regression_steps"
 
 
+SKIP_WINDOWS_FLAG = "--skip-windows-only"
+
+
 def load_step_files(directory: Path = STEPS_DIR) -> list[ModuleType]:
     """Import every ``NN_name.py`` step file in ``directory``, in filename order."""
     modules: list[ModuleType] = []
@@ -90,7 +93,7 @@ def run_steps(
             results.append(Result(step.name, "SKIPPED", detail=step.disabled_reason, command=shown))
             continue
         if step.windows_only and (skip_windows_only or not is_windows):
-            why = "--skip-windows-only" if skip_windows_only else "not running on Windows"
+            why = SKIP_WINDOWS_FLAG if skip_windows_only else "not running on Windows"
             results.append(Result(step.name, "SKIPPED", detail=why, command=shown))
             continue
         start = clock()
@@ -171,15 +174,7 @@ def main(
         action="store_true",
         help="for local runs off Windows; the result is not releasable",
     )
-    parser.add_argument(
-        "--portable",
-        action="store_true",
-        help="CI portability job off Windows: skip Windows-only steps and pass if the rest "
-        "pass (the report says it is not releasable)",
-    )
     args = parser.parse_args(argv)
-    if args.portable:
-        args.skip_windows_only = True
     if args.skip_gui:
         # Every `uv run` re-syncs default groups; keep PySide6 out on free-threaded Python.
         os.environ["UV_NO_GROUP"] = "gui-dev"
@@ -187,22 +182,27 @@ def main(
         steps if steps is not None else default_steps(runner, skip_gui=args.skip_gui),
         runner=runner,
         skip_windows_only=args.skip_windows_only,
+        is_windows=sys.platform == "win32",
     )
     # Steps disabled until their feature lands are allowed; skipped Windows steps are not.
+    allowed = (PENDING, GUI_SKIP, SKIP_WINDOWS_FLAG)
     blocking_skips = [
-        r for r in results if r.status == "SKIPPED" and not r.detail.startswith((PENDING, GUI_SKIP))
+        r for r in results if r.status == "SKIPPED" and not r.detail.startswith(allowed)
     ]
-    ok = passed(results, allow_skips=True) and (args.portable or not blocking_skips)
-    meta = dict(meta if meta is not None else environment())
-    if args.portable:
-        meta["scope"] = "portable subset (Windows-only steps skipped; not releasable)"
-    report = render_report(results, meta, ok=ok)
+    portable_only = any(r.detail == SKIP_WINDOWS_FLAG for r in results if r.status == "SKIPPED")
+    ok = passed(results, allow_skips=True) and not blocking_skips
+    report = render_report(results, meta if meta is not None else environment(), ok=ok)
+    if ok and portable_only:
+        report = report.replace(
+            "**Result: PASS**",
+            "**Result: PASS (portable subset; not releasable: Windows-only steps skipped)**",
+            1,
+        )
     args.report.write_text(report, encoding="utf-8")
     print(report)
-    if blocking_skips:
+    if blocking_skips or portable_only:
+        # Releases are gated by the Windows jobs, which never skip these steps.
         print("NOT RELEASABLE: Windows-only steps were skipped.", file=sys.stderr)
-        if args.portable:
-            print("(--portable: allowed for this portability job)", file=sys.stderr)
     return 0 if ok else 1
 
 
