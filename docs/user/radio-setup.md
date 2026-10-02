@@ -28,7 +28,19 @@ Do this once per radio, before the first time you start the bridge.
    native ARM64 app the `arm64` ones, and the 32-bit command-line app the
    `i386` ones. Setup can download the `amd64` and `i386` DLLs; for the native
    ARM64 app, get FTDI's package and pick its folder.
-   The USB driver itself normally comes from Windows Update automatically.
+   **The FTDI USB driver** (what Windows needs to talk to the scope chip)
+   normally comes from Windows Update automatically the first time the scope
+   device appears. If Windows doesn't have it, setup offers **Install FTDI USB
+   driver (needs administrator)**. Only that step asks for administrator
+   rights. It installs FTDI's official Microsoft-signed (WHQL) driver package
+   from Microsoft Update Catalog, after checking the download's checksum, the
+   driver's Microsoft signature and that it covers the FT4222H. Why not FTDI's
+   website? ftdichip.com blocks all automated downloads with a "verify you are
+   human" check, so no installer can use it. The DLLs stay in the program's
+   own folder, which needs no administrator rights and can't clash with other
+   FTDI-based programs. Microsoft Update Catalog's FTDI driver package covers
+   32-bit and 64-bit Intel/AMD Windows only, so setup doesn't offer it on
+   Windows on ARM; there, Windows Update provides the driver if it has one.
 4. **Make the PC see the new scope device.** After turning SCU-LAN10 on:
    1. Turn the radio **off and back on**.
    2. **Unplug the USB cable and plug it back in.** A power cycle alone is not

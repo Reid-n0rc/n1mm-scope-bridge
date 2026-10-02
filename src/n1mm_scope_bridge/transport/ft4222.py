@@ -49,6 +49,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
 from n1mm_scope_bridge.radios.yaesu_scope import FRAME_SIZE, SYNC
+from n1mm_scope_bridge.transport import winpnp
 
 FTDI_DOWNLOAD_URL = "https://ftdichip.com/products/ft4222h/"
 DEFAULT_DESCRIPTION = "FT4222 A"
@@ -469,8 +470,10 @@ class Ft4222Reader:
         description: str = DEFAULT_DESCRIPTION,
         frame_size: int = FRAME_SIZE,
         max_resync_bytes: int = MAX_RESYNC_BYTES,
+        driver_hint: Callable[[], str] = winpnp.driver_hint,
     ) -> None:
         self._api = api
+        self._driver_hint = driver_hint
         self._description = description
         self._frame_size = frame_size
         self._max_resync = max_resync_bytes
@@ -487,13 +490,15 @@ class Ft4222Reader:
         self._release()
         status, handle = self._api.open_ex(self._description)
         if status != FT_OK:
-            raise DeviceNotFound(
+            message = (
                 f"Could not open {self._description!r} ({status_name(status)}). Is the radio "
                 "on and connected by USB, with FTDI's D2XX driver installed? On the FT-710, "
                 "set the menu OPERATION SETTING > GENERAL > SCU-LAN10 to ON (no adapter "
                 "needed), then turn the radio off and on and unplug and replug its USB "
                 "cable so the scope device appears."
             )
+            hint = self._driver_hint()
+            raise DeviceNotFound(f"{message} {hint}" if hint else message)
         self._handle = handle
         steps: list[tuple[str, Callable[[], int]]] = [
             (

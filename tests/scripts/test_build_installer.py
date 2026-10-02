@@ -54,6 +54,10 @@ def test_iscc_command() -> None:
         c.startswith("/DFtdiWheelSha256=") and len(c) == len("/DFtdiWheelSha256=") + 64 for c in cmd
     )
     assert any(c.startswith("/DFtdiWheelUrl=https://") for c in cmd)
+    assert any(
+        c.startswith("/DFtdiDriverUrl=https://catalog.s.download.windowsupdate.com/") for c in cmd
+    )
+    assert any(c.startswith("/DFtdiDriverSha256=") for c in cmd)
 
 
 def test_ftdi_defines_follow_the_pin() -> None:
@@ -138,8 +142,8 @@ def test_installer_script_never_bundles_ftdi() -> None:
     iss = bi.ISS.read_text(encoding="utf-8")
     sources = [line for line in iss.splitlines() if line.startswith("Source:")]
     # The app folders (checked FTDI-free by check_app_dir), the 32-bit start script, and
-    # the helper script only: FTDI's DLLs are downloaded at install time (#133).
-    assert len(sources) == 5
+    # the two helper scripts only: FTDI's DLLs and driver are downloaded (#133, #152).
+    assert len(sources) == 6
     for define, payload in (("SourceX64", "x64"), ("SourceArm64", "arm64"), ("SourceX86", "x86")):
         expected = (
             f'Source: "{{#{define}}}\\*"; DestDir: "{{app}}"; Check: IsPayload(\'{payload}\')'
@@ -147,12 +151,24 @@ def test_installer_script_never_bundles_ftdi() -> None:
         assert any(line.startswith(expected) for line in sources), expected
     assert 'Source: "cli-start.cmd"; DestDir: "{app}"; Check: IsPayload(\'x86\')' in sources[3]
     assert sources[4] == 'Source: "ftdi_install.ps1"; Flags: dontcopy'
+    assert sources[5] == 'Source: "ftdi_driver.ps1"; Flags: dontcopy'
+    assert ".cab" not in "".join(sources).lower()
     assert ".dll" not in "".join(sources).lower()
     assert "DownloadTemporaryFile(Url, WheelFile, Sha256, nil)" in iss
     assert "Url := '{#FtdiWheelUrl}'" in iss
     assert "Url := '{#FtdiWheelUrl86}'" in iss
     assert "LicenseFile=..\\..\\LICENSE" in iss
     assert "PrivilegesRequired=lowest" in iss
+    # Only the optional driver task elevates, and it's off unless the user ticks it.
+    driver_task = next(line for line in iss.splitlines() if line.startswith('Name: "ftdidriver"'))
+    assert "Flags: unchecked" in driver_task
+    assert "Check: CanInstallFtdiDriver" in driver_task
+    # The Microsoft Update Catalog package has x86 and amd64 drivers only (#149).
+    can = iss[iss.index("function CanInstallFtdiDriver") :]
+    assert "not IsArm64() and FtdiDriverMissing()" in can[: can.index("end;")]
+    assert iss.count("ShellExec('runas'") == 1
+    drv = "DownloadTemporaryFile('{#FtdiDriverUrl}', '{#FtdiDriverFile}', '{#FtdiDriverSha256}'"
+    assert drv in iss
 
 
 def test_installer_script_supports_every_windows_pc() -> None:
@@ -276,6 +292,9 @@ def test_main_default_uses_the_local_build(
 
 
 def test_no_code_line_starts_with_a_character_constant() -> None:
-    """ISPP reads a line starting with "#13#10" as an unknown preprocessor directive."""
+    """ISPP reads a line starting with "#13#10" as an unknown preprocessor directive.
+
+    (#ifdef lines inside [Code] are intended: they select the payloads.)
+    """
     lines = bi.ISS.read_text(encoding="utf-8").splitlines()
     assert not [line for line in lines if re.match(r"\s*#\d", line)]
