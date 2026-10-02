@@ -111,6 +111,7 @@ def supervise(
             if deadline is not None and clock() >= deadline:
                 break
     except KeyboardInterrupt:
+        # Ctrl-C is an expected shutdown path; cleanup is handled in `finally`.
         pass
     finally:
         pipe.stop()
