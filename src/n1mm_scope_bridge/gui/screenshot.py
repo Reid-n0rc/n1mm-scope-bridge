@@ -206,6 +206,8 @@ def demo_window(
     )
     window.log = LogBuffer(now=lambda: DEMO_TIME)
     window.log_view.clear()
+    # Site media always show the waterfall, even though the preview is off by default.
+    window.set_preview_visible(True, persist=False)
     if streaming:
         st = source.status
         window.model.started()

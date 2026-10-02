@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import socket
 import threading
-import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from n1mm_scope_bridge.bridge import (
     SpectrumCombiner,
     build_pipeline,
 )
-from n1mm_scope_bridge.demo import DemoStream
 from n1mm_scope_bridge.n1mm import N1mmSender
 from n1mm_scope_bridge.radios import yaesu_scope as ys
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
@@ -220,28 +218,39 @@ def test_span_unavailable_warns_and_counts_bad_frames() -> None:
 # --- live preview at the radio's rate (#126) ------------------------------------------
 
 
-def test_preview_follows_the_radio_rate_not_the_n1mm_rate() -> None:
-    """The live display gets every parsed frame (up to preview_hz); N1MM+ still gets rate_hz."""
-    source = DemoStream(fps=40)
+@pytest.mark.parametrize("rate_hz", [1.0, 4.0, 10.0])
+def test_preview_follows_the_radio_rate_not_the_n1mm_rate(rate_hz: float) -> None:
+    """Every parsed frame reaches the live display, whatever the N1MM+ rate (#126).
+
+    Deterministic: a finite source and a clock that jumps a full second per call,
+    so the preview limiter never drops a frame; no wall-clock ratios.
+    """
+    frames = [make_ft4222_frame()] * 50
     previews: list[ParsedFrame] = []
-    sender = FakeSender()
+    now = [0.0]
+
+    def clock() -> float:
+        now[0] += 1.0
+        return now[0]
+
     pipe = build_pipeline(
-        BridgeConfig(FT710, "FT-710", rate_hz=4),
-        source,
-        sender,
-        close_source=source.stop,
+        BridgeConfig(FT710, "FT-710", rate_hz=rate_hz),
+        frames,
+        FakeSender(),
         on_preview=previews.append,
-        preview_hz=100,
+        preview_hz=15,
         warn=lambda _m: None,
+        clock=clock,
     )
     pipe.start()
-    time.sleep(1.0)
-    pipe.stop()
-    pipe.join(timeout=5)
+    assert pipe.join(timeout=10)
     stats = pipe.stats()
-    assert len(previews) >= 0.8 * stats.frames_read  # nearly every frame
-    assert len(previews) > 3 * len(sender.payloads)  # much faster than N1MM+ updates
-    assert len(sender.payloads) <= 6
+    assert stats.frames_read == 50
+    # Every frame that reaches the parser is previewed (the reader's queue may drop
+    # some when the source outruns the parser); no throttling to the N1MM+ rate.
+    parsed = stats.frames_read - stats.frames_dropped - stats.bad_frames
+    assert parsed > 0
+    assert len(previews) == parsed
 
 
 def test_preview_is_capped_at_preview_hz() -> None:
