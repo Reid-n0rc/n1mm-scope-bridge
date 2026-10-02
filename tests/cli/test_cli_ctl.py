@@ -39,7 +39,7 @@ def test_run_with_remote_control_stop_start_set(
     """
     port = free_port()
     replies: dict[str, dict[str, object]] = {}
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
     done = threading.Event()
 
     class DrivenSession(StreamSession):
@@ -70,7 +70,7 @@ def test_run_with_remote_control_stop_start_set(
                 code, out, err = cli("ctl", "--port", str(port), "--timeout", "10", *cmd.split())
                 assert out, f"no reply to {cmd!r}: {err}"
                 replies[name] = json.loads(out) | {"exit": code}
-        except BaseException as exc:
+        except Exception as exc:  # re-raised in the test thread below
             errors.append(exc)
         finally:
             done.set()
