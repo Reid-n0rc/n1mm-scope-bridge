@@ -77,17 +77,26 @@ More detail: [docs/architecture.md](docs/architecture.md).
 Own one of the planned radios? Open a **Radio support request** issue. To add
 a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 
-## Requirements
+## Install (Windows)
 
-- Windows 10/11, where N1MM+ runs. Development and the automated tests also
-  run on Linux and macOS.
-- Until the installer ships (#20): Python 3.10 or later, installed from
-  source with the `gui` extra.
-- For the FT-710: FTDI's **LibFT4222** and **D2XX** libraries, installed from
-  [ftdichip.com](https://ftdichip.com/products/ft4222h/). This project never
-  ships them.
-- N1MM Logger+ with the Spectrum Display window set to read an external
-  source by name. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
+N1MM Scope Bridge runs on **Windows 10/11 (64-bit)**, next to N1MM Logger+.
+You don't need Python or a command prompt.
+
+1. Download `n1mm-scope-bridge-setup-<version>.exe` from
+   [Releases](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases). (No
+   release has been published yet; the installer is built and tested in CI.)
+2. Run it. It installs for your Windows account only (no admin prompt), and
+   adds Start menu and optional desktop shortcuts.
+3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): FTDI's license doesn't
+   let us include it. Download it from
+   [ftdichip.com](https://ftdichip.com/products/ft4222h/). The installer can
+   copy it into place for you from the folder you unzipped.
+4. Start **N1MM Scope Bridge**, press **Start**, and pick its name in N1MM+'s
+   Spectrum Display settings. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
+
+macOS and Linux: the code is portable and tested there in CI, but these
+platforms are unsupported for operators. To run from source on any platform,
+see Development below and install with the `gui` extra.
 
 ## Roadmap
 
