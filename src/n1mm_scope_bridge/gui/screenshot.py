@@ -18,14 +18,20 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import QApplication, QWidget
 
-from n1mm_scope_bridge.gui.main_window import MainWindow, status_text
+from n1mm_scope_bridge.emulator import make_emulator
+from n1mm_scope_bridge.gui.main_window import DEFAULT_SIZE, MainWindow
+from n1mm_scope_bridge.gui.spectrum import HISTORY_ROWS
 from n1mm_scope_bridge.gui.status import LogBuffer
+from n1mm_scope_bridge.gui.style import dark_palette, refresh_stylesheet
 from n1mm_scope_bridge.gui.tray import build_close_box
 from n1mm_scope_bridge.pipeline import PipelineStats
-from n1mm_scope_bridge.radios.base import ScopeStatus
+from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
+from n1mm_scope_bridge.radios.ft710 import FT710
 from n1mm_scope_bridge.settings import Settings
+from n1mm_scope_bridge.transport.ft4222 import Ft4222Reader
 
-WINDOW_SIZE = (720, 960)
+WINDOW_SIZE = DEFAULT_SIZE
+WATERFALL_FRAMES = HISTORY_ROWS  # demo history fills the waterfall
 DEMO_TIME = 1_790_000_000.0  # fixed log timestamps
 DEMO_STATUS = ScopeStatus(14_074_000, 20_000, "center", "Center (Normal)")
 DEMO_STATS = PipelineStats(frames_read=4_120, frames_dropped=0, bad_frames=0, emitted=824)
@@ -46,9 +52,23 @@ class Scene:
 SCENES = (
     Scene(
         "main-window",
-        "The N1MM Scope Bridge window streaming a Yaesu FT-710 on 14.074 MHz to N1MM+, "
-        "with the radio and N1MM+ settings, a live status panel, and the log.",
-        "The main window while streaming: settings, live status, and the log.",
+        "The N1MM Scope Bridge window streaming a Yaesu FT-710 on 14.074 MHz to N1MM+: "
+        "a live spectrum and waterfall of the FT8 segment, cards for frequency, span, "
+        "scope mode, N1MM+ rate and health, and the Start/Stop button.",
+        "Streaming: the preview shows exactly what N1MM+ receives.",
+    ),
+    Scene(
+        "main-window-idle",
+        "The N1MM Scope Bridge window before streaming, inviting you to press Start or to "
+        "try the built-in emulator.",
+        "Before you press Start.",
+    ),
+    Scene(
+        "settings",
+        "The Settings dialog with pages for Radio, N1MM+, Display, Startup and closing, "
+        "and Advanced; the Radio page shows the radio model, the emulator option, and the "
+        "FTDI library folder.",
+        "Settings are grouped into pages and save automatically.",
     ),
     Scene(
         "close-prompt",
@@ -65,8 +85,19 @@ SCENES = (
 )
 
 
-def demo_window(settings_path: Path) -> MainWindow:
-    """The real main window in a fixed streaming state, without starting a stream."""
+def demo_frames(count: int = WATERFALL_FRAMES) -> list[ParsedFrame]:
+    """Parsed frames from the FT-710 emulator (deterministic seed)."""
+    reader = Ft4222Reader(make_emulator("steady", fps=0))
+    frames: list[ParsedFrame] = []
+    for raw in reader:
+        frames.append(FT710.parse(raw))
+        if len(frames) >= count:
+            reader.stop()
+    return frames
+
+
+def demo_window(settings_path: Path, *, streaming: bool = True) -> MainWindow:
+    """The real main window in a fixed state, without starting a stream."""
     window = MainWindow(
         Settings(emulator=True),
         settings_path=settings_path,
@@ -77,13 +108,16 @@ def demo_window(settings_path: Path) -> MainWindow:
     )
     window.log = LogBuffer(now=lambda: DEMO_TIME)
     window.log_view.clear()
-    window.model.started()
-    window.model.status = DEMO_STATUS
-    window.model.stats = DEMO_STATS
-    window.model.rate_per_s = 4.0
-    window._set_state("streaming", status_text(DEMO_STATUS))
-    window._log("info", "Started streaming FT-710 (emulator) to N1MM+ at 127.0.0.1:13064")
-    window._log("info", "Scope: 14.074000 MHz, span 20 kHz, Center (Normal)")
+    if streaming:
+        window.model.started()
+        window.model.status = DEMO_STATUS
+        window.model.stats = DEMO_STATS
+        window.model.rate_per_s = 4.0
+        for frame in demo_frames():
+            window.spectrum.set_frame(frame.spectrum, window.settings.scaling)
+        window._set_state("streaming", window._streaming_message())
+        window._log("info", "Started streaming FT-710 (emulator) to N1MM+ at 127.0.0.1:13064")
+        window._log("info", "Scope: 14.074000 MHz, span 20 kHz, Center (Normal)")
     window.resize(*WINDOW_SIZE)
     return window
 
@@ -100,9 +134,14 @@ def _grab(widget: QWidget, app: QApplication, path: Path) -> tuple[int, int]:
 def _capture_theme(app: QApplication, out_dir: Path, suffix: str) -> dict[str, tuple[int, int]]:
     sizes: dict[str, tuple[int, int]] = {}
     window = demo_window(out_dir / "screenshot-settings.json")
-    widgets: list[QWidget] = []
+    idle = demo_window(out_dir / "screenshot-settings.json", streaming=False)
+    widgets: list[QWidget] = [idle]
     try:
         sizes["main-window"] = _grab(window, app, out_dir / f"main-window{suffix}.png")
+        sizes["main-window-idle"] = _grab(idle, app, out_dir / f"main-window-idle{suffix}.png")
+        dialog = idle.open_settings("Radio")
+        dialog.resize(720, 460)
+        sizes["settings"] = _grab(dialog, app, out_dir / f"settings{suffix}.png")
         box, *_ = build_close_box(window)
         widgets.append(box)
         sizes["close-prompt"] = _grab(box, app, out_dir / f"close-prompt{suffix}.png")
@@ -112,6 +151,8 @@ def _capture_theme(app: QApplication, out_dir: Path, suffix: str) -> dict[str, t
     finally:
         # Destroy everything now: leftover widgets crash a later setStyleSheet().
         for widget in widgets:
+            if isinstance(widget, MainWindow):
+                widget.quit_app()
             widget.close()
             widget.deleteLater()
         window.quit_app()
@@ -140,16 +181,28 @@ def capture(
     *,
     dark: Callable[[QApplication], bool] = dark_supported,
 ) -> list[Path]:
-    """Save every scene (and dark variants where supported); return the PNG paths."""
+    """Save every scene in light and dark; return the PNG paths.
+
+    Dark uses the platform's dark scheme where it honours one, otherwise a
+    built-in dark palette (offscreen CI ignores colour-scheme requests).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
+    original = app.palette()
     light = _capture_theme(app, out_dir, "")
-    dark_sizes: dict[str, tuple[int, int]] = {}
-    if dark(app):  # pragma: no cover - needs a platform with a real colour scheme
-        app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        try:
-            dark_sizes = _capture_theme(app, out_dir, "-dark")
-        finally:
+    native = dark(app)
+    try:
+        if native:  # pragma: no cover - needs a platform with a real colour scheme
+            app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+        else:
+            app.setPalette(dark_palette())
+        refresh_stylesheet(app)
+        dark_sizes = _capture_theme(app, out_dir, "-dark")
+    finally:
+        if native:  # pragma: no cover
             app.styleHints().unsetColorScheme()
+        else:
+            app.setPalette(original)
+        refresh_stylesheet(app)
     (out_dir / "screenshot-settings.json").unlink(missing_ok=True)
     manifest = {
         scene.name: {

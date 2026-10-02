@@ -9,6 +9,7 @@ state change holds ``_lock``.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -128,24 +129,26 @@ class StreamSession:
         """
         deadline = None if duration is None else self._clock() + duration
         try:
-            while deadline is None or self._clock() < deadline:
-                with self._lock:
-                    pipe = self._pipe
-                if pipe is not None and pipe.alive:
-                    remaining = interval if deadline is None else max(0.0, deadline - self._clock())
-                    pipe.join(timeout=min(interval, remaining))
-                    print(format_status(self._latest.value, pipe), file=self._err)
-                    continue
-                if pipe is not None:
+            # Ctrl-C ends the session like a normal stop; the finally block cleans up.
+            with contextlib.suppress(KeyboardInterrupt):
+                while deadline is None or self._clock() < deadline:
                     with self._lock:
-                        self._finish()  # re-raises a stream error
-                    if not self._keep_alive:
+                        pipe = self._pipe
+                    if pipe is not None and pipe.alive:
+                        remaining = (
+                            interval if deadline is None else max(0.0, deadline - self._clock())
+                        )
+                        pipe.join(timeout=min(interval, remaining))
+                        print(format_status(self._latest.value, pipe), file=self._err)
+                        continue
+                    if pipe is not None:
+                        with self._lock:
+                            self._finish()  # re-raises a stream error
+                        if not self._keep_alive:
+                            return
+                    elif not self._keep_alive:
                         return
-                elif not self._keep_alive:
-                    return
-                time.sleep(min(interval, 0.2))
-        except KeyboardInterrupt:
-            pass
+                    time.sleep(min(interval, 0.2))
         finally:
             with self._lock:
                 self._finish()

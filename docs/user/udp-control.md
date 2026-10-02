@@ -13,9 +13,10 @@ on.
 - **Settings file:** `"control_enabled": true` (see [settings](settings.md)).
 
 The bridge then listens on **127.0.0.1 port 13070**, so only programs on this
-PC can control it. To allow another PC, set `control_bind` to this PC's
-address **and** list the allowed client IPs in `control_allow`. Requests from
-any other address are ignored.
+PC can control it. To allow another PC, set `control_bind` to **this PC's own
+LAN IP address** (for example `192.168.1.5`) **and** list the allowed client
+IPs in `control_allow`. Requests from any other address are ignored. Binding
+to all interfaces (`0.0.0.0` or `::`) is always refused.
 
 ## Commands
 

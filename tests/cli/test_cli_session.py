@@ -10,8 +10,9 @@ import pytest
 from frames import make_ft4222_frame
 
 from n1mm_scope_bridge.cli.session import Source, StreamSession
+from n1mm_scope_bridge.emulator import make_emulator
 from n1mm_scope_bridge.settings import Settings
-from n1mm_scope_bridge.transport.ft4222 import Ft4222Error
+from n1mm_scope_bridge.transport.ft4222 import Ft4222Error, Ft4222Reader
 
 SETTINGS = Settings(n1mm_port=9, rate_hz=10.0)  # discard port; nothing listens
 
@@ -102,3 +103,30 @@ def test_ctrl_c_stops_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("n1mm_scope_bridge.cli.session.format_status", interrupt)
     s.wait(duration=None)
     assert s.status()["streaming"] is False
+
+
+def test_center_mode_prompt_and_confirmation_from_frames() -> None:
+    """mode-change cycles Center -> Cursor -> Fixed (20 frames each, 200 ms at 100 fps).
+
+    The 10 Hz sender samples statuses, so wait (event-style, bounded) until the
+    confirmation appears instead of assuming which frames it sees.
+    """
+    emu = make_emulator("mode-change", fps=100)
+
+    def source() -> Source:
+        reader = Ft4222Reader(emu)
+        return reader, reader.stop
+
+    err = io.StringIO()
+    s = StreamSession(SETTINGS, source, err)
+    s.start()
+    tick = threading.Event()
+    for _ in range(200):  # at most 10 s
+        out = err.getvalue()
+        if "left Center mode" in out and "is in Center mode: N1MM+ frequencies are exact." in out:
+            break
+        tick.wait(0.05)
+    s.stop()
+    out = err.getvalue()
+    assert "Set the FT-710's scope to Center mode" in out or "left Center mode" in out
+    assert "FT-710 scope is in Center mode: N1MM+ frequencies are exact." in out

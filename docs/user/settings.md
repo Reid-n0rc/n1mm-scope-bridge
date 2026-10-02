@@ -32,7 +32,7 @@ a warning.
 | `on_close` | `ask` | — | GUI Close button: `ask`, `tray` (keep streaming in the tray), or `exit` |
 | `control_enabled` | `false` | `run --control-port` | Optional [UDP remote control](udp-control.md). **Off by default.** |
 | `control_port` | `13070` | `run --control-port` | Remote-control UDP port (must differ from the N1MM+ port) |
-| `control_bind` | `127.0.0.1` | — | Address the remote-control listener uses. Leave it on `127.0.0.1` (this PC only) unless you need control from another PC |
+| `control_bind` | `127.0.0.1` | — | Address the remote-control listener uses. Leave it on `127.0.0.1` (this PC only) unless you need control from another PC; then use **this PC's own LAN IP** (for example `192.168.1.5`). All-interfaces addresses (`0.0.0.0`, `::`) are refused |
 | `control_allow` | empty | — | Client IPs allowed to send commands, separated by commas. Required if `control_bind` is not a loopback address |
 
 Each setting is checked before use, and a problem is reported by name, for

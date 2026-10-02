@@ -20,6 +20,11 @@ file, AGENTS.md wins.
   invalid input, errors). **No automated test may need a radio.** Use the
   FT-710 emulator (`n1mm_scope_bridge.emulator`), captures, or fakes.
 - Run `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest --cov`.
+- **Resolve every CodeQL alert and security finding the PR introduces** before
+  it can merge: fix it, or explain a genuine false positive in the PR so a
+  maintainer can dismiss it with a justification. The merge gate
+  (`scripts/ready_to_merge.py`) refuses PRs with red checks, open CodeQL alerts,
+  open secret-scanning alerts, or a failing dependency review.
 
 ## Never
 
