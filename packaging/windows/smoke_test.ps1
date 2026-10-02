@@ -59,6 +59,8 @@ function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec
 
 # --- install ------------------------------------------------------------------------
 # An earlier release candidate could add a start-with-Windows Run value; setup must remove it (#136).
+# Fresh runner images may not have the Run key at all; create it first.
+New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Force -ErrorAction SilentlyContinue | Out-Null
 New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $AppName -Value 'stale-from-rc1' -PropertyType String -Force | Out-Null
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
 $code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
