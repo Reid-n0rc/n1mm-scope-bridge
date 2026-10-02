@@ -64,7 +64,9 @@ SIMULATED_LABEL = "Simulated: FT-710 emulator"
 REAL_DIR = "_real_screenshots"
 REAL_LABEL = "Real radio: Yaesu FT-710"
 # Screenshots showing spectrum data must say where the data came from.
-STREAMING_SCENES = ("main-window",)
+STREAMING_SCENES = ("main-window", "main-window-live")
+# Every file an entry can name (copied into the site and checked to exist).
+FILE_KEYS = ("file", "dark", "webp", "dark_webp", "still", "dark_still")
 
 
 class SiteError(Exception):
@@ -106,9 +108,14 @@ def load_screenshots(directory: Path) -> Shots:
         for key in ("file", "width", "height", "alt", "caption"):
             if not isinstance(entry, dict) or key not in entry:
                 raise SiteError(f"screenshots: {scene!r} has no {key!r}")
-        for key in ("file", "dark"):
+        for key in FILE_KEYS:
             if key in entry and not (directory / str(entry[key])).is_file():
                 raise SiteError(f"screenshots: {scene!r} file {entry[key]!r} is missing")
+        if entry.get("animated") and "still" not in entry:
+            raise SiteError(
+                f"screenshots: {scene!r} is animated but has no still image for viewers who "
+                "prefer reduced motion"
+            )
         if scene in STREAMING_SCENES and not (entry.get("simulated") or entry.get("real_radio")):
             raise SiteError(
                 f"screenshots: {scene!r} shows spectrum data but does not state its source "
@@ -117,21 +124,41 @@ def load_screenshots(directory: Path) -> Shots:
     return manifest
 
 
-def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
-    """Accessible <figure> for one screenshot (explicit size; dark variant if any)."""
-    src = f"{SHOTS_DIR}/{entry['file']}"
-    dark = (
-        f'<source srcset="{SHOTS_DIR}/{entry["dark"]}" media="(prefers-color-scheme: dark)">'
-        if "dark" in entry
-        else ""
+def _sources(entry: dict[str, object]) -> str:
+    """<source> elements: reduced-motion stills first, then dark, then WebP."""
+
+    def src(key: str, media: str = "", kind: str = "") -> str:
+        if key not in entry:
+            return ""
+        attrs = f' media="{media}"' if media else ""
+        attrs += f' type="{kind}"' if kind else ""
+        return f'<source srcset="{SHOTS_DIR}/{entry[key]}"{attrs}>'
+
+    if not entry.get("animated"):
+        return src("dark", "(prefers-color-scheme: dark)")
+    calm = "(prefers-reduced-motion: reduce)"
+    dark = "(prefers-color-scheme: dark)"
+    return "".join(
+        (
+            src("dark_still", f"{calm} and {dark}"),
+            src("still", calm),
+            src("dark_webp", dark, "image/webp"),
+            src("dark", dark),
+            src("webp", "", "image/webp"),
+        )
     )
+
+
+def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
+    """Accessible <figure> for one screenshot or recording (explicit size, variants)."""
+    src = f"{SHOTS_DIR}/{entry['file']}"
     label = f' <span class="badge">{PREVIEW_LABEL}</span>' if preview else ""
     if entry.get("simulated"):
         label += f' <span class="badge">{SIMULATED_LABEL}</span>'
     elif entry.get("real_radio"):
         label += f' <span class="badge">{REAL_LABEL}</span>'
     return (
-        f'<figure class="screenshot" id="shot-{scene}"><picture>{dark}'
+        f'<figure class="screenshot" id="shot-{scene}"><picture>{_sources(entry)}'
         f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
         f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}" loading="lazy">'
         f"</picture><figcaption>{html.escape(str(entry['caption']))}{label}</figcaption></figure>"
@@ -274,7 +301,7 @@ def build(
     if shots is not None:
         (out / SHOTS_DIR).mkdir(parents=True, exist_ok=True)
         for scene, entry in shots.items():
-            for key in ("file", "dark"):
+            for key in FILE_KEYS:
                 if key in entry:
                     name = str(entry[key])
                     shutil.copy2(origin[scene] / name, out / SHOTS_DIR / name)

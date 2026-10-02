@@ -35,10 +35,20 @@ def register(sub: Any) -> argparse.ArgumentParser:
         help="save website screenshots of the window and dialogs into DIR, then exit",
     )
     p.add_argument(
-        "--source",
-        choices=("emulator", "radio"),
-        help="with --screenshot: data from the built-in emulator (default) or the radio",
+        "--record",
+        type=Path,
+        metavar="DIR",
+        help="record an animated GIF/WebP of the streaming window into DIR, then exit",
     )
+    p.add_argument("--seconds", type=float, help="with --record: length in seconds (default 6)")
+    p.add_argument("--fps", type=float, help="with --record: frames per second (default 4)")
+    p.add_argument(
+        "--source",
+        choices=("emulator", "radio", "replay"),
+        help="with --screenshot/--record: the built-in emulator (default), the radio, "
+        "or (--record only) a capture given with --replay",
+    )
+    p.add_argument("--replay", type=Path, help="with --source replay: a capture from a radio")
     p.add_argument("--ftdi-lib-dir", help="with --source radio: folder with LibFT4222 and D2XX")
     p.add_argument(
         "--settle",
@@ -61,8 +71,16 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
         argv.append("--self-test")
     if args.screenshot is not None:
         argv += ["--screenshot", str(args.screenshot)]
+    if args.record is not None:
+        argv += ["--record", str(args.record)]
+    if args.seconds is not None:
+        argv += ["--seconds", str(args.seconds)]
+    if args.fps is not None:
+        argv += ["--fps", str(args.fps)]
     if args.source is not None:
         argv += ["--source", args.source]
+    if args.replay is not None:
+        argv += ["--replay", str(args.replay)]
     if args.ftdi_lib_dir is not None:
         argv += ["--ftdi-lib-dir", args.ftdi_lib_dir]
     if args.settle is not None:
