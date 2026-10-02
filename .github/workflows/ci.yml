@@ -36,7 +36,7 @@ jobs:
       - run: uv run mypy
 
   test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python }})
+    name: Test (${{ matrix.os }}, Python ${{ matrix.label || matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,6 +55,19 @@ jobs:
             python: "3.14t"
           - os: windows-latest
             python: "3.14t"
+          # Windows on ARM, native ARM64 Python (#149). The FTDI DLLs are amd64
+          # (no verifiable ARM64 source yet), so the native tests check the clear
+          # architecture-mismatch error; ARM64 PCs run the x64 app (emulated).
+          - os: windows-11-arm
+            python: "3.13"
+            ftdi_arch: amd64
+          # 32-bit x86 Python on x64 Windows (#149): core + CLI only, because
+          # Qt 6 has no 32-bit Windows build. Real i386 FTDI DLLs.
+          - os: windows-latest
+            python: cpython-3.13-windows-x86
+            label: 3.13-x86
+            ftdi_arch: i386
+            nogui: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,14 +85,14 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/ftdi/downloads
-          key: ftdi-${{ hashFiles('scripts/fetch_ftdi.py') }}
+          key: ftdi-${{ matrix.ftdi_arch || 'amd64' }}-${{ hashFiles('scripts/fetch_ftdi.py', 'packaging/windows/ftdi_pin.json') }}
       - name: FTDI LibFT4222 + D2XX (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: python scripts/fetch_ftdi.py --dest "$RUNNER_TEMP/ftdi"
-      # PySide6 has no wheels for free-threaded Python; GUI tests skip there.
-      - run: uv sync --locked ${{ endsWith(matrix.python, 't') && '--no-group gui-dev' || '' }}
-      - run: uv run ${{ endsWith(matrix.python, 't') && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml ${{ endsWith(matrix.python, 't') && '--cov-config=.coveragerc-nogui' || '' }}
+        run: python scripts/fetch_ftdi.py --dest "$RUNNER_TEMP/ftdi" --arch "${{ matrix.ftdi_arch || 'amd64' }}"
+      # No GUI (PySide6) on free-threaded Python (abi3 wheels only) or 32-bit x86 (no Qt 6).
+      - run: uv sync --locked ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }}
+      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
       - name: Upload coverage to Codecov
@@ -89,7 +102,7 @@ jobs:
           # Repository secret only; fork PRs have no secrets and skip the upload.
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
-          flags: ${{ runner.os }}-${{ matrix.python }}
+          flags: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.label || matrix.python }}
           fail_ci_if_error: false
 
   hooks:

@@ -76,9 +76,10 @@ def check(
         ff.authenticode_signer if sys.platform == "win32" else None
     ),
     workdir: Path | None = None,
+    arch: str = ff.DEFAULT_ARCH,
 ) -> list[str]:
     """Return problems (empty when the download is healthy)."""
-    pkg, signers = ff.load_pin(pin)
+    pkg, signers = ff.load_pin(pin, arch)
     if not pkg.url.startswith("https://"):
         return [f"pinned URL is not HTTPS: {pkg.url}"]
     with tempfile.TemporaryDirectory(dir=workdir) as tmp:
@@ -95,17 +96,30 @@ def check(
         return _signature_problems(written, signers, signature_check)
 
 
-def main(argv: Sequence[str] | None = None, *, out: Callable[[str], object] = print) -> int:
-    problems = check()
-    pkg, _ = ff.load_pin()
-    if problems:
-        out(f"FTDI download check FAILED for {pkg.filename}:")
-        for problem in problems:
-            out(f"  - {problem}")
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    out: Callable[[str], object] = print,
+    pin: Path = ff.PIN,
+    run_check: Callable[..., list[str]] | None = None,
+) -> int:
+    """Check every pinned architecture; exit 1 if any download is broken."""
+    run = run_check or check
+    failed = False
+    signed = " and signatures" if sys.platform == "win32" else ""
+    for arch in ff.pin_arches(pin):
+        pkg, _ = ff.load_pin(pin, arch)
+        problems = run(pin=pin, arch=arch)
+        if problems:
+            failed = True
+            out(f"FTDI download check FAILED for {arch} ({pkg.filename}):")
+            for problem in problems:
+                out(f"  - {problem}")
+        else:
+            out(f"FTDI download OK for {arch}: {pkg.filename} (HTTP 200, SHA-256{signed} verified)")
+    if failed:
         out(FIX_HINT)
         return 1
-    signed = " and signatures" if sys.platform == "win32" else ""
-    out(f"FTDI download OK: {pkg.filename} (HTTP 200, SHA-256{signed} verified)")
     return 0
 
 
