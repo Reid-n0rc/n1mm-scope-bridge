@@ -16,12 +16,19 @@ import sysconfig
 import zipfile
 from pathlib import Path
 
-from regression_core import DIST, GUI_SKIP, ROOT, CheckFailed, Runner, Step, StepContext, tail
-
-ARM_SKIP = (
-    "website screenshots come from the x64 job; the wizard walk can't click past the "
-    "licence page on the windows-11-arm runner (#149)"
+from regression_core import (
+    ARM_SCREENSHOT_SKIP,
+    DIST,
+    GUI_SKIP,
+    ROOT,
+    CheckFailed,
+    Runner,
+    Step,
+    StepContext,
+    tail,
 )
+
+ARM_SKIP = ARM_SCREENSHOT_SKIP
 SCRIPT = ROOT / "packaging" / "windows" / "installer_screenshots.ps1"
 INSTALLERS = ROOT / "dist" / "windows"
 INSTALLER_GLOB = "n1mm-scope-bridge-setup-*.exe"

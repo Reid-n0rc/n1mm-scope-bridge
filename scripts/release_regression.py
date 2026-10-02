@@ -31,6 +31,7 @@ from pathlib import Path
 from types import ModuleType
 
 from regression_core import (
+    ARM_SCREENSHOT_SKIP,
     GUI_SKIP,
     PENDING,
     ROOT,
@@ -185,7 +186,7 @@ def main(
         is_windows=sys.platform == "win32",
     )
     # Steps disabled until their feature lands are allowed; skipped Windows steps are not.
-    allowed = (PENDING, GUI_SKIP, SKIP_WINDOWS_FLAG)
+    allowed = (PENDING, GUI_SKIP, SKIP_WINDOWS_FLAG, ARM_SCREENSHOT_SKIP)
     blocking_skips = [
         r for r in results if r.status == "SKIPPED" and not r.detail.startswith(allowed)
     ]
