@@ -7,7 +7,11 @@ site shows that version and its downloads; with no tag it builds the
 "in development" site used until the first release. Standard library only.
 
     python scripts/build_site.py --out _site                      # no release yet
-    python scripts/build_site.py --out _site --tag v0.1.0 --release-date 2026-11-01
+    python scripts/build_site.py --out _site --tag v0.1.0 --release-date 2026-11-01 \
+        --release-assets assets.json   # gh api repos/OWNER/REPO/releases/tags/v0.1.0 --jq .assets
+
+The download button links straight to the release's installer, taken from the
+release's real asset list, so the build fails rather than publish a dead link.
 
 Template syntax:
   <!-- include:NAME -->                      site/_partials/NAME.html
@@ -31,7 +35,7 @@ import posixpath
 import re
 import shutil
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -46,6 +50,7 @@ DISCLAIMER_MARKER = "not affiliated with or endorsed by the N1MM Logger+ project
 PARTIALS = "_partials"
 TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 INCLUDE = re.compile(r"<!-- include:([a-z0-9_-]+) -->")
 BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re.S)
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
@@ -81,17 +86,65 @@ class SiteError(Exception):
     """The site could not be built correctly."""
 
 
-def context(tag: str | None, release_date: str | None) -> dict[str, str]:
+def installer_name(version: str) -> str:
+    return f"n1mm-scope-bridge-setup-{version}.exe"
+
+
+def installer_asset(tag: str, assets: Sequence[Mapping[str, object]]) -> dict[str, str]:
+    """The release's installer download (URL, file name, SHA-256), from its asset list.
+
+    ``assets`` is the GitHub API's release ``assets`` array. Fails if the
+    installer is not an uploaded asset of this release, so the site never links
+    to a file that does not exist.
+    """
+    name = installer_name(tag[1:])
+    url = f"{REPO_URL}/releases/download/{tag}/{name}"
+    for asset in assets:
+        if asset.get("name") != name:
+            continue
+        if asset.get("state", "uploaded") != "uploaded":
+            raise SiteError(f"release {tag}: {name} is not fully uploaded yet")
+        if asset.get("browser_download_url", url) != url:
+            raise SiteError(f"release {tag}: {name} downloads from an unexpected URL")
+        digest = str(asset.get("digest") or "")
+        if not SHA256.match(digest):
+            raise SiteError(f"release {tag}: {name} has no SHA-256 digest")
+        return {"download_url": url, "installer_name": name, "installer_checksum": digest[7:]}
+    raise SiteError(f"release {tag} has no {name}; the download link would not resolve")
+
+
+def load_assets(path: Path) -> list[dict[str, object]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise SiteError(f"release assets: cannot read {path}: {err}") from None
+    if isinstance(data, dict):  # the whole release object
+        data = data.get("assets")
+    if not isinstance(data, list) or not all(isinstance(a, dict) for a in data):
+        raise SiteError(f"release assets: {path} is not a list of assets")
+    return data
+
+
+def context(
+    tag: str | None,
+    release_date: str | None,
+    assets: Sequence[Mapping[str, object]] | None = None,
+) -> dict[str, str]:
     """Values available to templates. ``tag`` None means no release yet."""
     if tag is None:
         if release_date is not None:
             raise SiteError("--release-date needs --tag")
+        if assets is not None:
+            raise SiteError("--release-assets needs --tag")
         return {"source_url": REPO_URL, "ref": "dev", "docs_url": f"{REPO_URL}/tree/dev/docs/user"}
     if not TAG.match(tag):
         raise SiteError(f"release tag must look like v1.2.3 (final releases only), got {tag!r}")
     if release_date is None or not DATE.match(release_date):
         raise SiteError("a release needs --release-date YYYY-MM-DD")
+    if assets is None:
+        raise SiteError("a release needs --release-assets (the release's asset list)")
     return {
+        **installer_asset(tag, assets),
         "source_url": REPO_URL,
         "ref": tag,
         "version": tag[1:],
@@ -456,13 +509,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--tag", help="final release tag (vX.Y.Z); omit before the first release")
     parser.add_argument("--release-date", help="release date, YYYY-MM-DD (with --tag)")
     parser.add_argument(
+        "--release-assets",
+        type=Path,
+        help="JSON asset list of the release (with --tag), for the direct installer link",
+    )
+    parser.add_argument(
         "--screenshots",
         type=Path,
         help="folder from `n1mm-scope-bridge gui --screenshot DIR` (omit: no screenshots)",
     )
     args = parser.parse_args(argv)
     try:
-        pages = build(args.out, context(args.tag, args.release_date), screenshots=args.screenshots)
+        assets = load_assets(args.release_assets) if args.release_assets else None
+        ctx = context(args.tag, args.release_date, assets)
+        pages = build(args.out, ctx, screenshots=args.screenshots)
     except SiteError as err:
         print(f"error: {err}", file=sys.stderr)
         return 1

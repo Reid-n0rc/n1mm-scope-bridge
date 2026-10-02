@@ -90,3 +90,6 @@ code { background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 0.25re
 .table-wrap { overflow-x: auto; margin: 1rem 0; }
 blockquote { margin: 1rem 0; padding: .25rem 1rem; border-left: 4px solid var(--border); }
 pre { overflow-x: auto; padding: .75rem; border: 1px solid var(--border); border-radius: 6px; }
+
+/* SHA-256 checksums wrap on narrow screens instead of scrolling the page. */
+.checksum { overflow-wrap: anywhere; }
