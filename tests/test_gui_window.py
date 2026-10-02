@@ -19,7 +19,7 @@ from n1mm_scope_bridge.gui import app as gui_app
 from n1mm_scope_bridge.gui import main_window as mw
 from n1mm_scope_bridge.gui.controller import StreamController
 from n1mm_scope_bridge.gui.main_window import MainWindow
-from n1mm_scope_bridge.gui.style import STYLESHEET, apply_style, choose_style
+from n1mm_scope_bridge.gui.style import Theme, apply_style, build_stylesheet, choose_style
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader, LibraryNotFound
@@ -72,12 +72,11 @@ def test_choose_style(available: list[str], expected: str) -> None:
     assert choose_style(available) == expected
 
 
-def test_apply_style_uses_palette_only(qapp: QApplication) -> None:
+def test_apply_style_builds_stylesheet_from_palette(qapp: QApplication) -> None:
     assert apply_style(qapp) in ("windows11", "Fusion", "fusion")
-    assert qapp.styleSheet() == STYLESHEET
-    assert "#" not in STYLESHEET.replace("QLabel#", "").replace(
-        "QPushButton#", ""
-    )  # no hex colours
+    theme = Theme.from_palette(qapp.palette())
+    assert qapp.styleSheet() == build_stylesheet(theme)
+    assert theme.accent.name() in qapp.styleSheet()
 
 
 # --- form ----------------------------------------------------------------------------

@@ -100,6 +100,17 @@ comment, the issue, or the doc instead.
   executables. The app ships `LICENSE`, `NOTICE`, and this file in
   `licenses/` (plus the Qt license texts once the GUI is bundled).
 
+### Lucide icons (GUI)
+
+- Source: <https://lucide.dev>, package `lucide-static` v1.49.0
+- License: ISC (Copyright (c) 2026 Lucide Icons and Contributors). The icons
+  `chevron-down`, `chevron-up`, `info`, and `square` derive from Feather, MIT
+  (Copyright (c) 2013-present Cole Bemis).
+- Used in: `src/n1mm_scope_bridge/gui/icons.py`. Only the inner SVG elements of
+  14 icons are embedded as Python strings, tinted from the palette at run time.
+  The full license notices are in that file's header, and its SPDX expression is
+  `GPL-3.0-only AND ISC AND MIT`.
+
 ### pytest-qt (development only, not distributed)
 
 - Source: <https://pypi.org/project/pytest-qt/>; license: MIT.

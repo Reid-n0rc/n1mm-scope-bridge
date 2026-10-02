@@ -180,3 +180,20 @@ def test_replay_fixture_end_to_end_over_udp() -> None:
     assert len(levels) == 850
     assert max(levels) > 60
     assert not [t for t in threading.enumerate() if t.name.startswith("ft710-")]
+
+
+def test_on_frame_receives_exactly_what_was_sent() -> None:
+    sender = FakeSender()
+    seen: list[ParsedFrame] = []
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=10),
+        [make_ft4222_frame()],
+        sender,
+        on_frame=seen.append,
+        warn=lambda _m: None,
+    )
+    pipe.start()
+    pipe.join(timeout=5)
+    assert len(seen) == len(sender.payloads) >= 1
+    root = ET.fromstring(sender.payloads[-1])
+    assert root.findtext("DataCount") == str(len(seen[-1].spectrum.levels))
