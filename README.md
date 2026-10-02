@@ -113,8 +113,8 @@ You don't need Python or a command prompt.
      Windows), started from the Start menu shortcut **N1MM Scope Bridge
      (command line)**.
 
-   Portable zips are also attached for each processor: `-win64` (x64),
-   `-winarm64` (ARM64) and `-win32` (32-bit, command line only).
+   The installer is the only file on each release; the release notes give
+   its SHA-256 checksum.
 2. Run it. It installs for your Windows account only (no admin prompt), and
    adds Start menu and optional desktop shortcuts.
 3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): setup downloads it

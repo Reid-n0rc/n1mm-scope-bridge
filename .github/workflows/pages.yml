@@ -38,6 +38,9 @@ jobs:
   build:
     name: Build site
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read  # the release run's screenshots artifact
     outputs:
       publish: ${{ steps.mode.outputs.publish }}
     steps:
@@ -84,10 +87,12 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: steps.mode.outputs.publish == 'true'
-      # Screenshots (#68): a release's own screenshots.zip asset when it has one
-      # (attached by the release workflow, #6); otherwise generated here from the
-      # checked-out code (the release tag, or dev before the first release).
-      - name: Screenshots from the release
+      # Screenshots (#68): the release workflow's "screenshots-<tag>" run artifact
+      # (GUI and installer screenshots from the Windows release regression, #128;
+      # releases carry only the installer). If it has expired or is missing, they
+      # are generated here from the checked-out code (the release tag, or dev
+      # before the first release), without the installer pages.
+      - name: Screenshots from the release build
         id: release_shots
         if: steps.mode.outputs.publish == 'true' && steps.mode.outputs.tag != ''
         env:
@@ -95,12 +100,14 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ steps.mode.outputs.tag }}
         run: |
-          if gh release download "$TAG" -R "$REPO" -p screenshots.zip -D _dl 2>/dev/null; then
-            mkdir -p _shots && unzip -q _dl/screenshots.zip -d _shots
+          run=$(gh api "repos/$REPO/actions/artifacts?name=screenshots-$TAG" \
+            --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id // empty' 2>/dev/null) || run=""
+          if [ -n "$run" ] && gh run download "$run" -R "$REPO" -n "screenshots-$TAG" -D _shots; then
             echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Screenshots from release run $run."
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "No screenshots.zip on $TAG; generating from the tag."
+            echo "No screenshots-$TAG artifact; generating from the tag."
           fi
       - name: Qt runtime libraries
         if: steps.mode.outputs.publish == 'true' && steps.release_shots.outputs.found != 'true'

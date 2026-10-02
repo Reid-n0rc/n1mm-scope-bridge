@@ -77,7 +77,8 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    proprietary SDKs, Yaesu documents beyond facts, or N1MM binaries. Every
    `.py` file starts with `SPDX-License-Identifier` and
    `SPDX-FileCopyrightText` lines. Releases must ship `LICENSE`, `NOTICE`,
-   and `THIRD_PARTY.md`, with the sdist attached next to any binary (§6).
+   and `THIRD_PARTY.md`. A release's complete corresponding source (§6) is
+   GitHub's **Source code** archives of the tag, and the notes say so.
 7. **Never commit or bundle FTDI libraries** (LibFT4222, ftd2xx), not even in
    release builds. They are proprietary and not GPL-compatible. The
    `pre-commit` hook blocks them. The Windows installer may only *download*
@@ -381,10 +382,15 @@ has the `no-changelog` label.
    `0.1.2`, `v0.1.2-rc1` -> `0.1.2rc1`) and stamps it into the build, so no
    manual version bump is needed and a tag can't disagree with
    `pyproject.toml`. It checks the tag points at `master`, runs the release
-   regression on the tag, builds the installer, app zips, wheel, and sdist,
-   writes `SHA256SUMS`, attests build provenance, and publishes the release.
-   If the release already exists (made in the web UI), it attaches the files
-   to it instead of failing. A missing CHANGELOG section is noted in the
+   regression on the tag, builds everything, attests build provenance, and
+   publishes the release. **A release carries exactly one file: the universal
+   installer** `n1mm-scope-bridge-setup-<version>.exe`. Its notes give the
+   installer's SHA-256, a link to the workflow run (whose artifacts hold the
+   zips, wheel, sdist, regression report, and screenshots), and point to
+   GitHub's Source code archives as the GPL source. If the release already
+   exists (made in the web UI), it is filled in instead of failing: other
+   files are removed, the maintainer's notes are kept, and only the highest
+   final version is marked Latest. A missing CHANGELOG section is noted in the
    release, not fatal. Rehearse first with a dry run (builds everything,
    publishes nothing): `gh workflow run release.yml --ref dev -f tag=vX.Y.Z-rc1`.
    To repair a release that has no installer:

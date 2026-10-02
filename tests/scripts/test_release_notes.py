@@ -237,50 +237,89 @@ def test_main_meta_derives_version_from_tag(capsys: pytest.CaptureFixture[str]) 
 
 def test_rc_notes_and_assets_use_the_rc_package_version(tmp_path: Path) -> None:
     notes = rn.release_notes(rn.parse_tag("v0.1.0-rc2"), CHANGELOG)
-    assert "`n1mm-scope-bridge-0.1.0rc2-win64.zip`" in notes
-    for name in rn.required_assets("0.1.0rc2"):
-        (tmp_path / name).write_bytes(b"x")
+    assert "`n1mm-scope-bridge-setup-0.1.0rc2.exe`" in notes
+    assert rn.required_assets("0.1.0rc2") == ["n1mm-scope-bridge-setup-0.1.0rc2.exe"]
+    (tmp_path / "n1mm-scope-bridge-setup-0.1.0rc2.exe").write_bytes(b"x")
     assert rn.main(["assets", "--tag", "v0.1.0-rc2", str(tmp_path)]) == 0
 
 
-def test_download_names_match_the_built_artifacts() -> None:
-    """The notes name the zip exactly as build_windows_app.py produces it."""
-    notes = rn.release_notes(rn.parse_tag("v0.1.0"), CHANGELOG)
-    for arch in ("x64", "ARM64", "x86"):
-        assert f"`{bwa.zip_name('0.1.0', arch)}`" in notes
+def test_release_is_the_installer_only() -> None:
+    """The maintainer wants exactly one release file: the universal installer (#167)."""
+    assert rn.required_assets("0.1.2") == ["n1mm-scope-bridge-setup-0.1.2.exe"]
+    notes = rn.release_notes(rn.parse_tag("v0.1.2"), CHANGELOG)
     assert "one installer for all Windows PCs" in notes
-    assert "`n1mm-scope-bridge-0.1.0-win64.zip`" in notes
-    assert "windows.zip" not in notes
+    for gone in (bwa.zip_name("0.1.2", "x64"), ".whl", ".tar.gz", "`SHA256SUMS`"):
+        assert gone not in notes
 
 
-def test_required_assets_include_screenshots_and_sources() -> None:
-    names = rn.required_assets("0.1.0")
-    assert "screenshots.zip" in names
-    assert "regression-report.md" in names
-    for arch in ("x64", "ARM64", "x86"):
-        assert bwa.zip_name("0.1.0", arch) in names
-    assert "n1mm-scope-bridge-setup-0.1.0.exe" in names
-    assert "n1mm_scope_bridge-0.1.0.tar.gz" in names  # GPLv3 corresponding source
-    assert "n1mm_scope_bridge-0.1.0-py3-none-any.whl" in names
+def test_notes_carry_checksum_run_link_and_source_offer() -> None:
+    notes = rn.release_notes(
+        rn.parse_tag("v0.1.2"),
+        CHANGELOG,
+        installer_sha256="ab" * 32,
+        run_url="https://github.com/o/r/actions/runs/1",
+    )
+    assert "ab" * 32 in notes
+    assert "(https://github.com/o/r/actions/runs/1)" in notes
+    assert "Complete corresponding source (GPLv3): the **Source code** archives" in notes
+    assert notes.count(rn.FILES_START) == notes.count(rn.FILES_END) == 1
+    bare = rn.release_notes(rn.parse_tag("v0.1.2"), CHANGELOG)
+    assert "actions/runs" not in bare
+    assert "SHA-256 of" not in bare
 
 
-def test_missing_assets() -> None:
-    all_names = rn.required_assets("0.1.0")
-    assert rn.missing_assets("0.1.0", all_names) == []
-    assert rn.missing_assets("0.1.0", [n for n in all_names if n != "screenshots.zip"]) == [
-        "screenshots.zip"
-    ]
+def test_missing_and_extra_assets() -> None:
+    exe = "n1mm-scope-bridge-setup-0.1.0.exe"
+    assert rn.missing_assets("0.1.0", [exe]) == []
+    assert rn.missing_assets("0.1.0", []) == [exe]
+    assert rn.extra_assets("0.1.0", [exe]) == []
+    assert rn.extra_assets("0.1.0", [exe, "SHA256SUMS", "a.zip"]) == ["SHA256SUMS", "a.zip"]
 
 
 def test_assets_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    for name in rn.required_assets("0.1.0"):
-        (tmp_path / name).write_bytes(b"x")
+    exe = tmp_path / "n1mm-scope-bridge-setup-0.1.0.exe"
+    exe.write_bytes(b"x")
     assert rn.main(["assets", "--tag", "v0.1.0", str(tmp_path)]) == 0
-    assert "required release files present" in capsys.readouterr().out
-    (tmp_path / "screenshots.zip").unlink()
+    assert "release files OK" in capsys.readouterr().out
+    (tmp_path / "screenshots.zip").write_bytes(b"x")
     assert rn.main(["assets", "--tag", "v0.1.0", str(tmp_path)]) == 1
-    assert "missing required files: screenshots.zip" in capsys.readouterr().err
+    assert "only the installer may be released; remove: screenshots.zip" in (
+        capsys.readouterr().err
+    )
+    exe.unlink()
+    assert rn.main(["assets", "--tag", "v0.1.0", str(tmp_path)]) == 1
+    assert "missing required files: n1mm-scope-bridge-setup-0.1.0.exe" in (capsys.readouterr().err)
 
 
-def test_release_notes_list_screenshots() -> None:
-    assert "`screenshots.zip`" in rn.release_notes(rn.parse_tag("v0.1.0"), CHANGELOG)
+def test_merge_keeps_maintainer_notes_and_refreshes_ours(tmp_path: Path) -> None:
+    ours = rn.release_notes(rn.parse_tag("v0.1.2"), CHANGELOG, installer_sha256="cd" * 32)
+    mine = "## What's Changed\n* thing by @me\n"
+    merged = rn.merge_notes(mine, ours, replace=False)
+    assert merged.startswith("## What's Changed")
+    assert "cd" * 32 in merged
+    again = rn.merge_notes(merged, ours.replace("cd" * 32, "ef" * 32), replace=False)
+    assert "cd" * 32 not in again
+    assert again.count(rn.FILES_START) == 1
+    assert rn.merge_notes(mine, ours, replace=True) == ours
+    assert rn.merge_notes("  ", ours, replace=False) == ours
+    assert rn.merge_notes(mine, "plain", replace=False).endswith("plain\n")
+    old, new, out = tmp_path / "old.md", tmp_path / "new.md", tmp_path / "out.md"
+    old.write_text(mine, encoding="utf-8")
+    new.write_text(ours, encoding="utf-8")
+    args = ["merge", "--existing", str(old), "--new", str(new), "--out", str(out)]
+    assert rn.main(args) == 0
+    assert out.read_text(encoding="utf-8").startswith("## What's Changed")
+    assert rn.main([*args, "--replace"]) == 0
+    assert out.read_text(encoding="utf-8") == ours
+
+
+def test_notes_command_hashes_the_installer(tmp_path: Path) -> None:
+    changelog, out = tmp_path / "CHANGELOG.md", tmp_path / "notes.md"
+    changelog.write_text(CHANGELOG, encoding="utf-8")
+    exe = tmp_path / "setup.exe"
+    exe.write_bytes(b"installer")
+    argv = ["notes", "--tag", "v0.1.0", "--out", str(out), "--changelog", str(changelog)]
+    assert rn.main([*argv, "--installer", str(exe), "--run-url", "https://x.invalid/r"]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert hashlib.sha256(b"installer").hexdigest() in text
+    assert "(https://x.invalid/r)" in text
