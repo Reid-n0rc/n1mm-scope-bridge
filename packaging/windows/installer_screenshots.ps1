@@ -39,6 +39,28 @@ public static class WizardShot {
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
+
+    // Visible standard dialog windows (class #32770), e.g. Inno Setup message boxes.
+    public static IntPtr[] Dialogs() {
+        var found = new System.Collections.Generic.List<IntPtr>();
+        EnumWindows((h, _) => {
+            var cls = new System.Text.StringBuilder(64);
+            GetClassName(h, cls, cls.Capacity);
+            if (IsWindowVisible(h) && cls.ToString() == "#32770") found.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        return found.ToArray();
+    }
+
+    // Press a message box button by its command id (IDYES = 6) without needing focus.
+    public static bool Press(IntPtr dialog, int id) {
+        return PostMessage(dialog, 0x0111 /* WM_COMMAND */, (IntPtr)id, IntPtr.Zero);
+    }
 
     // PW_RENDERFULLCONTENT (2) captures the window even when it is not in front.
     public static int[] Save(IntPtr hWnd, string path) {
@@ -134,6 +156,22 @@ function Send-Accelerator($window, [string]$keys) {
     [System.Windows.Forms.SendKeys]::SendWait($keys)
 }
 
+function Answer-Dialog([string]$text, [int]$buttonId) {
+    # Message boxes are their own top-level windows, so keys sent to the wizard
+    # never reach them. Find the visible dialog showing $text and send it the
+    # button's command (IDYES = 6) directly.
+    foreach ($h in [WizardShot]::Dialogs()) {
+        $el = $UIA::FromHandle($h)
+        if ($el -and (Find-Named $el ([regex]::Escape($text)))) {
+            Write-Host "answering message box '$text' with button $buttonId"
+            [void][WizardShot]::Press($h, $buttonId)
+            return $true
+        }
+    }
+    Write-Host "message box with '$text' not found"
+    return $false
+}
+
 function Activate($window, [string]$pattern, [string]$keys) {
     $el = Find-Named $window $pattern
     if ($el -and (Use-Control $el)) { return }
@@ -166,8 +204,8 @@ try {
         # Leaving the tasks page with the FTDI download ticked asks the user to accept
         # FTDI's licence terms (#133); accept so setup downloads the library.
         if (Find-Named $window "Do you accept FTDI's licence terms") {
-            Activate $window '^&?Yes$' 'y'
-            Start-Sleep -Milliseconds 500
+            [void](Answer-Dialog "Do you accept FTDI's licence terms" 6)  # IDYES
+            Start-Sleep -Milliseconds 700
             continue
         }
         # Leaving the FTDI folder empty asks whether to open FTDI's download page;
