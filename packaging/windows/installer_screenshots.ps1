@@ -159,6 +159,13 @@ try {
             if ($window) { Write-Host ('wizard names: ' + ((Get-Names $window | Select-Object -First 40) -join ' | ')) }
         }
         if (-not $window) { Start-Sleep -Milliseconds 300; continue }
+        # Leaving the FTDI folder empty asks whether to open FTDI's download page;
+        # answer No so CI never launches a browser.
+        if (Find-Named $window "^Open FTDI's LibFT4222 download page") {
+            Activate $window '^&?No$' 'n'
+            Start-Sleep -Milliseconds 500
+            continue
+        }
         $page = Get-Page $window
         if (-not $page) {
             $key = (Get-Names $window | Select-Object -First 6) -join '|'
