@@ -10,6 +10,7 @@ dist/
 .ruff_cache/
 .coverage
 coverage.xml
+junit.xml
 htmlcov/
 
 # Local scope captures (trim to a few frames before adding as fixtures)
