@@ -42,6 +42,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+import sysconfig
 import threading
 from collections import deque
 from collections.abc import Callable, Iterator
@@ -226,6 +227,115 @@ def _default_loader(name: str) -> Any:  # pragma: no cover - needs the real libr
     return loader(name)
 
 
+# Windows DLL architectures (PE "Machine" field) and FTDI's package folder names.
+PE_MACHINES = {0x014C: "x86", 0x8664: "x64", 0xAA64: "ARM64"}
+ARCH_DIRS = {"x64": "amd64", "x86": "i386", "ARM64": "arm64"}
+D2XX_WINDOWS_NAMES = ["ftd2xx.dll", "ftd2xx64.dll"]
+ERROR_BAD_EXE_FORMAT = 193
+
+
+def process_arch(platform_tag: str | None = None) -> str:
+    """Architecture of this Python process: "x64", "x86" or "ARM64".
+
+    An x64 app emulated on Windows on ARM is still x64 and needs amd64 DLLs.
+    """
+    tag = (platform_tag or sysconfig.get_platform()).lower()
+    if tag.endswith("arm64"):
+        return "ARM64"
+    if tag.endswith(("amd64", "x86_64")):
+        return "x64"
+    return "x86"
+
+
+def pe_machine(path: str) -> str | None:
+    """Architecture a Windows DLL was built for, or None if it isn't a readable PE file."""
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(64)
+            if len(header) < 64 or header[:2] != b"MZ":
+                return None
+            fh.seek(int.from_bytes(header[0x3C:0x40], "little"))
+            pe = fh.read(6)
+    except OSError:
+        return None
+    if len(pe) < 6 or pe[:4] != b"PE\0\0":
+        return None
+    machine = int.from_bytes(pe[4:6], "little")
+    return PE_MACHINES.get(machine, f"0x{machine:04X}")
+
+
+def ftdi_package_root(folder: str, max_up: int = 6) -> str | None:
+    """The root of an unzipped FTDI LibFT4222 package containing ``folder``, if any.
+
+    FTDI's package keeps LibFT4222 in ``imports\\LibFT4222\\dll\\<arch>`` and D2XX in
+    ``imports\\ftd2xx\\dll\\<arch>``, so a single folder never holds both (#146).
+    """
+    current = os.path.abspath(folder)
+    for _ in range(max_up):
+        if os.path.basename(current).lower() == "imports":
+            return os.path.dirname(current)
+        if os.path.isdir(os.path.join(current, "imports")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def windows_search_dirs(lib_dir: str, arch: str) -> list[str]:
+    """Folders to search for the DLLs: the chosen folder, then the package's arch folders."""
+    dirs = [lib_dir]
+    root = ftdi_package_root(lib_dir)
+    if root is not None:
+        sub = ARCH_DIRS[arch]
+        dirs += [
+            os.path.join(root, "imports", "LibFT4222", "dll", sub),
+            os.path.join(root, "imports", "ftd2xx", "dll", sub),
+        ]
+    seen: list[str] = []
+    for d in dirs:
+        if d not in seen and os.path.isdir(d):
+            seen.append(d)
+    return seen
+
+
+def find_dll(
+    names: list[str], dirs: list[str], arch: str, mismatched: list[tuple[str, str]]
+) -> str | None:
+    """First existing DLL built for ``arch``; wrong-architecture finds go to ``mismatched``."""
+    for d in dirs:
+        for name in names:
+            path = os.path.join(d, name)
+            if not os.path.isfile(path):
+                continue
+            machine = pe_machine(path)
+            if machine is None or machine == arch:
+                return path
+            mismatched.append((path, machine))
+    return None
+
+
+def _arch_mismatch(found: str, path: str, arch: str) -> LibraryNotFound:
+    sub = ARCH_DIRS[arch]
+    return LibraryNotFound(
+        f"Found FTDI DLLs built for {found} ({path}), but this app runs as {arch}. "
+        f"Use the {sub} DLLs from the same FTDI package "
+        f"(imports\\LibFT4222\\dll\\{sub} and imports\\ftd2xx\\dll\\{sub}), "
+        "or pick the FTDI package folder itself."
+    )
+
+
+def _load_path(path: str, arch: str, loader: Loader, tried: list[str]) -> Any:
+    tried.append(path)
+    try:
+        return loader(path)
+    except OSError as err:
+        if getattr(err, "winerror", None) == ERROR_BAD_EXE_FORMAT:
+            raise _arch_mismatch(pe_machine(path) or "another architecture", path, arch) from err
+        return None
+
+
 def _load_first(names: list[str], lib_dir: str | None, loader: Loader, tried: list[str]) -> Any:
     for name in names:
         path = os.path.join(lib_dir, name) if lib_dir else name
@@ -235,6 +345,44 @@ def _load_first(names: list[str], lib_dir: str | None, loader: Loader, tried: li
         except OSError:
             continue
     return None
+
+
+def _load_windows(
+    lib_dir: str | None,
+    d2xx_names: list[str],
+    ft_names: list[str],
+    arch: str | None,
+    loader: Loader,
+    add_dll_directory: Callable[[str], object] | None,
+    tried: list[str],
+) -> tuple[Any, Any]:
+    """Load (ftd2xx, LibFT4222) on Windows; None for whichever couldn't be loaded."""
+    # LibFT4222 links against ftd2xx.dll; Python 3.8+ does not search the
+    # DLL's own folder for dependencies, so register it, then load D2XX first.
+    if not lib_dir:
+        return _load_first(d2xx_names, None, loader, tried), _load_first(
+            ft_names, None, loader, tried
+        )
+    if add_dll_directory is not None:
+        add_dll_directory(lib_dir)
+    arch = arch or process_arch()
+    dirs = windows_search_dirs(lib_dir, arch)
+    mismatched: list[tuple[str, str]] = []
+    d2xx_path = find_dll(D2XX_WINDOWS_NAMES, dirs, arch, mismatched)
+    ft_path = find_dll(ft_names, dirs, arch, mismatched)
+    if (d2xx_path is None or ft_path is None) and mismatched:
+        raise _arch_mismatch(mismatched[0][1], mismatched[0][0], arch)
+    for path in (d2xx_path, ft_path):
+        folder = os.path.dirname(path) if path else None
+        if folder and folder != lib_dir and add_dll_directory is not None:
+            add_dll_directory(folder)
+    d2xx = _load_path(d2xx_path, arch, loader, tried) if d2xx_path else None
+    ft4222 = _load_path(ft_path, arch, loader, tried) if ft_path else None
+    if d2xx is None:
+        d2xx = _load_first(d2xx_names, lib_dir, loader, tried)
+    if ft4222 is None:
+        ft4222 = _load_first(ft_names, lib_dir, loader, tried)
+    return d2xx, ft4222
 
 
 def app_folder_with_ftdi(
@@ -260,8 +408,13 @@ def load_api(
     is_64bit: bool = sys.maxsize > 2**32,
     loader: Loader = _default_loader,
     add_dll_directory: Callable[[str], object] | None = _ADD_DLL_DIRECTORY,
+    arch: str | None = None,
 ) -> CtypesApi:
     """Load LibFT4222 (and D2XX where it is separate) and return the bound API.
+
+    On Windows ``lib_dir`` may be the folder holding the DLLs or anywhere inside an
+    unzipped FTDI LibFT4222 package: the DLLs for this process's architecture are
+    found in the package's ``imports`` folders (#146).
 
     With no folder given, the packaged Windows app first looks in its own
     program folder, where the installer puts FTDI's DLLs (#133).
@@ -273,20 +426,20 @@ def load_api(
     d2xx_names, ft_names = library_names(platform, is_64bit)
     tried: list[str] = []
     if platform == "win32":
-        # LibFT4222 links against ftd2xx.dll; Python 3.8+ does not search the
-        # DLL's own folder for dependencies, so register it, then load D2XX first.
-        if lib_dir and add_dll_directory is not None:
-            add_dll_directory(lib_dir)
-        d2xx = _load_first(d2xx_names, lib_dir, loader, tried)
-        ft4222 = _load_first(ft_names, lib_dir, loader, tried)
+        d2xx, ft4222 = _load_windows(
+            lib_dir, d2xx_names, ft_names, arch, loader, add_dll_directory, tried
+        )
     else:
         ft4222 = _load_first(ft_names, lib_dir, loader, tried)
         d2xx = ft4222 if ft4222 is not None and hasattr(ft4222, "FT_OpenEx") else None
         if ft4222 is not None and d2xx is None:
             d2xx = _load_first(d2xx_names, lib_dir, loader, tried)
     if ft4222 is None or d2xx is None:
+        missing = [n for n, lib in (("ftd2xx.dll", d2xx), ("LibFT4222", ft4222)) if lib is None]
         raise LibraryNotFound(
-            "Could not load FTDI's LibFT4222/D2XX libraries (tried: "
+            "Could not load FTDI's LibFT4222/D2XX libraries (missing: "
+            + ", ".join(missing)
+            + "; tried: "
             + ", ".join(tried)
             + f"). Install them from {FTDI_DOWNLOAD_URL} or set the FTDI library folder."
         )
