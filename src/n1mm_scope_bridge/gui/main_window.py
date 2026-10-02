@@ -409,8 +409,10 @@ class MainWindow(QMainWindow):
 
     def show_about(self) -> None:
         from n1mm_scope_bridge.cli import LEGAL_NOTICE  # noqa: PLC0415 - avoid import cycle
+        from n1mm_scope_bridge.legal import DISCLAIMER  # noqa: PLC0415
 
-        QMessageBox.about(self, f"About {APP_TITLE}", LEGAL_NOTICE.replace("\n", "<br>"))
+        body = LEGAL_NOTICE.replace("\n", "<br>") + "<br><br>" + DISCLAIMER
+        QMessageBox.about(self, f"About {APP_TITLE}", body)
 
     # -- settings <-> form -------------------------------------------------------
 
