@@ -90,10 +90,8 @@ def test_default_steps_cover_the_release_checklist() -> None:
     assert names[0] == "Locked clean environment"
     assert any("licensing" in n for n in names)
     assert any("hook" in n.lower() for n in names)
-    assert {s.name for s in steps if s.windows_only} >= {
-        "GUI self-test",
-        "Installer silent install/run/uninstall",
-    }
+    assert "Installer silent install/run/uninstall" in {s.name for s in steps if s.windows_only}
+    assert "GUI self-test" in names  # runs on every OS (Qt offscreen)
     pending = [s for s in steps if s.disabled_reason]
     assert all(s.disabled_reason.startswith("added by #") for s in pending)
 

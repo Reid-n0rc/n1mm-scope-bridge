@@ -165,7 +165,7 @@ def make_package(
 
 
 def test_builtin_commands_are_discovered_in_order() -> None:
-    assert list(discover_commands()) == ["run", "record", "probe", "list-radios"]
+    assert list(discover_commands()) == ["run", "gui", "record", "probe", "list-radios"]
 
 
 def test_a_new_command_needs_only_a_new_module(
