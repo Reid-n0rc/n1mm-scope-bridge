@@ -100,7 +100,7 @@ function Get-Page($window) {
     return $null
 }
 
-function Find-Control($window, [string]$type, [string]$pattern) {
+function Find-Control($window, [System.Windows.Automation.ControlType]$type, [string]$pattern) {
     $ctype = New-Object System.Windows.Automation.PropertyCondition($Prop::ControlTypeProperty, $type)
     foreach ($el in $window.FindAll($Tree::Descendants, $ctype)) {
         if ($el.Current.Name -match $pattern) { return $el }
