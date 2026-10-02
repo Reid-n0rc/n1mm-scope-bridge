@@ -41,10 +41,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is where N1MM+ runs, so it is a first-class target.
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        # Windows is the product platform (N1MM+ is Windows-only): it runs every
+        # supported Python and those jobs are required checks (#15). Ubuntu keeps
+        # the code portable; one macOS job catches platform assumptions.
+        os: [windows-latest, ubuntu-latest]
         python: ["3.10", "3.13"]
         include:
+          - os: macos-latest
+            python: "3.13"
           # Free-threaded CPython (no GIL): the pipeline's stages and radios
           # run truly in parallel here, so race conditions surface (issue #8).
           - os: ubuntu-latest

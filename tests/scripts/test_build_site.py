@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import build_site as bs
@@ -103,7 +104,8 @@ def test_check_site_finds_problems(tmp_path: Path) -> None:
     assert any("broken link 'gone.html'" in p for p in problems)
     assert any("without alt text" in p for p in problems)
     assert any("broken link 'i.png'" in p for p in problems)
-    assert len(problems) == 4
+    assert any("without width/height" in p for p in problems)
+    assert len(problems) == 5
 
 
 def test_build_renders_pages_and_copies_assets(tmp_path: Path) -> None:
@@ -178,3 +180,110 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         == 1
     )
     assert "final releases only" in capsys.readouterr().err
+
+
+# --- screenshots (#68) --------------------------------------------------------------------
+
+
+def write_shots(directory: Path, *, dark: bool = False, **override: object) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    entry: dict[str, object] = {
+        "file": "main-window.png",
+        "width": 720,
+        "height": 960,
+        "alt": 'The "main" window & status',
+        "caption": "The main window.",
+    }
+    (directory / "main-window.png").write_bytes(b"png")
+    if dark:
+        entry["dark"] = "main-window-dark.png"
+        (directory / "main-window-dark.png").write_bytes(b"png")
+    entry.update(override)
+    (directory / "manifest.json").write_text(json.dumps({"main-window": entry}), encoding="utf-8")
+    return directory
+
+
+SHOT_PAGE = {"index.html": "<h1>x</h1><!-- screenshot:main-window -->"}
+
+
+@pytest.mark.parametrize(("ctx", "preview"), [(DEV, True), (RELEASE, False)])
+def test_screenshot_figure_is_accessible(
+    tmp_path: Path, ctx: dict[str, str], preview: bool
+) -> None:
+    out = tmp_path / "out"
+    bs.build(out, ctx, write_site(tmp_path / "src", SHOT_PAGE), write_shots(tmp_path / "shots"))
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert '<img src="assets/screenshots/main-window.png"' in text
+    assert 'alt="The &quot;main&quot; window &amp; status"' in text
+    assert 'width="720" height="960"' in text
+    assert "<figcaption>The main window." in text
+    assert (bs.PREVIEW_LABEL in text) is preview
+    assert (out / bs.SHOTS_DIR / "main-window.png").exists()
+
+
+def test_dark_variant_uses_picture_source(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    shots = write_shots(tmp_path / "shots", dark=True)
+    bs.build(out, DEV, write_site(tmp_path / "src", SHOT_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert 'media="(prefers-color-scheme: dark)"' in text
+    assert (out / bs.SHOTS_DIR / "main-window-dark.png").exists()
+
+
+def test_without_screenshots_markers_render_nothing(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", SHOT_PAGE))
+    assert "<figure" not in (out / "index.html").read_text(encoding="utf-8")
+
+
+def test_unknown_screenshot_name(tmp_path: Path) -> None:
+    src = write_site(tmp_path / "src", {"index.html": "<!-- screenshot:tray-menu -->"})
+    with pytest.raises(bs.SiteError, match="no screenshot 'tray-menu'"):
+        bs.build(tmp_path / "out", DEV, src, write_shots(tmp_path / "shots"))
+
+
+def test_manifest_unreadable_or_empty(tmp_path: Path) -> None:
+    shots = tmp_path / "shots"
+    shots.mkdir()
+    with pytest.raises(bs.SiteError, match="cannot read"):
+        bs.load_screenshots(shots)
+    (shots / "manifest.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(bs.SiteError, match="no screenshots"):
+        bs.load_screenshots(shots)
+
+
+def test_manifest_entry_needs_alt_text(tmp_path: Path) -> None:
+    shots = write_shots(tmp_path / "shots")
+    data = json.loads((shots / "manifest.json").read_text(encoding="utf-8"))
+    del data["main-window"]["alt"]
+    (shots / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(bs.SiteError, match="has no 'alt'"):
+        bs.load_screenshots(shots)
+
+
+def test_manifest_missing_file(tmp_path: Path) -> None:
+    shots = write_shots(tmp_path / "shots")
+    (shots / "main-window.png").unlink()
+    with pytest.raises(bs.SiteError, match="is missing"):
+        bs.load_screenshots(shots)
+
+
+def test_real_site_with_screenshots(tmp_path: Path) -> None:
+    shots = tmp_path / "shots"
+    manifest = {}
+    shots.mkdir()
+    for name in ("main-window", "close-prompt", "ftdi-error"):
+        (shots / f"{name}.png").write_bytes(b"png")
+        manifest[name] = {
+            "file": f"{name}.png",
+            "width": 10,
+            "height": 10,
+            "alt": name,
+            "caption": name,
+        }
+    (shots / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    pages = bs.build(tmp_path / "out", DEV, screenshots=shots)
+    use = (tmp_path / "out" / "use.html").read_text(encoding="utf-8")
+    assert use.count("<figure") == 3
+    assert any(p.name == "use.html" for p in pages)
+    assert bs.main(["--out", str(tmp_path / "m"), "--screenshots", str(shots)]) == 0

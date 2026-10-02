@@ -22,7 +22,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-app-${{ github.ref }}-${{ github.event_name }}
+  # github.workflow is the caller when reused, so callers never cancel each other.
+  group: windows-app-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:

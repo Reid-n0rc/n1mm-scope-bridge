@@ -27,6 +27,22 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   - [docs/n1mm-spectrum-protocol.md](docs/n1mm-spectrum-protocol.md): N1MM packet
   - [docs/adding-a-radio.md](docs/adding-a-radio.md): how a new radio plugs in
 
+## Product target
+
+- **Windows 10/11 x64 is the product platform**, because N1MM Logger+ runs only
+  on Windows. Operators install with the Windows installer and use the GUI;
+  they never need Python or a terminal.
+- **Every user-facing feature is usable from the GUI.** The CLI exists for
+  scripts, headless station PCs, and troubleshooting.
+- **Windows CI is required** for every supported Python (3.10, 3.13, and
+  free-threaded 3.14t), as is the Windows release regression (app, GUI
+  self-test, and installer install/run/uninstall).
+- **Keep the code portable.** Ubuntu CI and one macOS job stay so the core
+  keeps working elsewhere for possible future uses, but macOS and Linux are
+  unsupported for operators. Keep platform-specific code behind small seams
+  (for example the FTDI library names in `transport/ft4222.py`), and use Qt
+  (PySide6) for the GUI.
+
 ## Non-negotiable rules
 
 1. **No work without an approved, assigned issue.** Every change is tracked by
@@ -163,6 +179,23 @@ hold (#43):
 6. **Use a separate git worktree per agent**
    (`git worktree add ../n1mm-wt-<lane> -b issue-<n>-<slug> origin/dev`) so
    parallel agents never share a checkout.
+
+## Automated PRs
+
+Copilot Autofix, Dependabot, and any other bot get **no exemption** from the
+**Issue policy** and **Changelog** checks, or from review of what they change.
+Copilot's repository instructions are in
+[.github/copilot-instructions.md](.github/copilot-instructions.md).
+
+- **Adopt it.** File (or link) a `plan-approved`, assigned issue and add
+  `Closes #<n>` to the PR body. Add the `changelog.d/` fragment, and push any
+  fixes to the PR branch through the normal process. Then CI runs on the
+  pushed commit and the PR merges like any other.
+- **Or replace it.** Close the bot's PR with a comment linking a tracked PR that
+  does the work properly. Do this when its change is wrong or incomplete, for
+  example when it rewrites an intentional pattern.
+- A bot never satisfies the checks on its own behalf. No labels, edits, or
+  exemptions are added just to get its PR through.
 
 ## Testing policy
 

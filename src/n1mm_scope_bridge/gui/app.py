@@ -30,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="open the window, stream the emulator to a local listener, and exit 0 on success",
     )
+    parser.add_argument(
+        "--screenshot",
+        type=Path,
+        metavar="DIR",
+        help="save website screenshots of the window and dialogs into DIR, then exit",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -78,6 +84,12 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     app = application()
+    if args.screenshot is not None:
+        from n1mm_scope_bridge.gui.screenshot import capture  # noqa: PLC0415 - only for this mode
+
+        paths = capture(args.screenshot, app)
+        print(f"Saved {len(paths)} screenshots to {args.screenshot}")
+        return 0
     if args.self_test:
         path = args.settings or Path(settings_mod.settings_path().parent / "self-test.json")
         ok, message = self_test(app, path)

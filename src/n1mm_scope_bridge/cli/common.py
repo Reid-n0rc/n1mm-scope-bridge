@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -101,17 +102,17 @@ def supervise(
     """Wait for the pipeline, reporting once per interval; Ctrl-C or duration stops it."""
     deadline = None if duration is None else clock() + duration
     try:
-        while pipe.alive:
-            pipe.join(
-                timeout=interval
-                if deadline is None
-                else min(interval, max(0.0, deadline - clock()))
-            )
-            report()
-            if deadline is not None and clock() >= deadline:
-                break
-    except KeyboardInterrupt:
-        pass
+        # Ctrl-C is the normal way to stop a running bridge; it is not an error.
+        with contextlib.suppress(KeyboardInterrupt):
+            while pipe.alive:
+                pipe.join(
+                    timeout=interval
+                    if deadline is None
+                    else min(interval, max(0.0, deadline - clock()))
+                )
+                report()
+                if deadline is not None and clock() >= deadline:
+                    break
     finally:
         pipe.stop()
         pipe.join(timeout=5)

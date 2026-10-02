@@ -8,6 +8,12 @@ settings are saved automatically as you change them (see [settings](settings.md)
 The window follows Windows' light or dark mode and uses the native Windows 11
 look.
 
+Screenshots of the window and its dialogs are on the website's
+[Using the window](https://reid-n0rc.github.io/n1mm-scope-bridge/use.html) page.
+They are taken automatically from the program itself
+(`n1mm-scope-bridge gui --screenshot DIR`, see [`gui`](cli/gui.md)), so they
+match the version they describe.
+
 ## The window
 
 **Radio**

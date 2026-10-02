@@ -5,8 +5,10 @@
 
 1. Keep N1MM+ connected to the FT-710 for CAT as usual (Config → Configure
    Ports…). The bridge does not use the CAT COM port.
-2. Start `n1mm-scope-bridge` first, so N1MM+ can see its source name. The
-   default name is `FT-710` (`--name` changes it).
+2. Start **N1MM Scope Bridge** first (Start menu, or the desktop shortcut)
+   and press **Start**, so N1MM+ can see its source name. The default name is
+   the radio model, for example `FT-710`; change it in the window's settings
+   (or with `--name` on the command line).
 3. Open **Window → Spectrum Display**.
 4. Click the **gear** icon. In the **Spectrum Source** pane, choose **For all
    other radios, source named**, then pick the bridge's name from the
@@ -19,7 +21,8 @@ packet, so N1MM+ needs no manual span or scaling setup.
 
 ## Running N1MM+ on another PC
 
-N1MM+ listens on UDP 13064. Point the bridge at that PC with `--host <ip>`,
+N1MM+ listens on UDP 13064. Set **N1MM+ PC** in the bridge's settings to that
+PC's name or address (`--host <ip>` on the command line),
 and allow inbound UDP 13064 in that PC's firewall.
 
 ## Source
