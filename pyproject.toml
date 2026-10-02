@@ -82,6 +82,7 @@ timeout = 60
 markers = [
     "slow: builds the package (runs in CI, a few seconds)",
     "gui: needs PySide6 (skipped on free-threaded Python)",
+    "native: loads FTDI's real LibFT4222/D2XX DLLs (needs N1MM_BRIDGE_FTDI_DIR; CI Windows)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
 ]
 

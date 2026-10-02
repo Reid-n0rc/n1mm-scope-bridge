@@ -60,3 +60,25 @@ Issue #36 records golden captures from a real FT-710 once (with
 emulator against them on every PR. After that, the emulator is a checked
 stand-in for the radio. Changing the parser or updating the radio firmware
 means recapturing.
+
+## Native boundary: FTDI's real libraries
+
+The emulator replaces FTDI's library at the Python level. The real native
+boundary is tested against **FTDI's own DLLs** in Windows CI:
+
+- `scripts/fetch_ftdi.py` fetches FTDI's signed LibFT4222 1.4.8 (the
+  version wfview builds against) and `ftd2xx.dll`. They come from the PyPI
+  `ft4222` wheel, because ftdichip.com blocks automated downloads. The wheel's
+  SHA-256 is pinned, both Authenticode signatures are checked on Windows, the
+  download is cached, and the DLLs are never committed or shipped.
+- `tests/test_native_ftdi.py` (`native` marker, skipped unless
+  `N1MM_BRIDGE_FTDI_DIR` is set) checks DLL loading (including the
+  `ftd2xx.dll` dependency through `os.add_dll_directory`), symbol resolution,
+  ctypes signatures and the stdcall convention, `FT_OpenEx` returning
+  `FT_DEVICE_NOT_FOUND`, and `probe` printing the friendly "Could not open"
+  error.
+- The release regression repeats the `probe` check on Windows.
+
+CI runners have no FT-710 attached, so **streaming data is covered by the
+emulator**, not the real DLLs. It is validated against the real radio once
+through golden captures (#36).
