@@ -20,6 +20,7 @@ connection in one step. Every error the program can show is listed below.
 | `was recorded from a … not a …` | The replayed capture came from a different radio model | Use `--radio` matching the capture |
 | `not an n1mm-scope-bridge capture` | The file given to `--replay` isn't a capture | Record one with `record` |
 | `trailing partial frame` | The capture file was cut short | Record it again |
+| `not an n1mm-scope-bridge raw stream capture`, `truncated raw record header`, `truncated raw chunk`, `raw chunk of … bytes exceeds` | A `record --raw-stream` file is damaged, cut short, or isn't a raw capture | Record it again with `record --raw-stream`; raw captures are only for checking the emulator against a radio |
 | `capture has no frames to loop` | `--loop` with an empty capture | Record a capture with at least one frame |
 | `unsupported capture format`, `capture model name … must be`, `frame size must be in` | The capture's header is from a newer version or is damaged | Record it again with this version |
 | `capture frame is … bytes, expected …` | Internal check while recording; the radio returned a frame of the wrong size | Open an issue with the command you ran |
