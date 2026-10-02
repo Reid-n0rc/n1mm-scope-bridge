@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
@@ -40,6 +41,7 @@ from n1mm_scope_bridge.gui import icons
 from n1mm_scope_bridge.gui.center_panel import CenterModePanel
 from n1mm_scope_bridge.gui.controller import Source, StreamController, radio_source
 from n1mm_scope_bridge.gui.icon import app_icon
+from n1mm_scope_bridge.gui.remote import GuiRemote, RemoteControl
 from n1mm_scope_bridge.gui.settings_dialog import RATE_STEPS_PER_HZ, SettingsDialog
 from n1mm_scope_bridge.gui.spectrum import SpectrumView
 from n1mm_scope_bridge.gui.status import LOG_LINES, LogBuffer, StatusModel, diagnostics
@@ -55,6 +57,12 @@ from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader
 APP_TITLE = "N1MM Scope Bridge"
 SETUP_GUIDE_URL = "https://reid-n0rc.github.io/n1mm-scope-bridge/n1mm.html"
 SAVE_DELAY_MS = 400
+REMOTE_FIELDS = {
+    "name": "source_name",
+    "rate": "rate_hz",
+    "combine": "combine",
+    "scaling": "scaling",
+}
 EMULATOR_FPS = 11.2  # measured on a real FT-710 (#111)
 DEFAULT_SIZE = (960, 640)
 MINIMUM_SIZE = (760, 540)
@@ -132,6 +140,8 @@ class MainWindow(QMainWindow):
         self._build()
         self._load(settings)
         self._connect_changes()
+        self.remote = RemoteControl(GuiRemote(self, parent=self), log=self._log)
+        self._apply_remote(settings.validate())
         self.controller.started.connect(self._on_started)
         self.controller.stopped.connect(self._on_stopped)
         self.controller.status.connect(self._on_status)
@@ -157,6 +167,8 @@ class MainWindow(QMainWindow):
         self.rate, self.combine, self.scaling = d.rate, d.combine, d.scaling
         self.autostart, self.start_hidden, self.on_close = d.autostart, d.start_hidden, d.on_close
         self.device = d.device
+        self.control_enabled, self.control_port = d.control_enabled, d.control_port
+        self.control_bind, self.control_allow = d.control_bind, d.control_allow
         self._errors = d.errors
 
     def _build(self) -> None:
@@ -403,13 +415,16 @@ class MainWindow(QMainWindow):
     # -- settings <-> form -------------------------------------------------------
 
     def _connect_changes(self) -> None:
-        for widget in (self.source_name, self.host, self.ftdi_dir, self.device):
+        for widget in (
+            self.source_name, self.host, self.ftdi_dir, self.device,
+            self.control_bind, self.control_allow,
+        ):  # fmt: skip
             widget.textChanged.connect(self._changed)
-        for spin in (self.port, self.rate, self.scaling):
+        for spin in (self.port, self.rate, self.scaling, self.control_port):
             spin.valueChanged.connect(self._changed)
         for combo in (self.radio, self.combine, self.on_close):
             combo.currentIndexChanged.connect(self._changed)
-        for check in (self.emulator, self.autostart, self.start_hidden):
+        for check in (self.emulator, self.autostart, self.start_hidden, self.control_enabled):
             check.toggled.connect(self._changed)
 
     def _load(self, s: Settings) -> None:
@@ -427,6 +442,10 @@ class MainWindow(QMainWindow):
         self.autostart.setChecked(s.start_streaming_on_launch)
         self.start_hidden.setChecked(s.start_minimized)
         self.on_close.setCurrentIndex(max(self.on_close.findData(s.on_close), 0))
+        self.control_enabled.setChecked(s.control_enabled)
+        self.control_port.setValue(s.control_port)
+        self.control_bind.setText(s.control_bind)
+        self.control_allow.setText(s.control_allow)
         self.settings_dialog.rate_label.setText(f"{s.rate_hz:.1f} per second")
 
     def form_settings(self) -> Settings:
@@ -444,6 +463,10 @@ class MainWindow(QMainWindow):
             start_streaming_on_launch=self.autostart.isChecked(),
             start_minimized=self.start_hidden.isChecked(),
             on_close=self.on_close.currentData(),
+            control_enabled=self.control_enabled.isChecked(),
+            control_port=self.control_port.value(),
+            control_bind=self.control_bind.text().strip(),
+            control_allow=self.control_allow.text().strip(),
         )
 
     @property
@@ -452,9 +475,71 @@ class MainWindow(QMainWindow):
 
     def _changed(self) -> None:
         self._settings = self.form_settings()
-        self.show_problems(self._settings.validate())
+        problems = self._settings.validate()
+        self.show_problems(problems)
+        self._apply_remote(problems)
         self._refresh_status()
         self._save_timer.start()
+
+    # -- remote control (#77) -----------------------------------------------------
+
+    def _apply_remote(self, problems: dict[str, str]) -> None:
+        self.remote.apply(self._settings, problems)
+        self.settings_dialog.remote_status.setText(self.remote.status_text)
+
+    def remote_status(self) -> dict[str, Any]:
+        s = self._settings
+        info: dict[str, Any] = {
+            "streaming": self.controller.running,
+            "radio": s.effective_name(),
+            "n1mm": f"{s.n1mm_host}:{s.n1mm_port}",
+            "rate": s.rate_hz,
+            "combine": s.combine,
+        }
+        st = self.model.status
+        if st is not None:
+            info.update(vfo_hz=st.vfo_hz, span_hz=st.span_hz, mode=st.mode_name)
+        stats = self.model.stats
+        if stats is not None:
+            info.update(
+                sent=stats.emitted, read=stats.frames_read,
+                dropped=stats.frames_dropped, bad=stats.bad_frames,
+            )  # fmt: skip
+        if self.model.last_error:
+            info["error"] = self.model.last_error
+        return info
+
+    def remote_start(self) -> None:
+        if self.controller.running:
+            return
+        problems = self.form_settings().validate()
+        if problems:
+            raise ValueError("; ".join(f"{k}: {v}" for k, v in problems.items()))
+        self.toggle_streaming()
+
+    def remote_stop(self) -> None:
+        if self.controller.running:
+            self.controller.stop()
+
+    def remote_set(self, name: str, value: str | float) -> None:
+        candidate = self._settings.replace(**{REMOTE_FIELDS[name]: value})
+        field = REMOTE_FIELDS[name]
+        problem = candidate.validate().get(field)
+        if problem:
+            raise ValueError(problem)
+        if name == "name":
+            self.source_name.setText(str(value))
+        elif name == "rate":
+            self.rate.setValue(round(float(value) * RATE_STEPS_PER_HZ))
+        elif name == "combine":
+            self.combine.setCurrentIndex(max(self.combine.findData(value), 0))
+        else:
+            self.scaling.setValue(float(value))
+        self._changed()
+        if self.controller.running:  # rate and combine are fixed per pipeline
+            self.controller.stop()
+            self.controller.start(self._settings)
+        self._log("info", f"Remote control: set {name} to {value}")
 
     def save_settings(self) -> None:
         self._save_timer.stop()
@@ -603,6 +688,7 @@ class MainWindow(QMainWindow):
         self.close()
 
     def _shutdown(self) -> None:
+        self.remote.stop()
         self.controller.stop()
         self.save_settings()
         self.settings_dialog.close()
