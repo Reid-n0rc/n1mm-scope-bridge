@@ -96,6 +96,9 @@ jobs:
       - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
+      # Per-area floors (app 90%, scripts ratchet), replacing coverage's single fail_under (#180).
+      - name: Coverage gate
+        run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} python scripts/coverage_gate.py ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--config .coveragerc-nogui' || '' }}
       # An empty CODECOV_TOKEN made every upload fail silently for a day (#171).
       # Warn loudly, but never fail CI. Fork PRs get no secrets, so skip them.
       - name: Check Codecov token

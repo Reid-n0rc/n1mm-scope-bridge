@@ -16,7 +16,11 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   `socket`, `argparse`), and uv, pytest, ruff, and mypy (strict) for development
 - Commands:
   - `uv sync`: create `.venv` with the dev tools
-  - `uv run pytest --cov`: unit tests. Coverage must stay at 90% or higher.
+  - `uv run pytest --cov && uv run python scripts/coverage_gate.py`: unit tests,
+    then per-area coverage floors: the app package (`src/n1mm_scope_bridge`)
+    must stay at 90% or higher, and `scripts/` at or above its ratchet floor in
+    `scripts/coverage_gate.py` (raise it when coverage improves, never lower
+    it). Codecov shows them as the `app` and `scripts` components.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
   - `sh tests/hooks/run.sh`: git hook and agent hook tests
@@ -290,7 +294,8 @@ by a person or an agent, following the steps above.
    maintainer runs an on-air check with a real FT-710 and N1MM+:
    ```bash
    uv sync --locked && uv run ruff check . && uv run ruff format --check . \
-     && uv run mypy && uv run pytest --cov && sh tests/hooks/run.sh
+     && uv run mypy && uv run pytest --cov && uv run python scripts/coverage_gate.py \
+     && sh tests/hooks/run.sh
    ```
 
 ## Code conventions
