@@ -140,3 +140,5 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Write-Host "`nInstaller smoke test passed"
+# GitHub's pwsh wrapper exits with the last native $LASTEXITCODE (probe: 1 by design).
+exit 0
