@@ -55,14 +55,21 @@ comment, the issue, or the doc instead.
   and every release ships the source next to any binary (§6). `LICENSE`,
   `NOTICE`, and this file are included in the sdist and wheel.
 
-### FTDI LibFT4222 / D2XX in CI (downloaded, not distributed)
+### FTDI LibFT4222 / D2XX in CI (fetched, not distributed)
 
-- CI on Windows downloads FTDI's `LibFT4222-v1.4.8.zip` and the CDM driver
-  package from ftdichip.com (`scripts/fetch_ftdi.py`, SHA-256 pinned, cached)
-  to test the real native boundary (#37). The DLLs exist only on the CI
-  runner under FTDI's licence ("may be used only in conjunction with products
-  based on FTDI parts"; redistributable only with licence information
-  unmodified). They are never committed, cached in artifacts, or bundled.
+- Windows CI fetches FTDI's unmodified `LibFT4222-64.dll` 1.4.8.0 (signed by
+  Future Technology Devices International Ltd) and `ftd2xx.dll` 3.2.16.1
+  (WHQL-signed by Microsoft) to test the real native boundary (#37), using
+  `scripts/fetch_ftdi.py`. The SHA-256 is pinned and the Authenticode
+  signatures are checked.
+- Source: the PyPI `ft4222` 1.13.0 wheel (MSR Electronics; MIT wrapper,
+  `LicenseRef-FTDI` for the DLLs), which redistributes FTDI's DLLs. ftdichip.com
+  serves its downloads behind a Cloudflare browser challenge that CI cannot
+  pass. Only the two DLLs are extracted; the wrapper is not used.
+- FTDI's licence: "may be used only in conjunction with products based on FTDI
+  parts" and "may be distributed in any form as long as license information is
+  not modified". The DLLs exist only on the CI runner. They are never
+  committed, uploaded as artifacts, or bundled.
 
 ### FTDI LibFT4222 / D2XX (runtime dependency, not included)
 

@@ -66,10 +66,11 @@ means recapturing.
 The emulator replaces FTDI's library at the Python level. The real native
 boundary is tested against **FTDI's own DLLs** in Windows CI:
 
-- `scripts/fetch_ftdi.py` downloads LibFT4222 v1.4.8 (the version wfview
-  builds against) and `ftd2xx.dll` from FTDI's CDM driver package. Both are
-  checked against pinned SHA-256 hashes, cached, and never committed or
-  shipped.
+- `scripts/fetch_ftdi.py` fetches FTDI's signed LibFT4222 1.4.8 (the
+  version wfview builds against) and `ftd2xx.dll`. They come from the PyPI
+  `ft4222` wheel, because ftdichip.com blocks automated downloads. The wheel's
+  SHA-256 is pinned, both Authenticode signatures are checked on Windows, the
+  download is cached, and the DLLs are never committed or shipped.
 - `tests/test_native_ftdi.py` (`native` marker, skipped unless
   `N1MM_BRIDGE_FTDI_DIR` is set) checks DLL loading (including the
   `ftd2xx.dll` dependency through `os.add_dll_directory`), symbol resolution,
