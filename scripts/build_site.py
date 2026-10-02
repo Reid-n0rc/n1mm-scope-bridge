@@ -15,6 +15,7 @@ Template syntax:
   <!-- if:prerelease --> ... <!-- endif:prerelease -->  only without --tag
   {{name}}                                   a value from the build context
   <!-- screenshot:NAME -->                   a GUI screenshot from --screenshots DIR
+  <!-- markdown:docs/user/NAME.md -->        that user doc, rendered (site_markdown.py)
                                              (manifest.json written by
                                              `n1mm-scope-bridge gui --screenshot DIR`)
 """
@@ -25,12 +26,15 @@ import argparse
 import html
 import html.parser
 import json
+import posixpath
 import re
 import shutil
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import site_markdown
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
@@ -42,6 +46,8 @@ INCLUDE = re.compile(r"<!-- include:([a-z0-9_-]+) -->")
 BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re.S)
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
+# <!-- markdown:docs/user/NAME.md --> renders that doc (#23), so the page matches it.
+MARKDOWN = re.compile(r"<!-- markdown:(docs/user/[a-z0-9_-]+\.md) -->")
 SHOTS_DIR = "assets/screenshots"
 PREVIEW_LABEL = "Development preview"
 
@@ -122,6 +128,19 @@ def render(
         return partials[m.group(1)]
 
     text = INCLUDE.sub(include, text)
+
+    def markdown(m: re.Match[str]) -> str:
+        path = ROOT / m.group(1)
+        if not path.is_file():
+            raise SiteError(f"{name}: {m.group(1)} does not exist")
+        base = f"{ctx['source_url']}/blob/{ctx['ref']}"
+        links = site_markdown.doc_link_mapper(base, posixpath.dirname(m.group(1)))
+        try:
+            return site_markdown.render(path.read_text(encoding="utf-8"), links)
+        except site_markdown.MarkdownError as err:
+            raise SiteError(f"{name}: {m.group(1)}: {err}") from None
+
+    text = MARKDOWN.sub(markdown, text)
 
     def screenshot(m: re.Match[str]) -> str:
         if shots is None:

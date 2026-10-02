@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>FAQ | N1MM Scope Bridge</title>
+<meta name="description" content="Common questions about N1MM Scope Bridge: CAT port conflicts, supported radios, performance, SO2R, and uninstalling.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Frequently asked questions</h1>
+
+  <h2 id="cat">Does the bridge conflict with N1MM+'s CAT connection?</h2>
+  <p>No. The bridge reads the radio's spectrum scope through a separate USB channel and never opens the radio's CAT COM ports. N1MM+ keeps full control of the radio.</p>
+
+  <h2 id="transmit">Can the bridge transmit or change my radio's settings?</h2>
+  <p>No. It only reads the scope data. It never keys the radio and never changes its settings.</p>
+
+  <h2 id="radios">Which radios are supported?</h2>
+  <p>The Yaesu FT-710 is the first supported radio. Other Yaesu models with a built-in scope are planned. See <a href="index.html#radios">supported radios</a>.</p>
+
+  <h2 id="no-radio">Can I try it without the radio?</h2>
+  <p>Yes. Turn on <strong>Use the built-in emulator</strong> in the window. It streams a simulated FT-710 so you can set up N1MM+'s Spectrum Display before connecting the radio.</p>
+
+  <h2 id="center">Why does it ask for Center scope mode?</h2>
+  <p>N1MM+'s frequency scale is exact only when the radio's scope is centred on the VFO. In Cursor or Fixed mode the bridge still streams, but the frequencies are approximate, so it shows a reminder. See <a href="troubleshooting.html#center-scope-mode">Center scope mode</a>.</p>
+
+  <h2 id="performance">Will it slow down N1MM+?</h2>
+  <p>No. The bridge sends N1MM+ four updates a second by default (at most ten), as the N1MM+ team recommends. The radio is read on its own thread, so the window stays responsive.</p>
+
+  <h2 id="so2r">Can I use it with two radios (SO2R)?</h2>
+  <p>N1MM+ can show the bridge's spectrum for Radio 1 or Radio 2. Reading two FT-710s at once from one bridge isn't supported yet.</p>
+
+  <h2 id="other-pc">N1MM+ runs on another PC. Does that work?</h2>
+  <p>Yes. Set <strong>N1MM+ PC</strong> to that PC's address and allow UDP port 13064 through its firewall. See <a href="n1mm.html#other-pc">N1MM+ on another PC</a>.</p>
+
+  <h2 id="ftdi">Why do I have to download FTDI's library myself?</h2>
+  <p>The FT-710 sends its scope through an FTDI chip, read with FTDI's LibFT4222 library. It's free, but its license doesn't allow it to be included with this GPL-licensed program, so you download it from FTDI. Setup can copy it into place for you.</p>
+
+  <h2 id="smartscreen">Windows warns that the installer is unrecognised. Is it safe?</h2>
+  <p>The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Choose <strong>More info</strong>, check the publisher and file name, then <strong>Run anyway</strong>. Each release lists SHA-256 checksums so you can confirm the download is genuine.</p>
+
+  <h2 id="uninstall">How do I uninstall?</h2>
+  <p>Use <strong>Settings &rarr; Apps</strong> in Windows, or <strong>Uninstall N1MM Scope Bridge</strong> in the Start menu. Your settings are kept unless you choose to remove them.</p>
+
+  <h2 id="help">Where do I get help?</h2>
+  <p>Check <a href="troubleshooting.html">Troubleshooting</a> first. Then open an issue on <a href="{{source_url}}/issues">GitHub</a> and paste the text from <strong>Copy diagnostics</strong> in the window's Log section.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>

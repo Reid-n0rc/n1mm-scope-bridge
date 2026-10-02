@@ -287,3 +287,37 @@ def test_real_site_with_screenshots(tmp_path: Path) -> None:
     assert use.count("<figure") == 3
     assert any(p.name == "use.html" for p in pages)
     assert bs.main(["--out", str(tmp_path / "m"), "--screenshots", str(shots)]) == 0
+
+
+# --- user docs rendered into pages (#23) ------------------------------------------------------
+
+
+def test_troubleshooting_page_lists_every_user_message(tmp_path: Path) -> None:
+    import html as html_mod  # noqa: PLC0415 - local to keep the module's imports minimal
+
+    from test_docs import USER_MESSAGES  # noqa: PLC0415
+
+    bs.build(tmp_path / "out", DEV)
+    page = (tmp_path / "out" / "troubleshooting.html").read_text(encoding="utf-8")
+    assert "<table>" in page
+    for message in USER_MESSAGES:
+        assert html_mod.escape(message, quote=False) in page, message
+
+
+def test_markdown_links_follow_the_release_ref(tmp_path: Path) -> None:
+    bs.build(tmp_path / "out", RELEASE)
+    page = (tmp_path / "out" / "troubleshooting.html").read_text(encoding="utf-8")
+    assert f"/blob/{RELEASE['ref']}/docs/user/settings.md" in page
+
+
+def test_markdown_marker_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    src = write_site(tmp_path / "src", {"index.html": "<!-- markdown:docs/user/nope.md -->"})
+    with pytest.raises(bs.SiteError, match="does not exist"):
+        bs.build(tmp_path / "out", DEV, src)
+    root = tmp_path / "repo"
+    (root / "docs" / "user").mkdir(parents=True)
+    (root / "docs" / "user" / "bad.md").write_text("![x](y.png)", encoding="utf-8")
+    monkeypatch.setattr(bs, "ROOT", root)
+    src2 = write_site(tmp_path / "src2", {"index.html": "<!-- markdown:docs/user/bad.md -->"})
+    with pytest.raises(bs.SiteError, match=r"bad\.md: unsupported"):
+        bs.build(tmp_path / "out2", DEV, src2)
