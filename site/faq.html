@@ -37,8 +37,8 @@
   <h2 id="other-pc">N1MM+ runs on another PC. Does that work?</h2>
   <p>Yes. Set <strong>N1MM+ PC</strong> to that PC's address and allow UDP port 13064 through its firewall. See <a href="n1mm.html#other-pc">N1MM+ on another PC</a>.</p>
 
-  <h2 id="ftdi">Why do I have to download FTDI's library myself?</h2>
-  <p>The bridge reads the FT-710's scope with FTDI's LibFT4222 library (see <a href="install.html#ft-710">Install</a>). It's free, but its license doesn't allow it to be included with this GPL-licensed program, so you download it from FTDI. Setup can copy it into place for you.</p>
+  <h2 id="ftdi">Why does setup download FTDI's library separately?</h2>
+  <p>The bridge reads the FT-710's scope with FTDI's LibFT4222 library (see <a href="install.html#ft-710">Install</a>). Its license doesn't allow it to be included inside this GPL-licensed program, so setup downloads FTDI's signed files for you during install (the option is on by default) and checks them before copying. If you install without internet, untick the option and download LibFT4222 from FTDI yourself.</p>
 
   <h2 id="smartscreen">Windows warns that the installer is unrecognised. Is it safe?</h2>
   <p>The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Choose <strong>More info</strong>, check the publisher and file name, then <strong>Run anyway</strong>. Each release lists SHA-256 checksums so you can confirm the download is genuine.</p>

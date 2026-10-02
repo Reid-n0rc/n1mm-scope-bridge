@@ -4,11 +4,17 @@
 ; Inno Setup script for the N1MM Scope Bridge Windows installer (issue #20).
 ; Build with scripts/build_installer.py, which passes:
 ;   /DAppVersion=<x.y.z>  /DSourceDir=<PyInstaller one-folder app>  /DOutputDir=<dir>
+;   /DFtdiWheelUrl /DFtdiWheelSha256 /DFtdiWheelFile /DFtdiLibSigner /DFtdiD2xxSigner
+;   /DFtdiLicenceUrl  (from packaging/windows/ftdi_pin.json, the single source of truth)
 ;
-; FTDI's LibFT4222 is proprietary and is never bundled (AGENTS.md rule 7). The
-; installer only checks for it, offers FTDI's download page, and can copy the
-; DLLs from a folder the user picks into the app folder. That is the user
-; installing their own copy, not us distributing it.
+; FTDI's LibFT4222 is proprietary and is never bundled (AGENTS.md rule 7). With
+; the "ftdidownload" task (on by default) the user's installer downloads FTDI's
+; signed DLLs from the pinned URL at install time, verifies the SHA-256 and the
+; Authenticode signatures (ftdi_install.ps1), and puts them in the program
+; folder (#133). Otherwise the user can pick a folder they unzipped from FTDI.
+; Either way the user obtains their own copy; we never distribute it.
+; Silent installs: the download task is on by default and selecting it (or not
+; deselecting it) accepts FTDI's licence terms; /MERGETASKS="!ftdidownload" skips it.
 
 #ifndef AppVersion
   #error AppVersion must be defined (/DAppVersion=x.y.z)
@@ -24,6 +30,9 @@
 #define GuiExe "N1MM Scope Bridge.exe"
 #define CliExe "n1mm-scope-bridge.exe"
 #define FtdiUrl "https://ftdichip.com/products/ft4222h/"
+#ifndef FtdiWheelUrl
+  #error FTDI pin defines missing; build with scripts/build_installer.py
+#endif
 
 [Setup]
 AppId={{5B454E52-482B-4DB9-9888-C9C98FCD1306}
@@ -60,11 +69,14 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
+Name: "ftdidownload"; Description: "&Download FTDI's LibFT4222 library (needed for the Yaesu FT-710 scope)"; GroupDescription: "FTDI library:"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
 Name: "autostart"; Description: "Start {#AppName} when I sign in to &Windows"; GroupDescription: "Startup:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Helper only (extract + signature check); FTDI's DLLs themselves are downloaded.
+Source: "ftdi_install.ps1"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#GuiExe}"
@@ -80,7 +92,7 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: s
 Filename: "{app}\{#GuiExe}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; DLLs the user chose to copy in from their own FTDI download.
+; FTDI DLLs downloaded by setup or copied in from the user's own FTDI download.
 Type: files; Name: "{app}\LibFT4222*.dll"
 Type: files; Name: "{app}\ftd2xx.dll"
 
@@ -128,7 +140,8 @@ end;
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   // Silent installs never ask; the GUI checks for LibFT4222 at launch.
-  Result := (PageID = FtdiPage.ID) and (WizardSilent() or HasLibFT4222(ExpandConstant('{sys}')));
+  Result := (PageID = FtdiPage.ID) and (WizardSilent() or WizardIsTaskSelected('ftdidownload')
+    or HasLibFT4222(ExpandConstant('{sys}')));
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -137,7 +150,23 @@ var
   ErrorCode: Integer;
 begin
   Result := True;
-  if CurPageID = FtdiPage.ID then
+  // Silent installs: choosing the ftdidownload task (the default) is the acceptance;
+  // a plain MsgBox here would block a silent install on an invisible dialog.
+  if (CurPageID = wpSelectTasks) and WizardIsTaskSelected('ftdidownload') and not WizardSilent() then
+  begin
+    Result := MsgBox('Setup will download FTDI''s LibFT4222 and D2XX libraries from ' +
+      'PyPI (the ft4222 package, which redistributes FTDI''s unmodified, signed DLLs), ' +
+      'check them, and put them in the program folder.' + #13#10#13#10 +
+      'FTDI licence terms (summary): FTDI drivers may be used only in conjunction with ' +
+      'products based on FTDI parts (the FT-710 uses FTDI''s FT4222H). The software is ' +
+      'provided "as is" without warranty. Full terms: {#FtdiLicenceUrl}' + #13#10#13#10 +
+      'Do you accept FTDI''s licence terms and want setup to download the library?',
+      mbConfirmation, MB_YESNO) = IDYES;
+    if not Result then
+      MsgBox('Untick "Download FTDI''s LibFT4222 library" to continue without it. ' +
+        'You can then pick a folder you downloaded from FTDI yourself.', mbInformation, MB_OK);
+  end
+  else if CurPageID = FtdiPage.ID then
   begin
     Dir := Trim(FtdiPage.Values[0]);
     if (Dir <> '') and not HasLibFT4222(Dir) then
@@ -155,11 +184,59 @@ begin
   end;
 end;
 
+procedure FtdiDownloadFailed(Reason: String);
+begin
+  Log('FTDI download: ' + Reason);
+  if not WizardSilent() then
+    MsgBox('N1MM Scope Bridge is installed, but setup could not get FTDI''s LibFT4222 ' +
+      'library:' + #13#10 + Reason + #13#10#13#10 +
+      'Download it from FTDI ({#FtdiUrl}) and set the FTDI library folder in the app''s ' +
+      'Settings, or run setup again later.', mbError, MB_OK);
+end;
+
+procedure DownloadFtdi();
+var
+  Wheel, Helper, ResultFile, Params: String;
+  Code: Integer;
+  Message: AnsiString;
+begin
+  Log('FTDI download: fetching {#FtdiWheelUrl}');
+  try
+    DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}', nil);
+  except
+    FtdiDownloadFailed('download failed: ' + GetExceptionMessage());
+    exit;
+  end;
+  Log('FTDI download: SHA-256 verified; extracting and checking signatures');
+  ExtractTemporaryFile('ftdi_install.ps1');
+  Wheel := ExpandConstant('{tmp}\{#FtdiWheelFile}');
+  Helper := ExpandConstant('{tmp}\ftdi_install.ps1');
+  ResultFile := ExpandConstant('{tmp}\ftdi_result.txt');
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Helper + '" -Wheel "' + Wheel +
+    '" -Dest "' + ExpandConstant('{app}') + '" -LibSigner "{#FtdiLibSigner}"' +
+    ' -D2xxSigner "{#FtdiD2xxSigner}" -Result "' + ResultFile + '"';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, '',
+    SW_HIDE, ewWaitUntilTerminated, Code) then
+  begin
+    FtdiDownloadFailed('could not run PowerShell: ' + SysErrorMessage(Code));
+    exit;
+  end;
+  Log('FTDI download: helper exited with code ' + IntToStr(Code));
+  if not LoadStringFromFile(ResultFile, Message) then
+    Message := 'ERROR: no result from the FTDI helper';
+  if (Code <> 0) or (Pos('OK', Trim(String(Message))) <> 1) then
+    FtdiDownloadFailed(Trim(String(Message)))
+  else
+    Log('FTDI download: LibFT4222-64.dll and ftd2xx.dll installed and signature-verified');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir: String;
 begin
-  if (CurStep = ssPostInstall) and not WizardSilent() then
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('ftdidownload') then
+    DownloadFtdi()
+  else if (CurStep = ssPostInstall) and not WizardSilent() then
   begin
     Dir := Trim(FtdiPage.Values[0]);
     if (Dir <> '') and HasLibFT4222(Dir) then

@@ -77,8 +77,18 @@ comment, the issue, or the doc instead.
 
 - Source: <https://ftdichip.com/products/ft4222h/>
 - License: FTDI's proprietary driver licence. It is **never bundled** in this
-  repository or in any release. Users install it from FTDI, and the bridge
-  loads it at run time. Bundling it would mean distributing GPL code
+  repository or in any release. The bridge loads it at run time.
+- **Installer download (#133):** the Windows installer's "Download FTDI's
+  LibFT4222 library" task (on by default, the user accepts FTDI's licence
+  summary first) makes the *user's* setup download FTDI's unmodified, signed
+  `LibFT4222-64.dll` and `ftd2xx.dll` at install time and copy them into the
+  program folder. Our installer contains only a small helper script
+  (`packaging/windows/ftdi_install.ps1`), never the DLLs. The source is the
+  pinned PyPI `ft4222` wheel in `packaging/windows/ftdi_pin.json` (SHA-256
+  verified by Inno Setup); the helper also checks both Authenticode
+  signatures (FTDI for LibFT4222, Microsoft WHQL for ftd2xx) before copying.
+  The pin is monitored daily (`.github/workflows/ftdi-download-check.yml`).
+  Users can untick the task and install the library from FTDI themselves. Bundling it would mean distributing GPL code
   (including wfview's) combined with a GPL-incompatible library, which we
   don't do without written permission from the wfview copyright holders.
 

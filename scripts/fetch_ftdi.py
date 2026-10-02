@@ -7,6 +7,9 @@ checked against a pinned SHA-256 and (on Windows) their Authenticode
 signatures, and never committed or bundled (the pre-commit hook and the
 release regression's dist checks enforce that). See THIRD_PARTY.md.
 
+The pin (URL, SHA-256, files, signers) lives in packaging/windows/ftdi_pin.json
+and is shared with the installer and scripts/check_ftdi_download.py.
+
 Source: ftdichip.com sits behind a Cloudflare browser challenge, so CI cannot
 download from it. The PyPI ``ft4222`` wheel (MSR Electronics, MIT wrapper,
 "LicenseRef-FTDI" for the DLLs) redistributes FTDI's unmodified Windows DLLs,
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -47,21 +51,20 @@ class Package:
         return self.url.rsplit("/", 1)[-1]
 
 
-PACKAGES = (
-    Package(
-        "https://files.pythonhosted.org/packages/27/f2/"
-        "e4704914f5b2b14b891700e4e5ca52eebd9250808a008251d93e58cdbf09/"
-        "ft4222-1.13.0-cp313-cp313-win_amd64.whl",
-        "03793163871663b5cc80fc2effd9f52357d8abd601da1064a85cf67624f12df7",
-        (("ft4222/LibFT4222-64.dll", "LibFT4222-64.dll"), ("ft4222/ftd2xx.dll", "ftd2xx.dll")),
-    ),
-)
+PIN = Path(__file__).resolve().parent.parent / "packaging" / "windows" / "ftdi_pin.json"
 
-# Expected Authenticode signers (Windows only; checked after extraction).
-SIGNERS = {
-    "LibFT4222-64.dll": "Future Technology Devices International",
-    "ftd2xx.dll": "Microsoft Windows Hardware Compatibility",
-}
+
+def load_pin(path: Path = PIN) -> tuple[Package, dict[str, str]]:
+    """The pinned download and expected signers, from the single source of truth (#133)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    files = tuple((f["member"], f["name"]) for f in data["files"])
+    signers = {f["name"]: f["signer"] for f in data["files"]}
+    return Package(data["url"], data["sha256"], files), signers
+
+
+_PIN_PACKAGE, SIGNERS = load_pin()
+PACKAGES = (_PIN_PACKAGE,)
+"""Expected Authenticode signers (Windows only; checked after extraction)."""
 
 Downloader = Callable[[str, Path], None]
 SignatureCheck = Callable[[Path], str]

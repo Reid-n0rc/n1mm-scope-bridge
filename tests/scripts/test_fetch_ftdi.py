@@ -150,3 +150,13 @@ def test_wrong_signer_fails(tmp_path: Path, name: str, subject: str, message: st
     path.write_bytes(b"x")
     with pytest.raises(ff.FetchError, match=message):
         ff.verify_signatures([path], lambda p: subject)
+
+
+def test_pin_is_the_single_source_of_truth() -> None:
+    pkg, signers = ff.load_pin()
+    assert (pkg,) == ff.PACKAGES
+    assert signers == ff.SIGNERS
+    assert pkg.url.startswith("https://files.pythonhosted.org/")
+    assert len(pkg.sha256) == 64
+    assert {name for _, name in pkg.files} == {"LibFT4222-64.dll", "ftd2xx.dll"}
+    assert "Future Technology Devices International" in signers["LibFT4222-64.dll"]

@@ -23,7 +23,11 @@ INSTALLER_GLOB = "n1mm-scope-bridge-setup-*.exe"
 RAW = DIST / "installer-screenshots"
 SHOTS = DIST / "screenshots"
 ZIP = DIST / "screenshots.zip"
-REQUIRED = ("installer-license", "installer-tasks", "installer-ftdi", "installer-finished")
+REQUIRED = (
+    "installer-license",
+    "installer-tasks",
+    "installer-finished",
+)  # FTDI page: only when the download is off (#133)
 
 
 def command(installer: Path, out: Path = RAW) -> tuple[str, ...]:
