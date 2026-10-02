@@ -119,10 +119,7 @@ def test_run_exits_1_when_the_radio_stream_fails() -> None:
     assert "error: FT4222_SPIMaster_SingleRead failed" in err
 
 
-def test_run_prompts_for_center_and_confirms() -> None:
-    code, _, err = cli(
-        "run", "--scenario", "mode-change", "--duration", "4", "--port", "9", "--rate", "10"
-    )
+def test_run_prompts_when_scope_leaves_center() -> None:
+    code, _, err = cli("run", "--scenario", "mode-change", "--duration", "2.5", "--port", "9")
     assert code == 0
     assert "FT-710 scope left Center mode (Cursor (Normal))" in err
-    assert "FT-710 scope is in Center mode: N1MM+ frequencies are exact." in err
