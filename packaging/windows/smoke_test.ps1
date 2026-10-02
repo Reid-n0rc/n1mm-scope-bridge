@@ -5,11 +5,20 @@
 # folder, check files, shortcuts and the uninstall entry, run the installed CLI
 # (legal notices + emulator frames into a UDP listener) and the GUI self-test,
 # then uninstall silently and check everything is gone except the settings.
+# The install runs with the FTDI download task (#133): setup must download
+# FTDI's signed LibFT4222/D2XX into the program folder, and probe must then load
+# them and report that no radio is connected.
 #
-#   pwsh packaging/windows/smoke_test.ps1 -Installer dist\windows\n1mm-scope-bridge-setup-0.1.0.exe
+# One installer holds every payload (#149). -Payload x64|arm64|x86 forces one
+# (setup's /PAYLOAD switch); without it setup picks the default for this PC
+# (x64, also on Windows on ARM). The arm64 payload has no FTDI download, so its
+# probe must report the missing library; the x86 payload has no GUI.
+#
+#   pwsh packaging/windows/smoke_test.ps1 -Installer dist\windows\n1mm-scope-bridge-setup-0.1.0.exe [-Payload x86]
 
 param(
-    [Parameter(Mandatory = $true)][string]$Installer
+    [Parameter(Mandatory = $true)][string]$Installer,
+    [ValidateSet('', 'x64', 'arm64', 'x86')][string]$Payload = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,22 +30,63 @@ $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppI
 # Inno Setup puts the shortcuts in a {group} folder named after the app.
 $StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$AppName.lnk"
 $Desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
+$CliShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$AppName (command line).lnk"
 $failures = [System.Collections.Generic.List[string]]::new()
+$Expected = if ($Payload) { $Payload } else { 'x64' }
+$HasGui = $Expected -ne 'x86'
+$Downloads = $Expected -ne 'arm64'  # no verifiable ARM64 FTDI download exists
+$LibName = if ($Expected -eq 'x86') { 'LibFT4222.dll' } else { 'LibFT4222-64.dll' }
+$Machine = @{ 'x64' = 0x8664; 'arm64' = 0xAA64; 'x86' = 0x14C }[$Expected]
+Write-Host "payload: $Expected (requested: '$Payload'; OS: $env:PROCESSOR_ARCHITECTURE)"
 
 function Check([bool]$ok, [string]$what) {
     if ($ok) { Write-Host "ok   - $what" } else { Write-Host "FAIL - $what"; $failures.Add($what) }
 }
 
-function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120) {
+function Get-PeMachine([string]$path) {
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+    return [BitConverter]::ToUInt16($bytes, $pe + 4)
+}
+
+function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120, [string]$logFile = '') {
     $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
-    if (-not $p.WaitForExit($timeoutSec * 1000)) { $p.Kill(); throw "$file timed out" }
+    if (-not $p.WaitForExit($timeoutSec * 1000)) {
+        $p.Kill()
+        $stuck = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'powershell|setup|n1mm' }
+        foreach ($proc in $stuck) {
+            Write-Host "still running: $($_.ProcessName) $($proc.ProcessName) pid=$($proc.Id) window='$($proc.MainWindowTitle)'"
+        }
+        # Name every top-level window, to see any dialog setup is waiting on.
+        Add-Type -AssemblyName UIAutomationClient
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($w in $all) {
+            $names = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+                ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -First 12
+            Write-Host ("window '" + $w.Current.Name + "': " + ($names -join ' | '))
+        }
+        if ($logFile -and (Test-Path $logFile)) {
+            Write-Host "--- log ($((Get-Item $logFile).Length) bytes) ---"
+            Get-Content $logFile -Tail 80
+        } else { Write-Host '--- no log file ---' }
+        $stuck | Where-Object { $_.ProcessName -match 'setup' } | Stop-Process -Force -ErrorAction SilentlyContinue
+        throw "$file timed out"
+    }
     return $p.ExitCode
 }
 
 # --- install ------------------------------------------------------------------------
+# An earlier release candidate could add a start-with-Windows Run value; setup must remove it (#136).
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }  # fresh runners lack it
+New-ItemProperty -Path $runKey -Name $AppName -Value 'stale-from-rc1' -PropertyType String -Force | Out-Null
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
-$code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
-    "/DIR=`"$Dir`"", '/TASKS=desktopicon', "/LOG=`"$log`"")
+$tasks = if ($Expected -eq 'x86') { 'ftdidownload' } elseif ($Downloads) { 'desktopicon,ftdidownload' } else { 'desktopicon' }
+$setupArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
+    "/DIR=`"$Dir`"", "/TASKS=$tasks", "/LOG=`"$log`"")
+if ($Payload) { $setupArgs += "/PAYLOAD=$Payload" }
+$code = Wait-Process-Exit $Installer $setupArgs -timeoutSec 300 -logFile $log
 Check ($code -eq 0) "silent install exits 0 (got $code)"
 if ($code -ne 0) {
     Write-Host '--- install log ---'
@@ -46,13 +96,46 @@ if ($code -ne 0) {
 $cli = Join-Path $Dir 'n1mm-scope-bridge.exe'
 $gui = Join-Path $Dir "$AppName.exe"
 Check (Test-Path $cli) 'CLI exe installed'
-Check (Test-Path $gui) 'GUI exe installed'
+if (Test-Path $log) { Check ((Get-Content $log -Raw) -match "Payload: $Expected") "setup chose the $Expected payload" }
+if (Test-Path $cli) {
+    $m = Get-PeMachine $cli
+    Check ($m -eq $Machine) ("CLI exe is built for {0} (PE machine 0x{1:X})" -f $Expected, $m)
+}
+if ($HasGui) { Check (Test-Path $gui) 'GUI exe installed' }
+else {
+    Check (-not (Test-Path $gui)) 'no GUI exe in the 32-bit payload'
+    Check (Test-Path (Join-Path $Dir 'cli-start.cmd')) 'command-line start script installed'
+}
 foreach ($f in 'LICENSE', 'NOTICE', 'THIRD_PARTY.md') { Check (Test-Path (Join-Path $Dir "licenses\$f")) "licenses\$f installed" }
-$ftdi = Get-ChildItem -Path $Dir -Recurse -File | Where-Object { $_.Name -match '(?i)(ft4222|ftd2xx)' -and $_.Extension -eq '.dll' }
-Check ($null -eq $ftdi) 'no FTDI binaries installed'
-Check (Test-Path $StartMenu) 'Start menu shortcut created'
-Check (Test-Path $Desktop) 'desktop shortcut created'
+# FTDI's DLLs come only from setup's download (never from our installer).
+$expectedSigners = @{ $LibName = 'Future Technology Devices International'; 'ftd2xx.dll' = 'Microsoft Windows Hardware Compatibility' }
+if (-not $Downloads) {
+    foreach ($name in $expectedSigners.Keys) { Check (-not (Test-Path (Join-Path $Dir $name))) "$name not downloaded for the arm64 payload" }
+    $expectedSigners = @{}
+}
+foreach ($name in $expectedSigners.Keys) {
+    $path = Join-Path $Dir $name
+    Check (Test-Path $path) "$name downloaded into the program folder"
+    if (Test-Path $path) {
+        $sig = Get-AuthenticodeSignature -LiteralPath $path
+        Check ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Subject -like "*$($expectedSigners[$name])*") "$name signature valid ($($sig.Status), $($sig.SignerCertificate.Subject))"
+    }
+}
+$extra = Get-ChildItem -Path $Dir -Recurse -File | Where-Object { $_.Name -match '(?i)(ft4222|ftd2xx)' -and $_.Extension -eq '.dll' -and $_.DirectoryName -ne (Get-Item $Dir).FullName }
+Check ($null -eq $extra) 'no FTDI binaries anywhere except the downloaded pair'
+if ($Downloads -and (Test-Path $log)) { Check ((Get-Content $log -Raw) -match "FTDI download: $([regex]::Escape($LibName)) and ftd2xx.dll installed") 'install log records the verified FTDI download' }
+if ($HasGui) {
+    Check (Test-Path $StartMenu) 'Start menu shortcut created'
+    Check (Test-Path $Desktop) 'desktop shortcut created'
+} else {
+    Check (Test-Path $CliShortcut) 'Start menu command-line shortcut created'
+    Check (-not (Test-Path $StartMenu)) 'no GUI Start menu shortcut'
+    Check (-not (Test-Path $Desktop)) 'no desktop shortcut'
+}
 Check (Test-Path $UninstallKey) 'uninstall entry registered (per user)'
+# The program never starts with Windows (#136): no Run entry, even after an upgrade.
+$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+Check ($null -eq (Get-ItemProperty -Path $RunKey -Name $AppName -ErrorAction SilentlyContinue)) 'no start-with-Windows Run entry (stale RC value removed)'
 
 # --- run the installed app ----------------------------------------------------------------
 $version = & $cli --version | Out-String
@@ -74,8 +157,21 @@ try {
 } catch [System.Net.Sockets.SocketException] { } finally { $udp.Close() }
 Check ($runCode -eq 0 -and $packets -ge 3) "installed CLI streams emulator frames to UDP (exit $runCode, $packets packets)"
 
-$selfTest = Wait-Process-Exit $gui @('--self-test')
-Check ($selfTest -eq 0) "installed GUI --self-test exits 0 (got $selfTest)"
+# With FTDI's DLLs installed, probe loads them and finds no radio (CI has none).
+$ErrorActionPreference = 'Continue'  # probe writes its error to stderr and exits 1
+$probe = & $cli probe 2>&1 | Out-String
+$probeCode = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($Downloads) {
+    Check ($probeCode -eq 1 -and $probe -match "Could not open 'FT4222 A'" -and $probe -notmatch "Could not load FTDI") "installed CLI probe loads FTDI's library and reports no radio ($($probe.Trim()))"
+} else {
+    Check ($probeCode -ne 0 -and $probe -match "Could not load FTDI") "installed CLI probe reports the missing FTDI library ($($probe.Trim()))"
+}
+
+if ($HasGui) {
+    $selfTest = Wait-Process-Exit $gui @('--self-test')
+    Check ($selfTest -eq 0) "installed GUI --self-test exits 0 (got $selfTest)"
+}
 
 # --- uninstall -----------------------------------------------------------------------------
 $settings = Join-Path $env:APPDATA 'n1mm-scope-bridge'
@@ -86,7 +182,9 @@ Check ($code -eq 0) "silent uninstall exits 0 (got $code)"
 $deadline = (Get-Date).AddSeconds(60)
 while ((Test-Path $cli) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
 Check (-not (Test-Path $cli)) 'program files removed'
+Check (-not (Test-Path (Join-Path $Dir $LibName))) 'downloaded FTDI DLLs removed by uninstall'
 Check (-not (Test-Path $StartMenu)) 'Start menu shortcut removed'
+Check (-not (Test-Path $CliShortcut)) 'command-line shortcut removed'
 Check (-not (Test-Path $Desktop)) 'desktop shortcut removed'
 Check (-not (Test-Path $UninstallKey)) 'uninstall entry removed'
 if ($hadSettings) { Check (Test-Path $settings) 'settings kept by silent uninstall' }
@@ -97,3 +195,5 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 Write-Host "`nInstaller smoke test passed"
+# GitHub's pwsh wrapper exits with the last native $LASTEXITCODE (probe: 1 by design).
+exit 0

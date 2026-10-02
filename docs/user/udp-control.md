@@ -8,7 +8,10 @@ on.
 
 ## Turning it on
 
-- **GUI:** coming soon (#77).
+- **GUI:** Settings → **Remote control** → **Enable remote control (UDP)**. The
+  page shows the port, the address it listens on, the allowed clients, and a
+  **Status** line (for example *Listening on 127.0.0.1:13070*). It serves the
+  same commands as the command line while the window (or tray icon) is running.
 - **Command line:** `n1mm-scope-bridge run --control-port 13070`
 - **Settings file:** `"control_enabled": true` (see [settings](settings.md)).
 

@@ -29,6 +29,7 @@ a warning.
 | `emulator` | `false` | `--emulator` | Use the built-in FT-710 emulator instead of the radio, to try the bridge or set up N1MM+ without the radio. The GUI saves it; the command line uses `--emulator` |
 | `start_streaming_on_launch` | `false` | — | GUI: start streaming as soon as it opens |
 | `start_minimized` | `false` | — | GUI: start hidden in the system tray |
+| `show_preview` | `false` | — | GUI: show the live spectrum/waterfall preview. Off by default because drawing it uses extra CPU; streaming to N1MM+ is the same either way. Toggle it with **Show preview** in the window |
 | `on_close` | `ask` | — | GUI Close button: `ask`, `tray` (keep streaming in the tray), or `exit` |
 | `control_enabled` | `false` | `run --control-port` | Optional [UDP remote control](udp-control.md). **Off by default.** |
 | `control_port` | `13070` | `run --control-port` | Remote-control UDP port (must differ from the N1MM+ port) |

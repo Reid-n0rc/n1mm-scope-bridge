@@ -4,7 +4,8 @@
 
 Layout (top to bottom): a header (title, status pill, Start/Stop, menu), the
 live spectrum and waterfall preview, a row of cards (frequency, span, scope
-mode, N1MM+, health), a one-line message, and a collapsible Activity log.
+mode, N1MM+, health), the Center-mode prompt (only when the scope is not in
+Center), a one-line message, and a collapsible Activity log.
 Settings live in ``SettingsDialog`` and save automatically. The pipeline runs
 in ``StreamController``; this module only touches widgets on the GUI thread.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
@@ -27,6 +29,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QSystemTrayIcon,
     QToolButton,
     QVBoxLayout,
@@ -36,8 +39,10 @@ from PySide6.QtWidgets import (
 from n1mm_scope_bridge import settings as settings_mod
 from n1mm_scope_bridge.emulator import make_emulator
 from n1mm_scope_bridge.gui import icons
+from n1mm_scope_bridge.gui.center_panel import CenterModePanel
 from n1mm_scope_bridge.gui.controller import Source, StreamController, radio_source
 from n1mm_scope_bridge.gui.icon import app_icon
+from n1mm_scope_bridge.gui.remote import GuiRemote, RemoteControl
 from n1mm_scope_bridge.gui.settings_dialog import RATE_STEPS_PER_HZ, SettingsDialog
 from n1mm_scope_bridge.gui.spectrum import SpectrumView
 from n1mm_scope_bridge.gui.status import LOG_LINES, LogBuffer, StatusModel, diagnostics
@@ -48,11 +53,17 @@ from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
 from n1mm_scope_bridge.settings import Settings
-from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader
+from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader, normalize_dir
 
 APP_TITLE = "N1MM Scope Bridge"
 SETUP_GUIDE_URL = "https://reid-n0rc.github.io/n1mm-scope-bridge/n1mm.html"
 SAVE_DELAY_MS = 400
+REMOTE_FIELDS = {
+    "name": "source_name",
+    "rate": "rate_hz",
+    "combine": "combine",
+    "scaling": "scaling",
+}
 EMULATOR_FPS = 11.2  # measured on a real FT-710 (#111)
 DEFAULT_SIZE = (960, 640)
 MINIMUM_SIZE = (760, 540)
@@ -94,6 +105,9 @@ def short_mode(name: str) -> str:
     return name.split(" (", maxsplit=1)[0]
 
 
+PREVIEW_TOOLTIP = "Preview uses extra CPU; streaming to N1MM+ is unaffected"
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -130,11 +144,14 @@ class MainWindow(QMainWindow):
         self._build()
         self._load(settings)
         self._connect_changes()
+        self.remote = RemoteControl(GuiRemote(self, parent=self), log=self._log)
+        self._apply_remote(settings.validate())
         self.controller.started.connect(self._on_started)
         self.controller.stopped.connect(self._on_stopped)
         self.controller.status.connect(self._on_status)
         self.controller.stats.connect(self._on_stats)
-        self.controller.frame.connect(self._on_frame)
+        self.controller.preview.connect(self._on_frame)
+        self.set_preview_visible(settings.show_preview, persist=False)
         self.controller.warning.connect(lambda message: self._log("warning", message))
         self.tray: TrayController | None = None
         if tray_available():
@@ -155,6 +172,8 @@ class MainWindow(QMainWindow):
         self.rate, self.combine, self.scaling = d.rate, d.combine, d.scaling
         self.autostart, self.start_hidden, self.on_close = d.autostart, d.start_hidden, d.on_close
         self.device = d.device
+        self.control_enabled, self.control_port = d.control_enabled, d.control_port
+        self.control_bind, self.control_allow = d.control_bind, d.control_allow
         self._errors = d.errors
 
     def _build(self) -> None:
@@ -166,6 +185,10 @@ class MainWindow(QMainWindow):
         column.addLayout(self._build_header())
         column.addWidget(self._build_hero(), 1)
         column.addLayout(self._build_cards())
+        self.center_panel = CenterModePanel(
+            self._radio_model(), log=lambda message: self._log("info", message)
+        )
+        column.addWidget(self.center_panel)
         self.status = QLabel("Not streaming")
         self.status.setObjectName("message")
         self.status.setWordWrap(True)
@@ -207,7 +230,15 @@ class MainWindow(QMainWindow):
         self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.menu = QMenu(self.menu_button)
         self.action_settings = self._action("Settings…", self.open_settings)
+        self.action_preview = QAction("Show preview", self)
+        self.action_preview.setCheckable(True)
+        self.action_preview.setToolTip(PREVIEW_TOOLTIP)
+        self.action_preview.toggled.connect(self.set_preview_visible)
+        self.menu.addAction(self.action_preview)
         self.action_diagnostics = self._action("Copy diagnostics", self.copy_diagnostics)
+        self.action_diagnostics_named = self._action(
+            "Copy diagnostics including source name", self.copy_diagnostics_with_name
+        )
         self.action_guide = self._action(
             "N1MM+ setup guide", lambda: self._open_url(QUrl(SETUP_GUIDE_URL))
         )
@@ -233,9 +264,53 @@ class MainWindow(QMainWindow):
         hero.setObjectName("card")
         layout = QVBoxLayout(hero)
         layout.setContentsMargins(8, 8, 8, 8)
+        top = QHBoxLayout()
+        title = QLabel("Spectrum preview")
+        title.setObjectName("cardTitle")
+        self.preview_toggle = QToolButton()
+        self.preview_toggle.setObjectName("flat")
+        self.preview_toggle.setCheckable(True)
+        self.preview_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.preview_toggle.setToolTip(PREVIEW_TOOLTIP)
+        self.preview_toggle.toggled.connect(self.set_preview_visible)
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.preview_toggle)
+        layout.addLayout(top)
         self.spectrum = SpectrumView()
-        layout.addWidget(self.spectrum)
+        self.preview_placeholder = QLabel(
+            "Preview off. Streaming to N1MM+ is not affected.\n"
+            "Turn it on with Show preview (it uses extra CPU)."
+        )
+        self.preview_placeholder.setObjectName("message")
+        self.preview_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.addWidget(self.preview_placeholder)
+        self.preview_stack.addWidget(self.spectrum)
+        layout.addWidget(self.preview_stack, 1)
         return hero
+
+    @property
+    def preview_visible(self) -> bool:
+        return self._settings.show_preview
+
+    def set_preview_visible(self, on: bool, *, persist: bool = True) -> None:
+        """Show or hide the live preview; when hidden, no frames reach the window."""
+        self.controller.preview_enabled = on
+        if not on:
+            self.spectrum.clear()
+        self.preview_stack.setCurrentWidget(self.spectrum if on else self.preview_placeholder)
+        for widget in (self.preview_toggle, self.action_preview):
+            widget.blockSignals(True)
+            widget.setChecked(on)
+            widget.blockSignals(False)
+        self.preview_toggle.setText("Hide preview" if on else "Show preview")
+        self.preview_toggle.setAccessibleName("Hide preview" if on else "Show preview")
+        if on != self._settings.show_preview:
+            self._settings = self._settings.replace(show_preview=on)
+            if persist:
+                self._save_timer.start()
+        self._apply_icons()
 
     def _build_cards(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -300,12 +375,17 @@ class MainWindow(QMainWindow):
         )
         self.settings_button.setIcon(icons.icon("settings", theme.text))
         self.menu_button.setIcon(icons.icon("ellipsis", theme.text))
+        if hasattr(self, "preview_toggle"):
+            name = "eye-off" if self._settings.show_preview else "eye"
+            self.preview_toggle.setIcon(icons.icon(name, theme.text))
+            self.action_preview.setIcon(icons.icon("eye", theme.text))
         self.activity_toggle.setIcon(
             icons.icon("chevron-up" if self.log_view.isVisible() else "chevron-down", theme.text)
         )
         for action, name in (
             (self.action_settings, "settings"),
             (self.action_diagnostics, "copy"),
+            (self.action_diagnostics_named, "copy"),
             (self.action_guide, "book-open"),
             (self.action_about, "info"),
         ):
@@ -383,27 +463,40 @@ class MainWindow(QMainWindow):
         self.log_view.appendPlainText(line)
         self.activity_last.setText(line)
 
-    def copy_diagnostics(self) -> str:
-        text = diagnostics(self._settings, self.model, self.log)
+    def copy_diagnostics(self, include_identity: bool = False) -> str:
+        """Copy redacted diagnostics; the source name only if the operator chooses."""
+        text = diagnostics(self._settings, self.model, self.log, include_identity=include_identity)
         QApplication.clipboard().setText(text)
-        self._log("info", "Diagnostics copied to the clipboard")
+        self._log(
+            "info",
+            "Diagnostics copied to the clipboard"
+            + (" (including source name)" if include_identity else " (personal details redacted)"),
+        )
         return text
+
+    def copy_diagnostics_with_name(self) -> str:
+        return self.copy_diagnostics(include_identity=True)
 
     def show_about(self) -> None:
         from n1mm_scope_bridge.cli import LEGAL_NOTICE  # noqa: PLC0415 - avoid import cycle
+        from n1mm_scope_bridge.legal import DISCLAIMER  # noqa: PLC0415
 
-        QMessageBox.about(self, f"About {APP_TITLE}", LEGAL_NOTICE.replace("\n", "<br>"))
+        body = LEGAL_NOTICE.replace("\n", "<br>") + "<br><br>" + DISCLAIMER
+        QMessageBox.about(self, f"About {APP_TITLE}", body)
 
     # -- settings <-> form -------------------------------------------------------
 
     def _connect_changes(self) -> None:
-        for widget in (self.source_name, self.host, self.ftdi_dir, self.device):
+        for widget in (
+            self.source_name, self.host, self.ftdi_dir, self.device,
+            self.control_bind, self.control_allow,
+        ):  # fmt: skip
             widget.textChanged.connect(self._changed)
-        for spin in (self.port, self.rate, self.scaling):
+        for spin in (self.port, self.rate, self.scaling, self.control_port):
             spin.valueChanged.connect(self._changed)
         for combo in (self.radio, self.combine, self.on_close):
             combo.currentIndexChanged.connect(self._changed)
-        for check in (self.emulator, self.autostart, self.start_hidden):
+        for check in (self.emulator, self.autostart, self.start_hidden, self.control_enabled):
             check.toggled.connect(self._changed)
 
     def _load(self, s: Settings) -> None:
@@ -421,13 +514,17 @@ class MainWindow(QMainWindow):
         self.autostart.setChecked(s.start_streaming_on_launch)
         self.start_hidden.setChecked(s.start_minimized)
         self.on_close.setCurrentIndex(max(self.on_close.findData(s.on_close), 0))
+        self.control_enabled.setChecked(s.control_enabled)
+        self.control_port.setValue(s.control_port)
+        self.control_bind.setText(s.control_bind)
+        self.control_allow.setText(s.control_allow)
         self.settings_dialog.rate_label.setText(f"{s.rate_hz:.1f} per second")
 
     def form_settings(self) -> Settings:
         return self._settings.replace(
             radio=self.radio.currentData(),
             emulator=self.emulator.isChecked(),
-            ftdi_lib_dir=self.ftdi_dir.text().strip(),
+            ftdi_lib_dir=normalize_dir(self.ftdi_dir.text()),
             source_name=self.source_name.text(),
             n1mm_host=self.host.text().strip(),
             n1mm_port=self.port.value(),
@@ -438,6 +535,10 @@ class MainWindow(QMainWindow):
             start_streaming_on_launch=self.autostart.isChecked(),
             start_minimized=self.start_hidden.isChecked(),
             on_close=self.on_close.currentData(),
+            control_enabled=self.control_enabled.isChecked(),
+            control_port=self.control_port.value(),
+            control_bind=self.control_bind.text().strip(),
+            control_allow=self.control_allow.text().strip(),
         )
 
     @property
@@ -446,9 +547,71 @@ class MainWindow(QMainWindow):
 
     def _changed(self) -> None:
         self._settings = self.form_settings()
-        self.show_problems(self._settings.validate())
+        problems = self._settings.validate()
+        self.show_problems(problems)
+        self._apply_remote(problems)
         self._refresh_status()
         self._save_timer.start()
+
+    # -- remote control (#77) -----------------------------------------------------
+
+    def _apply_remote(self, problems: dict[str, str]) -> None:
+        self.remote.apply(self._settings, problems)
+        self.settings_dialog.remote_status.setText(self.remote.status_text)
+
+    def remote_status(self) -> dict[str, Any]:
+        s = self._settings
+        info: dict[str, Any] = {
+            "streaming": self.controller.running,
+            "radio": s.effective_name(),
+            "n1mm": f"{s.n1mm_host}:{s.n1mm_port}",
+            "rate": s.rate_hz,
+            "combine": s.combine,
+        }
+        st = self.model.status
+        if st is not None:
+            info.update(vfo_hz=st.vfo_hz, span_hz=st.span_hz, mode=st.mode_name)
+        stats = self.model.stats
+        if stats is not None:
+            info.update(
+                sent=stats.emitted, read=stats.frames_read,
+                dropped=stats.frames_dropped, bad=stats.bad_frames,
+            )  # fmt: skip
+        if self.model.last_error:
+            info["error"] = self.model.last_error
+        return info
+
+    def remote_start(self) -> None:
+        if self.controller.running:
+            return
+        problems = self.form_settings().validate()
+        if problems:
+            raise ValueError("; ".join(f"{k}: {v}" for k, v in problems.items()))
+        self.toggle_streaming()
+
+    def remote_stop(self) -> None:
+        if self.controller.running:
+            self.controller.stop()
+
+    def remote_set(self, name: str, value: str | float) -> None:
+        candidate = self._settings.replace(**{REMOTE_FIELDS[name]: value})
+        field = REMOTE_FIELDS[name]
+        problem = candidate.validate().get(field)
+        if problem:
+            raise ValueError(problem)
+        if name == "name":
+            self.source_name.setText(str(value))
+        elif name == "rate":
+            self.rate.setValue(round(float(value) * RATE_STEPS_PER_HZ))
+        elif name == "combine":
+            self.combine.setCurrentIndex(max(self.combine.findData(value), 0))
+        else:
+            self.scaling.setValue(float(value))
+        self._changed()
+        if self.controller.running:  # rate and combine are fixed per pipeline
+            self.controller.stop()
+            self.controller.start(self._settings)
+        self._log("info", f"Remote control: set {name} to {value}")
 
     def save_settings(self) -> None:
         self._save_timer.stop()
@@ -473,7 +636,7 @@ class MainWindow(QMainWindow):
     def _browse_ftdi(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "FTDI library folder", self.ftdi_dir.text())
         if folder:
-            self.ftdi_dir.setText(folder)
+            self.ftdi_dir.setText(normalize_dir(folder))
 
     # -- streaming ----------------------------------------------------------------
 
@@ -517,8 +680,15 @@ class MainWindow(QMainWindow):
         target = f"{self._settings.n1mm_host}:{self._settings.n1mm_port}"
         return f"Streaming to N1MM+ at {target} as {self._settings.effective_name()!r}"
 
+    def _radio_model(self) -> str:
+        try:
+            return get_radio(self._settings.radio).model
+        except KeyError:
+            return self._settings.radio
+
     def _on_started(self) -> None:
         message = self._streaming_message()
+        self.center_panel.reset(self._radio_model())
         self.model.started()
         self.spectrum.clear()
         self._log("info", message)
@@ -542,6 +712,7 @@ class MainWindow(QMainWindow):
                 f"The radio's scope is in {status.mode_name} mode. Set it to Center mode for"
                 " exact frequencies in N1MM+."
             )
+        self.center_panel.observe(status)
         self.model.status = status
         self._refresh_status()
 
@@ -550,6 +721,8 @@ class MainWindow(QMainWindow):
         self._refresh_status()
 
     def _on_frame(self, item: ParsedFrame) -> None:
+        if not self._settings.show_preview:  # a frame queued just before it was hidden
+            return
         self.spectrum.set_frame(item.spectrum, self._settings.scaling)
 
     def show_error(self, message: str) -> QMessageBox:
@@ -589,6 +762,7 @@ class MainWindow(QMainWindow):
         self.close()
 
     def _shutdown(self) -> None:
+        self.remote.stop()
         self.controller.stop()
         self.save_settings()
         self.settings_dialog.close()

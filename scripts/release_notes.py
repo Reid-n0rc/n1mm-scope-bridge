@@ -104,11 +104,17 @@ def release_notes(
     parts += [f"## Changes in {info.version}", body]
     parts.append(
         "## Downloads\n\n"
-        "- `n1mm-scope-bridge-setup-*.exe`: Windows installer (recommended)\n"
-        f"- `{zip_name(info.version)}`: portable Windows app\n"
+        "- `n1mm-scope-bridge-setup-*.exe`: **one installer for all Windows PCs** "
+        "(recommended). It picks the right version for your PC: 64-bit (x64), "
+        "Windows on ARM, or 32-bit (command line only).\n"
+        f"- `{zip_name(info.version, 'x64')}`: portable app, 64-bit Windows (x64)\n"
+        f"- `{zip_name(info.version, 'ARM64')}`: portable app, Windows on ARM (native ARM64)\n"
+        f"- `{zip_name(info.version, 'x86')}`: portable command-line app, 32-bit Windows\n"
         "- `*.whl`: Python wheel; `*.tar.gz`: complete source code (GPLv3 corresponding source)\n"
+        f"- `{SCREENSHOTS_ZIP}`: screenshots of this build's GUI and installer\n"
         "- `SHA256SUMS`: checksums for every file\n\n"
-        "FTDI's LibFT4222 is not included; the installer links to FTDI's download page."
+        "FTDI's LibFT4222 is not included in any file. The installer can download FTDI's "
+        "signed DLLs for you (64-bit and 32-bit); Windows on ARM can use the 64-bit version."
     )
     if report:
         parts.append(
@@ -117,6 +123,28 @@ def release_notes(
             + "\n\n</details>"
         )
     return "\n\n".join(parts) + "\n"
+
+
+SCREENSHOTS_ZIP = "screenshots.zip"
+REGRESSION_REPORT = "regression-report.md"
+
+
+def required_assets(version: str) -> list[str]:
+    """Every file a release must carry (SHA256SUMS is added after these)."""
+    return [
+        f"n1mm-scope-bridge-setup-{version}.exe",
+        *(zip_name(version, arch) for arch in ("x64", "ARM64", "x86")),
+        f"n1mm_scope_bridge-{version}-py3-none-any.whl",
+        f"n1mm_scope_bridge-{version}.tar.gz",
+        REGRESSION_REPORT,
+        SCREENSHOTS_ZIP,
+    ]
+
+
+def missing_assets(version: str, present: Sequence[str]) -> list[str]:
+    """Required release files not in ``present`` (file names)."""
+    have = set(present)
+    return [name for name in required_assets(version) if name not in have]
 
 
 def sha256sums(paths: Sequence[Path]) -> str:
@@ -146,6 +174,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     notes.add_argument(
         "--dry-run", action="store_true", help="allow a missing CHANGELOG section (rehearsals)"
     )
+    assets = sub.add_parser("assets", help="fail if a required release file is missing")
+    assets.add_argument("--tag", required=True)
+    assets.add_argument("dir", type=Path)
     sums = sub.add_parser("sums", help="write SHA256SUMS")
     sums.add_argument("--out", type=Path, required=True)
     sums.add_argument("files", nargs="+", type=Path)
@@ -167,6 +198,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 info, args.changelog.read_text(encoding="utf-8"), report, dry_run=args.dry_run
             )
             args.out.write_text(text, encoding="utf-8")
+        elif args.command == "assets":
+            info = parse_tag(args.tag)
+            names = [p.name for p in args.dir.iterdir() if p.is_file()]
+            missing = missing_assets(info.version, names)
+            if missing:
+                raise ReleaseError(f"release is missing required files: {', '.join(missing)}")
+            print(f"all {len(required_assets(info.version))} required release files present")
         else:
             args.out.write_text(sha256sums(args.files), encoding="utf-8")
     except (ReleaseError, OSError) as exc:

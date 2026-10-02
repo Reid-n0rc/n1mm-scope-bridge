@@ -1,5 +1,7 @@
 # Third-party material and notices
 
+> Independent project — not affiliated with or endorsed by the N1MM Logger+ project, N1MM, Yaesu, FTDI, or wfview. See [docs/legal-notices.md](docs/legal-notices.md).
+
 This file is the **single ledger** of material from other projects that is
 copied into, adapted into, or bundled with this repository or its releases.
 Third-party material keeps its original license.
@@ -75,8 +77,22 @@ comment, the issue, or the doc instead.
 
 - Source: <https://ftdichip.com/products/ft4222h/>
 - License: FTDI's proprietary driver licence. It is **never bundled** in this
-  repository or in any release. Users install it from FTDI, and the bridge
-  loads it at run time. Bundling it would mean distributing GPL code
+  repository or in any release. The bridge loads it at run time.
+- **Installer download (#133):** the Windows installer's "Download FTDI's
+  LibFT4222 library" task (on by default, the user accepts FTDI's licence
+  summary first) makes the *user's* setup download FTDI's unmodified, signed
+  `LibFT4222-64.dll` and `ftd2xx.dll` at install time and copy them into the
+  program folder. Our installer contains only a small helper script
+  (`packaging/windows/ftdi_install.ps1`), never the DLLs. The source is the
+  pinned PyPI `ft4222` wheel in `packaging/windows/ftdi_pin.json` (SHA-256
+  verified by Inno Setup); the helper also checks both Authenticode
+  signatures (FTDI for LibFT4222, Microsoft WHQL for ftd2xx) before copying.
+  The pin is monitored daily (`.github/workflows/ftdi-download-check.yml`).
+  Since #149 the installer holds x64, ARM64 and 32-bit apps: the x64 app gets
+  the 64-bit (`amd64`) DLLs and the 32-bit app the `i386` pair
+  (`LibFT4222.dll`, `ftd2xx.dll`) from the same pinned wheel family; there is
+  no verifiable ARM64 source, so the native ARM64 app is never given a download.
+  Users can untick the task and install the library from FTDI themselves. Bundling it would mean distributing GPL code
   (including wfview's) combined with a GPL-incompatible library, which we
   don't do without written permission from the wfview copyright holders.
 
@@ -130,6 +146,13 @@ comment, the issue, or the doc instead.
 ### pytest-qt (development only, not distributed)
 
 - Source: <https://pypi.org/project/pytest-qt/>; license: MIT.
+
+### FFmpeg (development tool, invoked, not distributed)
+
+- Source: <https://ffmpeg.org/>; LGPL-2.1+/GPL-2.0+ depending on build.
+- Use: `gui --record` runs the `ffmpeg` program (or the binary from the
+  optional `imageio-ffmpeg` package) to encode the website's recording. It is
+  never imported, linked, or bundled; the encoded videos contain no FFmpeg code.
 
 ### N1MM Logger+ external spectrum interface (facts only)
 

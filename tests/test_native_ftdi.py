@@ -19,9 +19,19 @@ import pytest
 
 from n1mm_scope_bridge.cli import main
 from n1mm_scope_bridge.transport import ft4222 as ft
-from n1mm_scope_bridge.transport.ft4222 import CtypesApi, DeviceNotFound, Ft4222Reader, load_api
+from n1mm_scope_bridge.transport.ft4222 import (
+    CtypesApi,
+    DeviceNotFound,
+    Ft4222Reader,
+    LibraryNotFound,
+    load_api,
+)
 
 FTDI_DIR = os.environ.get("N1MM_BRIDGE_FTDI_DIR", "")
+# Architecture of the downloaded DLLs (amd64 / i386 / arm64), set by scripts/fetch_ftdi.py.
+FTDI_ARCH = os.environ.get("N1MM_BRIDGE_FTDI_ARCH", "amd64")
+DLL_ARCH = {folder: arch for arch, folder in ft.ARCH_DIRS.items()}.get(FTDI_ARCH, FTDI_ARCH)
+MATCHED = ft.process_arch() == DLL_ARCH
 
 pytestmark = [
     pytest.mark.native,
@@ -30,12 +40,17 @@ pytestmark = [
         reason="set N1MM_BRIDGE_FTDI_DIR to a folder with FTDI's LibFT4222 and ftd2xx (CI Windows)",
     ),
 ]
+needs_matching_dlls = pytest.mark.skipif(
+    not MATCHED,
+    reason=f"FTDI DLLs are {DLL_ARCH}; this Python runs as {ft.process_arch()} (mismatch test)",
+)
 
 FUNCTIONS = (
     "_open", "_close", "_timeouts", "_latency", "_uninit", "_spi_init", "_read", "_clock",
 )  # fmt: skip
 
 
+@needs_matching_dlls
 def test_real_libraries_load_and_bind() -> None:
     api = load_api(FTDI_DIR)
     assert isinstance(api, CtypesApi)
@@ -49,6 +64,7 @@ def test_real_libraries_load_and_bind() -> None:
         assert api._open._flags_ & stdcall == stdcall
 
 
+@needs_matching_dlls
 def test_no_device_is_reported_as_not_found() -> None:
     api = load_api(FTDI_DIR)
     status, _ = api.open_ex(ft.DEFAULT_DESCRIPTION)
@@ -57,8 +73,23 @@ def test_no_device_is_reported_as_not_found() -> None:
         Ft4222Reader(api).open()
 
 
+@needs_matching_dlls
 def test_cli_probe_reports_friendly_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["probe", "--ftdi-lib-dir", FTDI_DIR]) == 1
     err = capsys.readouterr().err
     assert err.startswith("error: Could not open 'FT4222 A'")
     assert "Traceback" not in err
+
+
+@pytest.mark.skipif(MATCHED, reason="DLLs match this process; covered by the tests above")
+def test_wrong_architecture_dlls_give_a_clear_error() -> None:
+    """For example amd64 DLLs on the native ARM64 runner (bug #146's situation reversed)."""
+    with pytest.raises(LibraryNotFound) as exc:
+        load_api(FTDI_DIR)
+    message = str(exc.value)
+    assert f"Found FTDI DLLs built for {DLL_ARCH}" in message
+    assert f"this app runs as {ft.process_arch()}" in message
+
+
+def test_process_arch_is_known() -> None:
+    assert ft.process_arch() in ft.ARCH_DIRS

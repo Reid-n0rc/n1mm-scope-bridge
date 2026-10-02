@@ -213,3 +213,68 @@ def test_span_unavailable_warns_and_counts_bad_frames() -> None:
     assert pipe.stats().bad_frames == 3
     assert len(warnings) == 1
     assert "Center mode" in warnings[0]
+
+
+# --- live preview at the radio's rate (#126) ------------------------------------------
+
+
+@pytest.mark.parametrize("rate_hz", [1.0, 4.0, 10.0])
+def test_preview_follows_the_radio_rate_not_the_n1mm_rate(rate_hz: float) -> None:
+    """Every parsed frame reaches the live display, whatever the N1MM+ rate (#126).
+
+    Deterministic: a finite source and a clock that jumps a full second per call,
+    so the preview limiter never drops a frame; no wall-clock ratios.
+    """
+    frames = [make_ft4222_frame()] * 50
+    previews: list[ParsedFrame] = []
+    now = [0.0]
+
+    def clock() -> float:
+        now[0] += 1.0
+        return now[0]
+
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=rate_hz),
+        frames,
+        FakeSender(),
+        on_preview=previews.append,
+        preview_hz=15,
+        warn=lambda _m: None,
+        clock=clock,
+    )
+    pipe.start()
+    assert pipe.join(timeout=10)
+    stats = pipe.stats()
+    assert stats.frames_read == 50
+    # Every frame that reaches the parser is previewed (the reader's queue may drop
+    # some when the source outruns the parser); no throttling to the N1MM+ rate.
+    parsed = stats.frames_read - stats.frames_dropped - stats.bad_frames
+    assert parsed > 0
+    assert len(previews) == parsed
+
+
+def test_preview_is_capped_at_preview_hz() -> None:
+    now = [0.0]
+    previews: list[ParsedFrame] = []
+    frames = [make_ft4222_frame()] * 30
+
+    def clock() -> float:
+        now[0] += 0.01  # 100 frames/s worth of clock per call
+        return now[0]
+
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=10),
+        frames,
+        FakeSender(),
+        on_preview=previews.append,
+        preview_hz=10,
+        clock=clock,
+    )
+    pipe.start()
+    pipe.join(timeout=5)
+    assert 1 <= len(previews) < len(frames)
+
+
+def test_preview_hz_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="preview_hz"):
+        build_pipeline(BridgeConfig(FT710, "FT-710"), [], FakeSender(), preview_hz=0)

@@ -15,8 +15,9 @@ They are taken automatically from the program itself
 match the version they describe. Every streaming screenshot states where its
 data came from: the main streaming window is a **real Yaesu FT-710** capture
 (`--source radio`), labelled "Real radio" with the band, frequency, and date.
-The home page shows a **live recording** of the window streaming real FT-710
-data (`gui --record`, played back from a capture of the radio); visitors who
+The home page shows a **live recording** (a short looping video, with a GIF
+fallback) of the window streaming real FT-710 data at the radio's own frame
+rate (`gui --record`, played back from a capture of the radio); visitors who
 prefer reduced motion see a still image instead. Any screenshot generated from the built-in FT-710 emulator is labelled as
 **simulated signals, not a real radio**.
 
@@ -31,10 +32,17 @@ bottom:
      **Error** (red);
    - **Start** / **Stop**;
    - the **gear**, which opens [Settings](#settings);
-   - the **⋯** menu: **Settings…**, **Copy diagnostics**, **N1MM+ setup
-     guide**, and **About and license**.
-2. **Preview.** A live spectrum line over a waterfall, showing exactly what
-   N1MM+ receives. The bottom axis gives the low, centre, and high
+   - the **⋯** menu: **Settings…**, **Copy diagnostics**, **Copy diagnostics
+     including source name**, **N1MM+ setup guide**, and **About and license**.
+2. **Preview** (off by default). Press **Show preview** (eye icon, top right of
+   the preview card, or **⋯ → Show preview**) to turn it on, and **Hide
+   preview** to turn it off again; the choice is remembered. It is off by
+   default because drawing it uses extra CPU. While it is off the window does
+   no drawing work for it at all, and streaming to N1MM+ is exactly the same.
+   When on, it shows a live spectrum line over a waterfall of the radio's scope,
+   updated with every frame the radio sends (about 11 per second on an
+   FT-710, so it scrolls smoothly) while N1MM+ gets its own steadier rate
+   (**Updates per second** in Settings). The bottom axis gives the low, centre, and high
    frequencies, and the left axis the level in dB. The level scale adapts to
    the strongest recent signal. Before you press Start it says *Press Start to
    stream your Yaesu scope to N1MM+* and points to the emulator.
@@ -56,8 +64,13 @@ bottom:
 
 **Copy diagnostics** (in the Activity bar and the ⋯ menu) copies the version,
 your settings, the status, and the last 50 log lines to the clipboard, ready
-to paste into a bug report. Your Windows account name is replaced with `~` in
-any folder path.
+to paste into a bug report. Personal details are redacted: your Windows
+account name is replaced with `~` in folder paths, and IP addresses (other
+than this PC's `127.0.0.1`), this PC's network name and the N1MM+ source name
+(often your call sign) are replaced with placeholders. Choose **Copy
+diagnostics including source name** only if you want to share it. Nothing
+is sent anywhere: it only goes to your clipboard. See the
+[privacy notice](../privacy.md).
 
 The tray icon's tooltip shows a one-line summary, for example *Streaming
 FT-710 to N1MM+, 4.0 per second*.
@@ -70,6 +83,28 @@ button.
 If the radio's scope can't be opened (`Could not open 'FT4222 A'`), the
 message reminds you that the FT-710 needs **OPERATION SETTING → GENERAL →
 SCU-LAN10** set to **ON**. See [Setting up your Yaesu radio](radio-setup.md).
+
+## Center-mode prompt
+
+N1MM+ frequencies are exact only when the radio's scope is in **Center**
+mode. When it isn't, a prompt appears below the cards:
+
+- It names the current scope mode and asks you to set **Center** on the radio.
+- It offers ready-made **N1MM+ function-key macros**:
+  - **Scope Center** switches the scope to Center;
+  - **Scope restore** puts back the mode the scope was in when streaming
+    started (shown only if that wasn't Center).
+
+  Each macro has a **Copy** button. Paste the line into the N1MM+ function-key
+  editor (one `Label,text` line per key). N1MM+ sends the command on its own
+  CAT port when you press the key. **The bridge never sends CAT and never
+  opens a COM port.** The exact command format (`SS06…`) is still being
+  verified on the FT-710 (#62).
+- **Dismiss** hides the prompt until the scope changes to a different mode.
+- When the scope reaches Center, the prompt shows **✓ Center mode** for a few
+  seconds and then hides.
+
+The same messages, including the macros, are written to the Activity log.
 
 ## Start and Stop
 
@@ -115,6 +150,20 @@ Startup and closing stays editable.
 | Start streaming when the program opens | `start_streaming_on_launch` | Presses Start for you at launch |
 | Start hidden in the system tray | `start_minimized` | Opens straight to the tray icon, without the window |
 | Close button | `on_close` | **Ask me**, **Keep running in tray**, or **Exit** |
+
+**Remote control** (off by default; see [UDP remote control](udp-control.md))
+
+| Control | Setting | What it does |
+|---|---|---|
+| Enable remote control (UDP) | `control_enabled` | Lets scripts, N1MM+ `{EXEC}` macros, or a Stream Deck send `status`, `start`, `stop`, and `set` commands while the window runs |
+| Port | `control_port` | The UDP port for commands, normally 13070 (must differ from the N1MM+ port) |
+| Listen on | `control_bind` | `127.0.0.1` = this PC only. For another PC, enter **this PC's own LAN IP**; all-interfaces addresses (`0.0.0.0`, `::`) are refused |
+| Allowed clients | `control_allow` | Comma-separated IP addresses allowed to send commands; required when *Listen on* isn't `127.0.0.1` |
+| Status | — | *Off*, *Listening on …*, or why it couldn't listen (for example, the port is in use) |
+
+Changes apply immediately, even while streaming. Remote `set rate` or
+`set combine` restarts the stream so the new value takes effect, and the
+window's controls update to match.
 
 **Advanced** (rarely needed)
 

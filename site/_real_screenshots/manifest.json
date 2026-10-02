@@ -10,30 +10,34 @@
   },
   "main-window-live": {
     "file": "main-window-live.gif",
-    "webp": "main-window-live.webp",
     "still": "main-window-live.png",
-    "width": 640,
-    "height": 427,
-    "frames": 24,
-    "fps": 4.0,
+    "width": 800,
+    "height": 533,
+    "frames": 168,
+    "fps": 11.2,
     "alt": "The N1MM Scope Bridge window streaming a Yaesu FT-710 on 7.067 MHz to N1MM+: a live spectrum and waterfall, cards for frequency, span, scope mode, N1MM+ rate and health, and the Start/Stop button. Live data from a real Yaesu FT-710 on 7.067 MHz (40 m), recorded 2026-10-02, replayed from a capture.",
     "caption": "Live recording: the preview shows exactly what N1MM+ receives. Live data from a real Yaesu FT-710 on 7.067 MHz (40 m), recorded 2026-10-02, replayed from a capture.",
     "animated": true,
     "real_radio": true,
-    "dark": "main-window-live-dark.gif",
-    "dark_still": "main-window-live-dark.png",
+    "mp4": "main-window-live.mp4",
+    "webm": "main-window-live.webm",
     "bytes": {
       "light": {
-        "gif": 914027,
-        "webp": 523900,
-        "png": 198785
+        "mp4": 691698,
+        "webm": 723508,
+        "gif": 971789,
+        "png": 297375
       },
       "dark": {
-        "gif": 878852,
-        "webp": 531970,
-        "png": 202206
+        "mp4": 786134,
+        "webm": 775964,
+        "gif": 863116,
+        "png": 301844
       }
     },
-    "dark_webp": "main-window-live-dark.webp"
+    "dark_still": "main-window-live-dark.png",
+    "dark": "main-window-live-dark.gif",
+    "dark_mp4": "main-window-live-dark.mp4",
+    "dark_webm": "main-window-live-dark.webm"
   }
 }

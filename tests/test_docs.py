@@ -23,7 +23,9 @@ SRC = ROOT / "src" / "n1mm_scope_bridge"
 USER_MESSAGES = [
     "The window needs PySide6",
     "Could not load FTDI's LibFT4222/D2XX libraries",
+    "has no working FTDI USB",
     "FTDI library folder does not exist",
+    "Found FTDI DLLs built for",
     "FTDI library is missing a required function",
     "Could not open",
     "No valid scope frames from",
@@ -146,3 +148,48 @@ def test_radio_setup_page_documents_scu_lan10() -> None:
     assert "radio-setup.md" in read("README.md")
     for linked in (ROOT / "README.md", ROOT / "docs" / "n1mm-setup.md"):
         assert "radio-setup.md" in linked.read_text(encoding="utf-8"), linked.name
+
+
+def test_code_signing_policy_and_privacy_pages() -> None:
+    """SignPath Foundation requires a public code signing policy and privacy statement."""
+    policy = (ROOT / "docs" / "code-signing-policy.md").read_text(encoding="utf-8")
+    assert "Free code signing provided by SignPath.io, certificate by SignPath Foundation" in policy
+    for role in ("Authors", "Reviewers", "Approvers"):
+        assert role in policy
+    assert "multi-factor authentication" in policy
+    privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
+    assert "no personal data" in privacy
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/code-signing-policy.md" in readme
+    assert "docs/privacy.md" in readme
+    footer = (ROOT / "site" / "_partials" / "footer.html").read_text(encoding="utf-8")
+    assert "code-signing.html" in footer
+    assert "privacy.html" in footer
+    site_policy = (ROOT / "site" / "code-signing.html").read_text(encoding="utf-8")
+    assert "Free code signing provided by" in site_policy
+
+
+def test_privacy_notice_covers_gdpr_topics() -> None:
+    """GDPR-style privacy notice (issue #142)."""
+    privacy = (ROOT / "docs" / "privacy.md").read_text(encoding="utf-8")
+    for topic in (
+        "Last updated:",
+        "## Who is responsible",
+        "## Third parties",
+        "## Your rights",
+        "## Children",
+        "## Changes",
+        "no cookies",
+        "PyPI",
+        "GitHub Pages",
+        "Copy diagnostics",
+    ):
+        assert topic in privacy, topic
+    site_page = (ROOT / "site" / "privacy.html").read_text(encoding="utf-8")
+    assert "Last updated: " + privacy.split("Last updated: ", 1)[1].split("_", 1)[0] in site_page
+
+
+def test_issue_templates_warn_about_personal_data() -> None:
+    for name in ("bug_report.yml", "feature_request.yml", "radio_support.yml"):
+        text = (ROOT / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8")
+        assert "Issues are public" in text, name

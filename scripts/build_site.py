@@ -40,6 +40,9 @@ import site_markdown
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 REPO_URL = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
+# Every page must carry the non-affiliation notice from the footer partial (#140).
+# Kept in sync with n1mm_scope_bridge.legal.SHORT_DISCLAIMER by tests.
+DISCLAIMER_MARKER = "not affiliated with or endorsed by the N1MM Logger+ project"
 PARTIALS = "_partials"
 TAG = re.compile(r"^v\d+\.\d+\.\d+$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -66,7 +69,11 @@ REAL_LABEL = "Real radio: Yaesu FT-710"
 # Screenshots showing spectrum data must say where the data came from.
 STREAMING_SCENES = ("main-window", "main-window-live")
 # Every file an entry can name (copied into the site and checked to exist).
-FILE_KEYS = ("file", "dark", "webp", "dark_webp", "still", "dark_still")
+FILE_KEYS = (
+    "file", "dark", "webp", "dark_webp", "still", "dark_still",
+    "mp4", "webm", "dark_mp4", "dark_webm",
+)  # fmt: skip
+VIDEO_TYPES = (("webm", "video/webm"), ("mp4", "video/mp4"))
 
 
 class SiteError(Exception):
@@ -149,6 +156,35 @@ def _sources(entry: dict[str, object]) -> str:
     )
 
 
+def _videos(entry: dict[str, object], alt: str, size: str) -> str:
+    """<video> elements (light, and dark if recorded) with a GIF fallback inside.
+
+    CSS shows the variant matching the colour scheme and hides all video for
+    viewers who prefer reduced motion (they get the still picture instead).
+    """
+    out = []
+    has_dark = any(f"dark_{kind}" in entry for kind, _ in VIDEO_TYPES)
+    for prefix, poster_key, gif_key, cls in (
+        ("", "still", "file", "motion motion-light" if has_dark else "motion"),
+        ("dark_", "dark_still", "dark", "motion motion-dark"),
+    ):
+        sources = "".join(
+            f'<source src="{SHOTS_DIR}/{entry[prefix + kind]}" type="{mime}">'
+            for kind, mime in VIDEO_TYPES
+            if prefix + kind in entry
+        )
+        if not sources:
+            continue
+        poster = f"{SHOTS_DIR}/{entry.get(poster_key, entry['still'])}"
+        gif = f"{SHOTS_DIR}/{entry.get(gif_key, entry['file'])}"
+        out.append(
+            f'<video class="{cls}" autoplay muted loop playsinline preload="auto" '
+            f'poster="{poster}" {size} aria-label="{alt}">{sources}'
+            f'<img src="{gif}" alt="{alt}" {size}></video>'
+        )
+    return "".join(out)
+
+
 def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
     """Accessible <figure> for one screenshot or recording (explicit size, variants)."""
     src = f"{SHOTS_DIR}/{entry['file']}"
@@ -157,11 +193,27 @@ def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
         label += f' <span class="badge">{SIMULATED_LABEL}</span>'
     elif entry.get("real_radio"):
         label += f' <span class="badge">{REAL_LABEL}</span>'
+    alt = html.escape(str(entry["alt"]))
+    size = f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}"'
+    caption = f"<figcaption>{html.escape(str(entry['caption']))}{label}</figcaption>"
+    if any(kind in entry for kind, _ in VIDEO_TYPES):
+        still_dark = (
+            f'<source srcset="{SHOTS_DIR}/{entry["dark_still"]}" '
+            'media="(prefers-color-scheme: dark)">'
+            if "dark_still" in entry
+            else ""
+        )
+        still = (
+            f'<picture class="motion-still">{still_dark}'
+            f'<img src="{SHOTS_DIR}/{entry["still"]}" alt="{alt}" {size} loading="lazy"></picture>'
+        )
+        return (
+            f'<figure class="screenshot" id="shot-{scene}">{_videos(entry, alt, size)}{still}'
+            f"{caption}</figure>"
+        )
     return (
         f'<figure class="screenshot" id="shot-{scene}"><picture>{_sources(entry)}'
-        f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
-        f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}" loading="lazy">'
-        f"</picture><figcaption>{html.escape(str(entry['caption']))}{label}</figcaption></figure>"
+        f'<img src="{src}" alt="{alt}" {size} loading="lazy"></picture>{caption}</figure>'
     )
 
 
@@ -233,10 +285,40 @@ def render(
     return PLACEHOLDER.sub(value, text)
 
 
+# Tags/attributes that make the browser fetch something (privacy: GDPR, #142).
+_RESOURCE_ATTRS = {
+    "script": ("src",),
+    "img": ("src", "srcset"),
+    "source": ("src", "srcset"),
+    "video": ("src", "poster"),
+    "audio": ("src",),
+    "iframe": ("src",),
+    "embed": ("src",),
+    "object": ("data",),
+    "track": ("src",),
+}
+_LINK_RESOURCE_RELS = {"stylesheet", "icon", "preload", "prefetch", "preconnect", "dns-prefetch",
+                       "modulepreload", "manifest", "apple-touch-icon", "mask-icon"}  # fmt: skip
+_CSS_EXTERNAL = re.compile(r"(?:url\(\s*['\"]?|@import\s+['\"])\s*(?:https?:)?//", re.IGNORECASE)
+
+
+def _is_external(ref: str) -> bool:
+    ref = ref.strip()
+    return any(
+        bool(urlsplit(part.strip().split(" ")[0]).netloc)
+        or part.strip().lower().startswith(("http:", "https:", "//"))
+        for part in ref.split(",")
+        if part.strip()
+    )
+
+
 class _Links(html.parser.HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.refs: list[str] = []
+        self.external_resources: list[str] = []
+        self._in_style = False
+        self.style_text: list[str] = []
         self.ids: set[str] = set()
         self.images_without_alt = 0
         self.images_without_size = 0
@@ -248,20 +330,58 @@ class _Links(html.parser.HTMLParser):
         for key in ("href", "src", "srcset"):
             if a.get(key):
                 self.refs.append(a[key] or "")
+        for attr in _RESOURCE_ATTRS.get(tag, ()):
+            if a.get(attr) and _is_external(a[attr] or ""):
+                self.external_resources.append(f"<{tag} {attr}={a[attr]!r}>")
+        rel = set((a.get("rel") or "").lower().split())
+        if tag == "link" and rel & _LINK_RESOURCE_RELS and _is_external(a.get("href") or ""):
+            self.external_resources.append(f"<link rel={a.get('rel')!r} href={a.get('href')!r}>")
+        if a.get("style") and _CSS_EXTERNAL.search(a["style"] or ""):
+            self.external_resources.append(f"<{tag} style=...> loads an external URL")
+        if tag == "style":
+            self._in_style = True
         if tag == "img" and a.get("alt") is None:
             self.images_without_alt += 1
         if tag == "img" and (not a.get("width") or not a.get("height")):
             self.images_without_size += 1
 
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "style":
+            self._in_style = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_style:
+            self.style_text.append(data)
+
+
+def check_privacy(out: Path) -> list[str]:
+    """Pages and stylesheets must not load anything from another site (GDPR, #142).
+
+    Third-party fonts, scripts, images or embeds would send visitors' IP addresses
+    to someone else. Plain hyperlinks are fine.
+    """
+    problems = []
+    for page in sorted(out.rglob("*.html")):
+        parser = _Links()
+        parser.feed(page.read_text(encoding="utf-8"))
+        name = page.relative_to(out).as_posix()
+        problems += [f"{name}: external resource {r}" for r in parser.external_resources]
+        if _CSS_EXTERNAL.search("".join(parser.style_text)):
+            problems.append(f"{name}: <style> loads an external URL")
+    for css in sorted(out.rglob("*.css")):
+        if _CSS_EXTERNAL.search(css.read_text(encoding="utf-8")):
+            problems.append(f"{css.relative_to(out).as_posix()}: CSS loads an external URL")
+    return problems
+
 
 def check_site(out: Path) -> list[str]:
-    """Broken internal links or anchors, and images without alt text."""
+    """Broken internal links or anchors, images without alt text, third-party loads."""
     pages: dict[str, _Links] = {}
     for page in sorted(out.glob("*.html")):
         parser = _Links()
         parser.feed(page.read_text(encoding="utf-8"))
         pages[page.name] = parser
-    problems = []
+    problems = check_privacy(out)
     for name, parsed in pages.items():
         if parsed.images_without_alt:
             problems.append(f"{name}: {parsed.images_without_alt} image(s) without alt text")
@@ -318,6 +438,12 @@ def build(
         written.append(target)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     problems = check_site(out)
+    if "footer" in partials:  # the real site: every page must show the disclaimer
+        problems += [
+            f"{p.name}: missing the non-affiliation disclaimer (include the footer partial)"
+            for p in written
+            if DISCLAIMER_MARKER not in p.read_text(encoding="utf-8")
+        ]
     if problems:
         raise SiteError("site check failed:\n" + "\n".join(problems))
     return written

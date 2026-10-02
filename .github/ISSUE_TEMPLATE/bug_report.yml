@@ -2,6 +2,10 @@ name: Bug report
 description: Something isn't working as expected
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Issues are public.** Please don't include personal data (addresses, e-mail, phone numbers, full logs from other programs). Your call sign is fine if you choose to share it. **Copy diagnostics** in the app already redacts your user name, home folder, IP addresses, PC name and source name. See the [privacy notice](https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html).
   - type: textarea
     id: summary
     attributes:
@@ -23,7 +27,7 @@ body:
     id: actual
     attributes:
       label: Actual behavior
-      description: Include the console output. If you have a short capture (`record`), attach it.
+      description: Include the console output, or paste **Copy diagnostics** (already redacted). If you have a short capture (`record`), attach it.
   - type: input
     id: radio
     attributes:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import release_regression as rr
-from regression_core import GUI_SKIP, OUTPUT_TAIL
+from regression_core import ARM_SCREENSHOT_SKIP, GUI_SKIP, OUTPUT_TAIL
 from stepload import fake_runner, load_step, ticking
 
 
@@ -93,7 +93,12 @@ def test_default_steps_cover_the_release_checklist() -> None:
     assert "Installer silent install/run/uninstall" in {s.name for s in steps if s.windows_only}
     assert "GUI self-test" in names  # runs on every OS (Qt offscreen)
     pending = [s for s in steps if s.disabled_reason]
-    assert all(s.disabled_reason.startswith("added by #") for s in pending)
+    # Placeholders only, plus the one deliberate Windows-on-ARM skip (#149): the
+    # website's installer screenshots come from the x64 job.
+    arm_skip = ARM_SCREENSHOT_SKIP
+    assert all(
+        s.disabled_reason.startswith("added by #") or s.disabled_reason == arm_skip for s in pending
+    )
 
 
 def test_main_writes_report_and_exit_codes(
@@ -175,6 +180,23 @@ def test_skip_gui_drops_gui_group_and_is_allowed(
     assert code == 0
     assert os.environ["UV_NO_GROUP"] == "gui-dev"
     capsys.readouterr()
+
+
+def test_windows_on_arm_screenshot_skip_does_not_block(tmp_path: Path) -> None:
+    code = rr.main(
+        ["--report", str(tmp_path / "r.md")],
+        steps=[rr.Step("shots", disabled_reason=ARM_SCREENSHOT_SKIP)],
+        meta={},
+        runner=fake_runner(),
+    )
+    assert code == 0
+    other = rr.main(
+        ["--report", str(tmp_path / "r.md")],
+        steps=[rr.Step("shots", disabled_reason="skipped for no reason")],
+        meta={},
+        runner=fake_runner(),
+    )
+    assert other == 1
 
 
 # --- step file discovery (#45) -------------------------------------------------------------

@@ -79,8 +79,13 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    `SPDX-FileCopyrightText` lines. Releases must ship `LICENSE`, `NOTICE`,
    and `THIRD_PARTY.md`, with the sdist attached next to any binary (§6).
 7. **Never commit or bundle FTDI libraries** (LibFT4222, ftd2xx), not even in
-   release builds. They are proprietary and not GPL-compatible. Users install
-   them from FTDI. The `pre-commit` hook blocks them.
+   release builds. They are proprietary and not GPL-compatible. The
+   `pre-commit` hook blocks them. The Windows installer may only *download*
+   them at install time from the pin in `packaging/windows/ftdi_pin.json`
+   (SHA-256 + Authenticode verified, #133). That pin is the single source of
+   truth for CI, the installer, and the monitor: change `url`/`sha256` together,
+   re-run `python scripts/check_ftdi_download.py` on Windows, and expect the
+   daily "FTDI download check" workflow to open an issue if it ever breaks.
 8. **Never transmit, never key the radio, and never open a COM port.** This
    project only reads scope data through the FT4222 device. N1MM+ needs both
    FT-710 COM ports (Enhanced for CAT, Standard for PTT/keying), so the bridge
@@ -109,7 +114,15 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     `github-advanced-security` run (GitHub's optional Copilot AI review, which
     fails when the Copilot quota runs out) does not block when the real
     `CodeQL` check passed, because open CodeQL alerts are still checked.
-11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+11. **Privacy by design (GDPR).** No telemetry, analytics, update checks or
+    other network use in the app, and no third-party resources (fonts,
+    scripts, images, embeds, analytics) on the website, unless an approved
+    issue says so **and** [docs/privacy.md](docs/privacy.md) is updated in the
+    same PR. Diagnostics and logs must not contain personal data (home paths,
+    non-loopback IPs, host names, call signs) unless the user opts in.
+    Enforced by `tests/test_privacy.py` and the site build's
+    `check_privacy`.
+12. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
 ## Task sizing (context-window budget)

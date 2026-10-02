@@ -17,6 +17,12 @@ Other Yaesu models are planned (see [Supported radios](#supported-radios)).
 > source, see the **[website](https://reid-n0rc.github.io/n1mm-scope-bridge/)**
 > and the **[user guide](docs/user/README.md)**.
 
+## Disclaimer
+
+N1MM Scope Bridge is an independent open-source project. It is not affiliated with, endorsed by, or supported by the N1MM Logger+ project, its developers, or N1MM. It uses N1MM Logger+'s publicly documented external UDP interface. N1MM Logger+ is the work of its own authors. Yaesu and FT-710 are trademarks of Yaesu Musen Co., Ltd.; this project is not affiliated with Yaesu, FTDI, or the wfview project. Other names are trademarks of their respective owners.
+
+See [docs/legal-notices.md](docs/legal-notices.md).
+
 ## Why
 
 N1MM+ draws a native spectrum/waterfall for Icom radios that send scope data
@@ -89,18 +95,35 @@ a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 First set up the radio: on the FT-710, turn on **OPERATION SETTING → GENERAL →
 SCU-LAN10** (no adapter needed). See [Setting up your Yaesu radio](docs/user/radio-setup.md).
 
-N1MM Scope Bridge runs on **Windows 10/11 (64-bit)**, next to N1MM Logger+.
+N1MM Scope Bridge runs on **Windows 10/11**, next to N1MM Logger+.
 You don't need Python or a command prompt.
 
 1. Download `n1mm-scope-bridge-setup-<version>.exe` from
    [Releases](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases). (No
    release has been published yet; the installer is built and tested in CI.)
+   It is **one installer for all Windows PCs**: it picks the right version
+   for your PC.
+   - **64-bit Windows (Intel/AMD):** the full app.
+   - **Windows on ARM** (Snapdragon laptops, Windows 11 in Parallels on an
+     Apple silicon Mac): the x64 app by default, which Windows runs through
+     its built-in emulation and for which setup downloads FTDI's library.
+     Setup also offers a native ARM64 version; for that one you add FTDI's
+     ARM64 DLLs yourself (see [radio setup](docs/user/radio-setup.md)).
+   - **32-bit Windows:** the command-line version (the window needs 64-bit
+     Windows), started from the Start menu shortcut **N1MM Scope Bridge
+     (command line)**.
+
+   Portable zips are also attached for each processor: `-win64` (x64),
+   `-winarm64` (ARM64) and `-win32` (32-bit, command line only).
 2. Run it. It installs for your Windows account only (no admin prompt), and
    adds Start menu and optional desktop shortcuts.
-3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): FTDI's license doesn't
-   let us include it. Download it from
-   [ftdichip.com](https://ftdichip.com/products/ft4222h/). The installer can
-   copy it into place for you from the folder you unzipped.
+3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): setup downloads it
+   for you. The "Download FTDI's LibFT4222 library" option is on by default:
+   setup fetches FTDI's signed DLLs from a pinned source, checks the checksum
+   and signatures, and puts them in the program folder. (We can't ship FTDI's
+   library inside our GPL installer, so your setup downloads it.) No internet
+   during install? Untick it and download LibFT4222 from
+   [ftdichip.com](https://ftdichip.com/products/ft4222h/) instead.
 4. Start **N1MM Scope Bridge**, press **Start**, and pick its name in N1MM+'s
    Spectrum Display settings. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
 
@@ -160,6 +183,11 @@ Building the Windows app: [docs/building-windows.md](docs/building-windows.md).
 
 Read [AGENTS.md](AGENTS.md) before contributing. Humans and AI agents follow
 the same rules. See also [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Code signing and privacy
+
+- [Code signing policy](docs/code-signing-policy.md): team roles, what is signed, and how to verify a release.
+- [Privacy statement](docs/privacy.md): the program collects no personal data.
 
 ## Credits and license
 

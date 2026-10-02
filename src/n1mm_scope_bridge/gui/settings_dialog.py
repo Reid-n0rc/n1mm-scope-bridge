@@ -36,7 +36,7 @@ from n1mm_scope_bridge.radios import RADIOS
 SMOOTHING_LABELS = (("latest", "Off"), ("average", "Average"), ("peak", "Peak hold"))
 ON_CLOSE_LABELS = (("ask", "Ask me"), ("tray", "Keep running in tray"), ("exit", "Exit"))
 RATE_STEPS_PER_HZ = 2  # the slider moves in 0.5 updates per second
-PAGES = ("Radio", "N1MM+", "Display", "Startup and closing", "Advanced")
+PAGES = ("Radio", "N1MM+", "Display", "Startup and closing", "Remote control", "Advanced")
 STREAM_PAGES = ("Radio", "N1MM+", "Display", "Advanced")  # read-only while streaming
 LOCKED_NOTE = (
     "Streaming now. Stop streaming to change these settings; they apply on the next Start."
@@ -92,6 +92,12 @@ class SettingsDialog(QDialog):
             (self._n1mm_page, "Where N1MM Logger+ is and the name it lists the source under."),
             (self._display_page, "How often N1MM+ is updated and how frames are combined."),
             (self._startup_page, "What happens when the program opens and closes."),
+            (
+                self._remote_page,
+                "Let scripts, N1MM+ {EXEC} macros, or a Stream Deck control the bridge over"
+                " UDP. Off by default; it listens only on this PC unless you enter one of this"
+                " PC's addresses and an allow-list.",
+            ),
             (self._advanced_page, "Rarely needed. Leave these alone unless asked."),
         )
         for name, (build, hint) in zip(PAGES, builders, strict=True):
@@ -146,6 +152,10 @@ class SettingsDialog(QDialog):
         self.emulator.setToolTip("Stream a simulated FT-710 to try the bridge or set up N1MM+")
         self.ftdi_dir = QLineEdit()
         self.ftdi_dir.setPlaceholderText("Search the system path")
+        self.ftdi_dir.setToolTip(
+            "Pick the unzipped FTDI LibFT4222 package folder (for example LibFT4222-v1.4.8) "
+            "or any folder inside it; the right DLLs for this app are found automatically"
+        )
         self.browse = QToolButton()
         self.browse.setText("Browse…")
         self.browse.setAccessibleName("Browse for the FTDI library folder")
@@ -201,6 +211,29 @@ class SettingsDialog(QDialog):
         form.addRow("", self.autostart)
         form.addRow("", self.start_hidden)
         self._row(form, "Close button", self.on_close, "on_close")
+
+    def _remote_page(self, form: QFormLayout, _browse: Callable[[], None]) -> None:
+        self.control_enabled = QCheckBox("Enable remote control (UDP)")
+        self.control_port = QSpinBox()
+        self.control_port.setRange(1, 65535)
+        self.control_port.setToolTip("UDP port for commands (default 13070)")
+        self.control_bind = QLineEdit()
+        self.control_bind.setToolTip(
+            "127.0.0.1 = this PC only. For the LAN, one of this PC's own addresses"
+            " (never 0.0.0.0), plus an allow-list."
+        )
+        self.control_allow = QLineEdit()
+        self.control_allow.setPlaceholderText("Only needed for the LAN, e.g. 192.168.1.20")
+        self.control_allow.setToolTip("Comma-separated IP addresses allowed to send commands")
+        self.remote_status = QLabel("Off")
+        self.remote_status.setObjectName("pageHint")
+        self.remote_status.setWordWrap(True)
+        self.remote_status.setAccessibleName("Remote control status")
+        form.addRow("", self.control_enabled)
+        self._row(form, "Port", self.control_port, "control_port")
+        self._row(form, "Listen on", self.control_bind, "control_bind")
+        self._row(form, "Allowed clients", self.control_allow, "control_allow")
+        form.addRow("Status", self.remote_status)
 
     def _advanced_page(self, form: QFormLayout, _browse: Callable[[], None]) -> None:
         self.scaling = QDoubleSpinBox()

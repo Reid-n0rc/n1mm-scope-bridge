@@ -427,3 +427,247 @@ def test_load_api_reports_missing_function() -> None:
     libs = {"ftd2xx.dll": broken, "LibFT4222-64.dll": ft4222_lib([])}
     with pytest.raises(LibraryNotFound, match="missing a required function"):
         ft.load_api(loader=make_loader(libs, []), platform="win32", is_64bit=True)
+
+
+# --- packaged app: DLLs installed next to the exe (#133) -----------------------------------
+
+
+def test_app_folder_with_ftdi(tmp_path: Path) -> None:
+    exe = tmp_path / "n1mm-scope-bridge.exe"
+    exe.write_bytes(b"")
+    assert ft.app_folder_with_ftdi("win32", frozen=True, executable=str(exe)) is None
+    (tmp_path / "LibFT4222-64.dll").write_bytes(b"")
+    assert ft.app_folder_with_ftdi("win32", frozen=True, executable=str(exe)) == str(tmp_path)
+    assert ft.app_folder_with_ftdi("win32", frozen=False, executable=str(exe)) is None
+    assert ft.app_folder_with_ftdi("darwin", frozen=True, executable=str(exe)) is None
+    assert ft.app_folder_with_ftdi() is None  # tests never run frozen
+
+
+def test_load_api_prefers_frozen_app_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tried: list[str] = []
+    registered: list[str] = []
+    libs = {"ftd2xx.dll": d2xx_lib([]), "LibFT4222-64.dll": ft4222_lib([])}
+    monkeypatch.setattr(ft, "app_folder_with_ftdi", lambda platform: str(tmp_path))
+    ft.load_api(
+        loader=make_loader(libs, tried),
+        platform="win32",
+        is_64bit=True,
+        add_dll_directory=registered.append,
+    )
+    assert registered == [str(tmp_path)]
+    assert tried[0] == os.path.join(str(tmp_path), "ftd2xx.dll")
+
+
+# --- FTDI package layout and architecture checks (#146) -------------------------------------
+
+
+def write_pe(path: Path, machine: int) -> Path:
+    """A minimal PE header: MZ stub pointing at 'PE\\0\\0' + the machine field."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stub = bytearray(64)
+    stub[:2] = b"MZ"
+    stub[0x3C:0x40] = (64).to_bytes(4, "little")
+    path.write_bytes(bytes(stub) + b"PE\0\0" + machine.to_bytes(2, "little"))
+    return path
+
+
+X64, ARM64, X86 = 0x8664, 0xAA64, 0x014C
+
+
+def ftdi_package(
+    root: Path, machine: int = X64, sub: str = "amd64", d2xx: str = "ftd2xx.dll"
+) -> Path:
+    write_pe(root / "imports" / "LibFT4222" / "dll" / sub / "LibFT4222-64.dll", machine)
+    write_pe(root / "imports" / "ftd2xx" / "dll" / sub / d2xx, machine)
+    return root
+
+
+def path_loader(available: dict[str, FakeLib], tried: list[str]) -> Any:
+    def loader(path: str) -> FakeLib:
+        tried.append(path)
+        if not os.path.isfile(path):
+            raise OSError(f"{path} not found")
+        return available[os.path.basename(path)]
+
+    return loader
+
+
+LIBS = {
+    "ftd2xx.dll": d2xx_lib([]),
+    "ftd2xx64.dll": d2xx_lib([]),
+    "LibFT4222-64.dll": ft4222_lib([]),
+}
+
+
+@pytest.mark.parametrize(
+    "chosen",
+    [
+        "",  # the package root
+        "imports",
+        "imports/LibFT4222/dll/amd64",  # the folder the user picked in #146
+        "imports/ftd2xx/dll/amd64",
+    ],
+)
+def test_load_api_finds_both_dlls_in_an_ftdi_package(tmp_path: Path, chosen: str) -> None:
+    root = ftdi_package(tmp_path / "LibFT4222-v1.4.8")
+    tried: list[str] = []
+    registered: list[str] = []
+    api = ft.load_api(
+        str(root / chosen) if chosen else str(root),
+        loader=path_loader(LIBS, tried),
+        platform="win32",
+        add_dll_directory=registered.append,
+        arch="x64",
+    )
+    assert isinstance(api, ft.CtypesApi)
+    assert tried[0].endswith(os.path.join("ftd2xx", "dll", "amd64", "ftd2xx.dll"))
+    assert tried[1].endswith(os.path.join("LibFT4222", "dll", "amd64", "LibFT4222-64.dll"))
+    # ftd2xx's folder is registered so LibFT4222 can resolve its dependency.
+    assert str(root / "imports" / "ftd2xx" / "dll" / "amd64") in registered
+
+
+def test_load_api_accepts_ftd2xx64_name(tmp_path: Path) -> None:
+    root = ftdi_package(tmp_path, d2xx="ftd2xx64.dll")
+    api = ft.load_api(
+        str(root),
+        loader=path_loader(LIBS, []),
+        platform="win32",
+        add_dll_directory=None,
+        arch="x64",
+    )
+    assert isinstance(api, ft.CtypesApi)
+
+
+def test_arm64_dlls_in_x64_app_give_a_clear_error(tmp_path: Path) -> None:
+    # #146: the user picked dll\arm64 while the app runs as x64.
+    arm = ftdi_package(tmp_path / "pkg", machine=ARM64, sub="arm64")
+    chosen = arm / "imports" / "LibFT4222" / "dll" / "arm64"
+    with pytest.raises(LibraryNotFound, match=r"built for ARM64 .*runs as x64.*amd64 DLLs"):
+        ft.load_api(str(chosen), loader=path_loader(LIBS, []), platform="win32", arch="x64")
+
+
+def test_package_with_both_arches_picks_the_right_one(tmp_path: Path) -> None:
+    root = ftdi_package(tmp_path, machine=X64, sub="amd64")
+    ftdi_package(tmp_path, machine=ARM64, sub="arm64")
+    tried: list[str] = []
+    ft.load_api(
+        str(root / "imports" / "LibFT4222" / "dll" / "arm64"),
+        loader=path_loader(LIBS, tried),
+        platform="win32",
+        add_dll_directory=None,
+        arch="x64",
+    )
+    assert all("amd64" in p for p in tried)
+
+
+def test_missing_ftd2xx_is_named_in_the_error(tmp_path: Path) -> None:
+    write_pe(tmp_path / "LibFT4222-64.dll", X64)
+    with pytest.raises(LibraryNotFound, match=r"missing: ftd2xx\.dll; tried:"):
+        ft.load_api(
+            str(tmp_path),
+            loader=path_loader(LIBS, []),
+            platform="win32",
+            add_dll_directory=None,
+            arch="x64",
+        )
+
+
+def test_bad_exe_format_from_loader_is_an_arch_error(tmp_path: Path) -> None:
+    write_pe(tmp_path / "ftd2xx.dll", X64)
+    write_pe(tmp_path / "LibFT4222-64.dll", X64)
+
+    def loader(path: str) -> FakeLib:
+        err = OSError("not a valid Win32 application")
+        err.winerror = 193  # type: ignore[attr-defined,unused-ignore]  # only typed on Windows
+        raise err
+
+    with pytest.raises(LibraryNotFound, match="runs as x64"):
+        ft.load_api(
+            str(tmp_path), loader=loader, platform="win32", add_dll_directory=None, arch="x64"
+        )
+
+
+def test_other_load_failure_falls_back_and_reports(tmp_path: Path) -> None:
+    write_pe(tmp_path / "ftd2xx.dll", X64)
+    write_pe(tmp_path / "LibFT4222-64.dll", X64)
+
+    def loader(path: str) -> FakeLib:
+        raise OSError("access denied")
+
+    with pytest.raises(LibraryNotFound, match="Could not load FTDI"):
+        ft.load_api(
+            str(tmp_path), loader=loader, platform="win32", add_dll_directory=None, arch="x64"
+        )
+
+
+@pytest.mark.parametrize(
+    ("tag", "arch"),
+    [("win-amd64", "x64"), ("win-arm64", "ARM64"), ("win32", "x86"), ("linux-x86_64", "x64")],
+)
+def test_process_arch(tag: str, arch: str) -> None:
+    assert ft.process_arch(tag) == arch
+    assert ft.process_arch() in {"x64", "x86", "ARM64"}
+
+
+def test_pe_machine(tmp_path: Path) -> None:
+    assert ft.pe_machine(str(write_pe(tmp_path / "a.dll", ARM64))) == "ARM64"
+    assert ft.pe_machine(str(write_pe(tmp_path / "b.dll", X86))) == "x86"
+    assert ft.pe_machine(str(write_pe(tmp_path / "c.dll", 0x1234))) == "0x1234"
+    (tmp_path / "d.dll").write_bytes(b"not a pe")
+    assert ft.pe_machine(str(tmp_path / "d.dll")) is None
+    bad = bytearray(64)
+    bad[:2] = b"MZ"
+    bad[0x3C:0x40] = (64).to_bytes(4, "little")
+    (tmp_path / "e.dll").write_bytes(bytes(bad) + b"XX\0\0\0\0")
+    assert ft.pe_machine(str(tmp_path / "e.dll")) is None
+    assert ft.pe_machine(str(tmp_path / "missing.dll")) is None
+
+
+def test_ftdi_package_root(tmp_path: Path) -> None:
+    root = ftdi_package(tmp_path / "pkg")
+    deep = root / "imports" / "LibFT4222" / "dll" / "amd64"
+    assert ft.ftdi_package_root(str(deep)) == str(root)
+    assert ft.ftdi_package_root(str(root)) == str(root)
+    assert ft.ftdi_package_root(str(tmp_path / "pkg" / "imports")) == str(root)
+    lone = tmp_path / "elsewhere"
+    lone.mkdir()
+    assert ft.ftdi_package_root(str(lone), max_up=1) is None
+    assert ft.ftdi_package_root(os.path.abspath(os.sep)) is None
+
+
+# --- path normalization (#146 follow-up) ------------------------------------------------------
+
+
+def test_normalize_dir_expands_home_and_native_separators(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    assert ft.normalize_dir("") == ""
+    assert ft.normalize_dir(None) == ""
+    assert ft.normalize_dir("  ") == ""
+    got = ft.normalize_dir("~/Downloads/LibFT4222-v1.4.8/imports//LibFT4222/dll/./amd64/ ")
+    assert got == os.path.join(
+        str(tmp_path), "Downloads", "LibFT4222-v1.4.8", "imports", "LibFT4222", "dll", "amd64"
+    )
+    assert "~" not in got
+
+
+def test_load_api_expands_user_typed_home_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    ftdi_package(tmp_path / "Downloads" / "LibFT4222-v1.4.8")
+    tried: list[str] = []
+    ft.load_api(
+        "~/Downloads/LibFT4222-v1.4.8/imports/LibFT4222/dll/amd64",
+        loader=path_loader(LIBS, tried),
+        platform="win32",
+        add_dll_directory=None,
+        arch="x64",
+    )
+    assert all(p.startswith(str(tmp_path)) and "~" not in p for p in tried)
+    assert all(os.path.normpath(p) == p for p in tried)  # consistent separators in messages

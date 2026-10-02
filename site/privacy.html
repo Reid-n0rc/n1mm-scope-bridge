@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>Privacy | N1MM Scope Bridge</title>
+<meta name="description" content="N1MM Scope Bridge collects no personal data. No telemetry, no cookies, no third-party requests; this notice explains the network use you control and the third-party services around the project.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Privacy notice</h1>
+  <p><em>Last updated: 2026-10-02</em></p>
+  <p>N1MM Scope Bridge is a free, open-source program. <strong>It collects no personal data and sends nothing about you anywhere.</strong> It has no telemetry, no analytics, no update checks, no accounts and no advertising. This notice explains the little network traffic there is and the third-party services around the project, so you can exercise your rights under the GDPR and similar laws.</p>
+
+  <h2 id="controller">Who is responsible</h2>
+  <p>The project is maintained by Reid Crowe, N0RC. Contact:</p>
+  <ul>
+    <li>general questions: open an issue on <a href="https://github.com/Reid-n0rc/n1mm-scope-bridge/issues">GitHub</a> (issues are public);</li>
+    <li>private matters, including data protection requests: use GitHub's <a href="https://github.com/Reid-n0rc/n1mm-scope-bridge/security/advisories/new">private reporting form</a>.</li>
+  </ul>
+
+  <h2 id="program">What the program does with your data</h2>
+  <p>Nothing. It processes no personal data, so no legal basis is needed for it, and there is no data to access, correct or delete. It uses the network only for things you configure:</p>
+  <ol>
+    <li><strong>Spectrum data to N1MM Logger+:</strong> the radio's scope data is sent over UDP to the N1MM+ address you set. By default that's this PC (<code>127.0.0.1</code>).</li>
+    <li><strong>Remote control (optional, off by default):</strong> if you turn it on, the program listens for UDP commands, only from this PC unless you set a LAN address and an allow-list of client addresses.</li>
+  </ol>
+  <p>Your settings are stored only on your PC (<code>%APPDATA%\n1mm-scope-bridge\settings.json</code>). Uninstalling can remove them.</p>
+  <p><strong>Copy diagnostics</strong> puts a bug-report summary on your clipboard. It never leaves your PC unless you paste it somewhere. It redacts your user name and home folder, IP addresses other than this PC's loopback, this PC's network name, and the N1MM+ source name (often a call sign). Use <strong>Copy diagnostics including source name</strong> only if you choose to share it.</p>
+  <p>The program never transmits on the radio and never changes the radio's settings.</p>
+
+  <h2 id="third-parties">Third parties you may deal with</h2>
+  <p>These services process data under their own privacy policies. We receive nothing from them.</p>
+  <table>
+    <thead><tr><th>When</th><th>Service</th><th>What they see</th><th>Their policy</th></tr></thead>
+    <tbody>
+      <tr><td>Visiting the website</td><td>GitHub Pages</td><td>your IP address and request details in server logs</td><td><a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a></td></tr>
+      <tr><td>Downloading a release, opening issues</td><td>GitHub</td><td>your IP address; anything you post in an issue is <strong>public</strong></td><td><a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a></td></tr>
+      <tr><td>Installer's optional FTDI library download</td><td>Python Package Index (PyPI), run by the Python Software Foundation</td><td>your IP address and the download request</td><td><a href="https://policies.python.org/pypi.org/Privacy-Notice/">PyPI privacy notice</a></td></tr>
+      <tr><td>Installer's optional FTDI USB driver install (only if Windows lacks it and you tick it)</td><td>Microsoft Update Catalog download servers</td><td>your IP address and the download request</td><td><a href="https://privacy.microsoft.com/privacystatement">Microsoft Privacy Statement</a></td></tr>
+<tr><td>Installing from the Microsoft Store (if published there)</td><td>Microsoft</td><td>your Microsoft account and install details</td><td><a href="https://privacy.microsoft.com/privacystatement">Microsoft Privacy Statement</a></td></tr>
+    </tbody>
+  </table>
+  <p>The website itself sets <strong>no cookies</strong>, uses no local storage, and loads nothing from other sites: no third-party fonts, scripts, analytics or embedded media. Links to other sites only load them when you click.</p>
+  <p>Please don't post personal data (addresses, e-mail, phone numbers, logs from other software) in public issues. Your call sign is fine if you choose to share it.</p>
+
+  <h2 id="rights">Your rights</h2>
+  <p>Because the project holds no personal data about you, there is nothing for us to give you, correct or delete. For data held by GitHub, PyPI or Microsoft, use their privacy tools or contact them using the policies linked above. You can also complain to your data protection authority.</p>
+
+  <h2 id="children">Children</h2>
+  <p>The program and website aren't aimed at children and collect nothing from anyone.</p>
+
+  <h2 id="changes">Changes</h2>
+  <p>Any change to what the program or website sends or loads requires an approved issue and an update to this notice first. The date at the top shows the latest version, and the history is in the <a href="https://github.com/Reid-n0rc/n1mm-scope-bridge/commits/dev/docs/privacy.md">repository</a>.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>

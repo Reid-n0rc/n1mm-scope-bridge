@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
+import os
 import socket
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,6 +20,7 @@ from n1mm_scope_bridge.gui import app as gui_app
 from n1mm_scope_bridge.gui import main_window as mw
 from n1mm_scope_bridge.gui.controller import StreamController
 from n1mm_scope_bridge.gui.main_window import MainWindow
+from n1mm_scope_bridge.gui.screenshot import demo_frames
 from n1mm_scope_bridge.gui.style import (
     Theme,
     apply_style,
@@ -134,6 +136,19 @@ def test_browse_sets_folder(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_p
     assert window.ftdi_dir.text() == str(tmp_path)
 
 
+def test_browse_normalizes_qt_folder_path(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Qt's picker returns "/" separators on Windows; the setting stores native ones (#146).
+    window, _ = make_window(qtbot)
+    picked = str(tmp_path).replace(os.sep, "/") + "/imports//LibFT4222/./dll/amd64/"
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a: picked)
+    window._browse_ftdi()
+    assert window.ftdi_dir.text() == os.path.join(
+        str(tmp_path), "imports", "LibFT4222", "dll", "amd64"
+    )
+
+
 def test_setup_guide_menu_opens_docs(qtbot: QtBot) -> None:
     window, rec = make_window(qtbot)
     assert window.action_guide in window.menu.actions()
@@ -144,13 +159,22 @@ def test_setup_guide_menu_opens_docs(qtbot: QtBot) -> None:
 def test_menu_actions(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     window, _ = make_window(qtbot)
     texts = [a.text() for a in window.menu.actions()]
-    assert texts == ["Settings…", "Copy diagnostics", "N1MM+ setup guide", "About and license"]
+    assert texts == [
+        "Settings…",
+        "Show preview",
+        "Copy diagnostics",
+        "Copy diagnostics including source name",
+        "N1MM+ setup guide",
+        "About and license",
+    ]
     window.action_settings.trigger()
     assert window.settings_dialog.isVisible()
     shown: list[str] = []
     monkeypatch.setattr(QMessageBox, "about", lambda parent, title, text: shown.append(text))
     window.action_about.trigger()
     assert "GNU General Public License" in shown[0]
+    window.action_diagnostics_named.trigger()
+    assert "including source name" in window.log.lines()[-1]
 
 
 def test_save_failure_is_reported(qtbot: QtBot) -> None:
@@ -181,8 +205,10 @@ def test_start_stop_with_emulator(qtbot: QtBot, listener: socket.socket) -> None
     qtbot.waitUntil(
         lambda: window.cards["frequency"].value.text() == "14.074 000 MHz", timeout=3000
     )
-    qtbot.waitUntil(lambda: window.spectrum.frame is not None, timeout=3000)
     qtbot.waitUntil(lambda: "total" in window.status_rows["Sent to N1MM+"], timeout=3000)
+    assert window.spectrum.frame is None  # preview is off by default: nothing drawn
+    window.preview_toggle.click()
+    qtbot.waitUntil(lambda: window.spectrum.frame is not None, timeout=3000)
     assert window.status.text().startswith("Streaming to N1MM+ at 127.0.0.1:")
     assert rec.saved  # settings saved on Start
     with qtbot.waitSignal(window.controller.stopped, timeout=6000):
@@ -386,3 +412,77 @@ def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.
         window.toggle_streaming()
     assert "Stopped streaming" in window.log_view.toPlainText()
     window.quit_app()
+
+
+def test_window_shows_center_prompt_for_cursor_mode(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    window.show()
+    window._on_status(ScopeStatus(7_074_000, 10_000, "cursor", "Cursor (Normal)"))
+    assert window.center_panel.isVisible()
+    assert "Scope Center" in window.center_panel.macro_fields
+    window._on_started()
+    assert not window.center_panel.isVisible()
+
+
+def test_about_dialog_shows_non_affiliation_disclaimer(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox  # noqa: PLC0415
+
+    from n1mm_scope_bridge.legal import DISCLAIMER  # noqa: PLC0415
+
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "about", lambda _parent, _title, body: shown.append(body))
+    window, _ = make_window(qtbot)
+    window.show_about()
+    assert len(shown) == 1
+    assert DISCLAIMER in shown[0]
+    assert "ABSOLUTELY NO WARRANTY" in shown[0]
+
+
+# --- preview toggle (off by default to save CPU) -------------------------------------------
+
+
+def test_preview_is_off_by_default(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    assert window.preview_visible is False
+    assert window.preview_stack.currentWidget() is window.preview_placeholder
+    assert window.controller.preview_enabled is False
+    assert window.preview_toggle.text() == "Show preview"
+    assert not window.action_preview.isChecked()
+    assert window.preview_toggle.toolTip() == mw.PREVIEW_TOOLTIP
+
+
+def test_hidden_preview_ignores_frames(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    frame = _demo_parsed_frame()
+    window._on_frame(frame)  # e.g. queued just before the preview was hidden
+    assert window.spectrum.frame is None
+
+
+def test_toggle_shows_and_hides_and_persists(qtbot: QtBot) -> None:
+    window, rec = make_window(qtbot)
+    window.preview_toggle.click()
+    assert window.preview_visible is True
+    assert window.preview_stack.currentWidget() is window.spectrum
+    assert window.controller.preview_enabled is True
+    assert window.action_preview.isChecked()
+    assert window.preview_toggle.text() == "Hide preview"
+    window._on_frame(_demo_parsed_frame())
+    assert window.spectrum.frame is not None
+    qtbot.waitUntil(lambda: bool(rec.saved), timeout=3000)
+    assert rec.saved[-1].show_preview is True
+    window.action_preview.trigger()  # the ⋯ menu item does the same
+    assert window.preview_visible is False
+    assert window.spectrum.frame is None  # cleared when hidden
+    assert window.controller.preview_enabled is False
+
+
+def test_saved_preview_setting_is_restored(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot, Settings(show_preview=True))
+    assert window.preview_stack.currentWidget() is window.spectrum
+    assert window.controller.preview_enabled is True
+
+
+def _demo_parsed_frame() -> Any:
+    return demo_frames(1)[0]

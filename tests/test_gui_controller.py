@@ -143,3 +143,33 @@ def test_idle_poll_and_finish_are_noops(qtbot: QtBot) -> None:
     with qtbot.assertNotEmitted(ctl.stats), qtbot.assertNotEmitted(ctl.stopped):
         ctl._poll()
     assert ctl._finish() == ""
+
+
+def test_preview_signal_is_gated_by_preview_enabled(qtbot: QtBot) -> None:
+    """Off by default: no preview signal at all, so a hidden preview costs no CPU."""
+    ctl = StreamController(source_factory=demo_factory)
+    previews: list[object] = []
+    ctl.preview.connect(previews.append)
+    item = object()
+    assert ctl.preview_enabled is False
+    ctl._emit_preview(item)  # type: ignore[arg-type]
+    assert previews == []
+    ctl.preview_enabled = True
+    for _ in range(5):
+        ctl._emit_preview(item)  # type: ignore[arg-type]
+    assert len(previews) == 5  # every radio frame, no N1MM+-rate throttling
+
+
+def test_preview_signal_flows_while_streaming_only_when_enabled(
+    qtbot: QtBot, listener: socket.socket
+) -> None:
+    ctl = StreamController(source_factory=demo_factory)
+    previews: list[object] = []
+    ctl.preview.connect(previews.append)
+    assert ctl.start(Settings(n1mm_port=listener.getsockname()[1], rate_hz=2.0))
+    qtbot.waitUntil(lambda: ctl.running, timeout=3000)
+    listener.recvfrom(65535)  # streaming to N1MM+ regardless of the preview
+    assert previews == []
+    ctl.preview_enabled = True
+    qtbot.waitUntil(lambda: len(previews) >= 5, timeout=5000)
+    ctl.stop()

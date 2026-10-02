@@ -1,0 +1,18 @@
+{
+  "_comment": "Single source of truth for FTDI's WHQL USB driver package (issue #152), hosted by Microsoft Update Catalog (FTDI's site blocks scripted downloads with a Cloudflare challenge). Used by scripts/ftdi_driver.py (CI + daily monitor), scripts/build_installer.py (optional installer task) and packaging/windows/ftdi_driver.ps1. Update all fields together and re-verify the catalog signature.",
+  "name": "FTDI - USB - 2.12.36.20",
+  "version": "2.12.36.20",
+  "catalog_update_id": "c597cfaa-df1e-475f-bc9c-d47d8db3eb66",
+  "catalog_page": "https://www.catalog.update.microsoft.com/Search.aspx?q=VID_0403%26PID_601C",
+  "url": "https://catalog.s.download.windowsupdate.com/d/msdownload/update/driver/drvs/2025/10/3c6ba1b9-6ca5-4e0a-903e-d60cfcf0c09c_04780a77d96c6214457450540118639a2b542f31.cab",
+  "sha256": "b9d9e8d3a0de3a0d29886141db3ee87856e0a8edbbeeadaaf52c37d5a2ec51f8",
+  "sha1": "04780a77d96c6214457450540118639a2b542f31",
+  "size": 1100810,
+  "filename": "ftdi-driver-2.12.36.20.cab",
+  "inf": "ftdibus.inf",
+  "catalog": "ftdibus.cat",
+  "hardware_id": "USB\\VID_0403&PID_601C",
+  "signer": "Microsoft Windows Hardware Compatibility Publisher",
+  "architectures": ["x86", "x64"],
+  "ftdichip_probe_url": "https://ftdichip.com/drivers/d2xx-drivers/"
+}

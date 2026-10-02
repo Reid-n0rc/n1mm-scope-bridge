@@ -59,7 +59,7 @@ def test_check_accepts_a_bom_manifest(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("kw", "message"),
     [
-        ({"drop": "installer-ftdi"}, "was not captured"),
+        ({"drop": "installer-finished"}, "was not captured"),
         ({"tiny": "installer-license"}, "missing or empty"),
         ({"no_alt": "installer-tasks"}, "no alt text"),
     ],
@@ -87,7 +87,7 @@ def test_merge_adds_pages_to_the_gui_set_and_zip(tmp_path: Path) -> None:
     manifest = json.loads((shots / "manifest.json").read_text(encoding="utf-8"))
     assert {"main-window", *step.REQUIRED} <= set(manifest)
     with zipfile.ZipFile(target) as zf:
-        assert {"main-window.png", "installer-ftdi.png", "manifest.json"} <= set(zf.namelist())
+        assert {"main-window.png", "installer-tasks.png", "manifest.json"} <= set(zf.namelist())
 
 
 def test_merge_without_gui_shots(tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ def test_generate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(step, "ZIP", tmp_path / "s.zip")
     step.generate(ps_runner(), installers, tmp_path / "raw")
     assert (tmp_path / "s.zip").is_file()
-    assert (tmp_path / "shots" / "installer-ftdi.png").is_file()
+    assert (tmp_path / "shots" / "installer-tasks.png").is_file()
 
 
 def test_generate_failures(tmp_path: Path) -> None:
@@ -121,3 +121,10 @@ def test_steps(skip_gui: bool) -> None:
     (only,) = step.steps(StepContext(runner=fake_runner(), skip_gui=skip_gui))
     assert only.windows_only
     assert (only.disabled_reason == GUI_SKIP) is skip_gui
+
+
+def test_skipped_on_windows_on_arm() -> None:
+    (only,) = step.steps(StepContext(runner=fake_runner()), platform="win-arm64")
+    assert only.disabled_reason == step.ARM_SKIP
+    (x64,) = step.steps(StepContext(runner=fake_runner()), platform="win-amd64")
+    assert x64.action is not None

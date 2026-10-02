@@ -7,6 +7,9 @@ checked against a pinned SHA-256 and (on Windows) their Authenticode
 signatures, and never committed or bundled (the pre-commit hook and the
 release regression's dist checks enforce that). See THIRD_PARTY.md.
 
+The pin (URL, SHA-256, files, signers) lives in packaging/windows/ftdi_pin.json
+and is shared with the installer and scripts/check_ftdi_download.py.
+
 Source: ftdichip.com sits behind a Cloudflare browser challenge, so CI cannot
 download from it. The PyPI ``ft4222`` wheel (MSR Electronics, MIT wrapper,
 "LicenseRef-FTDI" for the DLLs) redistributes FTDI's unmodified Windows DLLs,
@@ -16,16 +19,19 @@ as FTDI's licence allows. Only the two DLLs are extracted:
   Future Technology Devices International Ltd
 - ftd2xx.dll 3.2.16.1 (FTDI CDM driver), WHQL-signed by Microsoft
 
-    python scripts/fetch_ftdi.py --dest DIR          # verify, extract to DIR/lib
+    python scripts/fetch_ftdi.py --dest DIR          # amd64: verify, extract to DIR/lib
+    python scripts/fetch_ftdi.py --dest DIR --arch i386   # 32-bit x86 DLLs
     python scripts/fetch_ftdi.py --dest DIR --print-hashes
 
-In GitHub Actions the folder is exported as N1MM_BRIDGE_FTDI_DIR.
+In GitHub Actions the folder is exported as N1MM_BRIDGE_FTDI_DIR and its
+architecture as N1MM_BRIDGE_FTDI_ARCH.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -47,29 +53,52 @@ class Package:
         return self.url.rsplit("/", 1)[-1]
 
 
-PACKAGES = (
-    Package(
-        "https://files.pythonhosted.org/packages/27/f2/"
-        "e4704914f5b2b14b891700e4e5ca52eebd9250808a008251d93e58cdbf09/"
-        "ft4222-1.13.0-cp313-cp313-win_amd64.whl",
-        "03793163871663b5cc80fc2effd9f52357d8abd601da1064a85cf67624f12df7",
-        (("ft4222/LibFT4222-64.dll", "LibFT4222-64.dll"), ("ft4222/ftd2xx.dll", "ftd2xx.dll")),
-    ),
-)
+PIN = Path(__file__).resolve().parent.parent / "packaging" / "windows" / "ftdi_pin.json"
 
-# Expected Authenticode signers (Windows only; checked after extraction).
-SIGNERS = {
-    "LibFT4222-64.dll": "Future Technology Devices International",
-    "ftd2xx.dll": "Microsoft Windows Hardware Compatibility",
-}
 
-Downloader = Callable[[str, Path], None]
-SignatureCheck = Callable[[Path], str]
-"""Returns the signer subject of a valid Authenticode signature, or raises FetchError."""
+DEFAULT_ARCH = "amd64"
+
+
+def _parse(entry: dict[str, object]) -> tuple[Package, dict[str, str]]:
+    raw_files = entry["files"]
+    assert isinstance(raw_files, list)
+    files = tuple((str(f["member"]), str(f["name"])) for f in raw_files)
+    signers = {str(f["name"]): str(f["signer"]) for f in raw_files}
+    return Package(str(entry["url"]), str(entry["sha256"]), files), signers
+
+
+def pin_arches(path: Path = PIN) -> tuple[str, ...]:
+    """Windows architectures with a pinned FTDI download (amd64 first)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return (DEFAULT_ARCH, *sorted(data.get("arches", {})))
+
+
+def load_pin(path: Path = PIN, arch: str = DEFAULT_ARCH) -> tuple[Package, dict[str, str]]:
+    """The pinned download and expected signers for ``arch``, from the single source of truth.
+
+    The top-level fields are the amd64 (x64) pin; ``arches`` holds the others (#149).
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if arch == DEFAULT_ARCH:
+        return _parse(data)
+    arches = data.get("arches", {})
+    if arch not in arches:
+        known = ", ".join(pin_arches(path))
+        raise FetchError(f"no FTDI pin for architecture {arch!r} (pinned: {known})")
+    return _parse(arches[arch])
 
 
 class FetchError(RuntimeError):
     pass
+
+
+_PIN_PACKAGE, SIGNERS = load_pin()
+PACKAGES = (_PIN_PACKAGE,)
+"""Expected Authenticode signers (Windows only; checked after extraction)."""
+
+Downloader = Callable[[str, Path], None]
+SignatureCheck = Callable[[Path], str]
+"""Returns the signer subject of a valid Authenticode signature, or raises FetchError."""
 
 
 def curl_download(url: str, dest: Path) -> None:  # pragma: no cover - network
@@ -100,9 +129,12 @@ def authenticode_signer(path: Path) -> str:  # pragma: no cover - Windows CI onl
     return result.stdout.strip()
 
 
-def verify_signatures(files: Sequence[Path], check: SignatureCheck) -> None:
+def verify_signatures(
+    files: Sequence[Path], check: SignatureCheck, signers: dict[str, str] | None = None
+) -> None:
+    expected_signers = SIGNERS if signers is None else signers
     for path in files:
-        expected = SIGNERS.get(path.name)
+        expected = expected_signers.get(path.name)
         if expected is None:
             raise FetchError(f"no expected signer recorded for {path.name}")
         signer = check(path)
@@ -137,7 +169,8 @@ def extract(archive: Path, files: Sequence[tuple[str, str]], out: Path) -> list[
 def fetch(
     dest: Path,
     *,
-    packages: Sequence[Package] = PACKAGES,
+    arch: str = DEFAULT_ARCH,
+    packages: Sequence[Package] | None = None,
     download: Downloader = curl_download,
     print_hashes: bool = False,
     signature_check: SignatureCheck | None = (
@@ -146,6 +179,10 @@ def fetch(
     out: Callable[[str], object] = print,
 ) -> Path:
     """Download (if not cached), verify, and extract; return the DLL folder."""
+    signers = SIGNERS
+    if packages is None:
+        pkg, signers = load_pin(arch=arch)
+        packages = (pkg,)
     downloads, lib = dest / "downloads", dest / "lib"
     downloads.mkdir(parents=True, exist_ok=True)
     for pkg in packages:
@@ -165,7 +202,7 @@ def fetch(
         if not print_hashes:
             written = extract(archive, pkg.files, lib)
             if signature_check is not None:
-                verify_signatures(written, signature_check)
+                verify_signatures(written, signature_check, signers)
                 out("Authenticode signatures valid: " + ", ".join(p.name for p in written))
     return lib
 
@@ -174,9 +211,15 @@ def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CI ent
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
     parser.add_argument("--dest", type=Path, required=True)
     parser.add_argument("--print-hashes", action="store_true")
+    parser.add_argument(
+        "--arch",
+        default=DEFAULT_ARCH,
+        choices=pin_arches(),
+        help="Windows architecture of the DLLs",
+    )
     args = parser.parse_args(argv)
     try:
-        lib = fetch(args.dest, print_hashes=args.print_hashes)
+        lib = fetch(args.dest, arch=args.arch, print_hashes=args.print_hashes)
     except FetchError as err:
         print(f"error: {err}", file=sys.stderr)
         return 1
@@ -186,6 +229,7 @@ def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - CI ent
         if env:
             with open(env, "a", encoding="utf-8") as fh:
                 fh.write(f"N1MM_BRIDGE_FTDI_DIR={lib}\n")
+                fh.write(f"N1MM_BRIDGE_FTDI_ARCH={args.arch}\n")
     return 0
 
 

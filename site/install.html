@@ -12,7 +12,7 @@
 
   <h2 id="requirements">What you need</h2>
   <ul>
-    <li>Windows 10 or 11 (64-bit), the PC that runs N1MM Logger+</li>
+    <li>Windows 10 or 11, the PC that runs N1MM Logger+ (see <a href="#which-pc">which version you get</a>)</li>
     <li>A supported Yaesu radio (see <a href="index.html#radios">supported radios</a>)</li>
     <li>N1MM Logger+</li>
   </ul>
@@ -21,7 +21,7 @@
   <ul>
     <li>Connect the radio to the PC with a USB cable.</li>
     <li>On the radio, set <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. With it OFF, the scope interface doesn't appear on the PC at all. Then turn the radio off and on, <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), so the PC sees the scope device. (<a href="faq.html#no-scope">More help</a>.)</li>
-    <li>Install FTDI's <strong>LibFT4222</strong> library from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>. The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. It's free, but its license doesn't let us include it with this GPL program, so you install it yourself.</li>
+    <li>FTDI's <strong>LibFT4222</strong> library: setup downloads it for you (the option is on by default). The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. Its license doesn't let us include it inside this GPL program, so setup fetches FTDI's signed files from a pinned source, checks them, and puts them in the program folder. No internet while installing? Untick the option and get LibFT4222 from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>.</li>
   </ul>
   <p>Setup steps for other Yaesu models will be added here as they become supported.</p>
 
@@ -36,8 +36,17 @@
   <p>The release page lists the installer and SHA-256 checksums. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
   <!-- endif:release -->
 
+  <h2 id="which-pc">One installer for all Windows PCs</h2>
+  <p>There is one installer. It checks your PC and installs the right version:</p>
+  <ul>
+    <li><strong>64-bit Windows (Intel or AMD processor):</strong> the full app. This is most PCs.</li>
+    <li><strong>Windows on ARM</strong> (Snapdragon laptops, or Windows 11 in Parallels Desktop on an Apple silicon Mac): setup asks which version you want. The <strong>x64 version</strong> (recommended) runs through Windows' built-in emulation, and setup downloads FTDI's library for it. The <strong>native ARM64 version</strong> is faster, but you add FTDI's ARM64 DLLs yourself from FTDI's LibFT4222 package (pick the unzipped package folder in Settings). In Parallels, connect the radio's FT4222 USB device to Windows rather than to the Mac.</li>
+    <li><strong>32-bit Windows:</strong> the command-line version. The window needs 64-bit Windows, but the command-line version streams the scope to N1MM+ just the same. Start it with the Start menu shortcut <strong>N1MM Scope Bridge (command line)</strong>.</li>
+  </ul>
+  <p>Each release also has portable zips if you'd rather not install: <code>-win64</code> (64-bit), <code>-winarm64</code> (Windows on ARM) and <code>-win32</code> (32-bit, command line only).</p>
+
   <h2 id="setup-wizard">The setup wizard</h2>
-  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, offers a desktop shortcut and an option to start with Windows, and asks where you unzipped FTDI's LibFT4222 (you can skip that and set it later in the app).</p>
+  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, downloads FTDI's LibFT4222 library for you from the Python Package Index (PyPI) after you accept FTDI's licence terms (like any download, this shows PyPI your IP address; see the <a href="privacy.html">privacy notice</a>), and offers a desktop shortcut. If Windows doesn't have FTDI's USB driver yet, setup also offers <strong>Install FTDI USB driver (needs administrator)</strong>: only that step asks for administrator rights, and it installs FTDI's Microsoft-signed driver package from Microsoft Update Catalog after checking its signature (Windows Update normally installs it on its own when you plug in the radio). Microsoft's package has no ARM64 driver, so on Windows on ARM that option isn't offered and Windows Update is the source. The program never starts with Windows on its own. If you untick the FTDI download, it asks where you unzipped LibFT4222 instead (you can also set that later in the app).</p>
   <!-- screenshots:installer -->
 
   <h2 id="smartscreen">If Windows warns about the installer</h2>
@@ -46,7 +55,7 @@
   <h2 id="first-launch">First launch</h2>
   <ol class="steps">
     <li>Start <strong>N1MM Scope Bridge</strong> from the Start menu (or let setup start it).</li>
-    <li>Choose your radio. If you didn't let setup copy LibFT4222, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
+    <li>Choose your radio. If you unticked setup's FTDI download, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
     <li>Press <strong>Start</strong>. The status changes to <strong>Streaming</strong> and shows your radio's frequency and span.</li>
     <li>No radio connected yet? Turn on <strong>Use the built-in emulator</strong> to try everything first.</li>
   </ol>

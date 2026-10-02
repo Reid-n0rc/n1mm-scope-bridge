@@ -27,6 +27,7 @@ from n1mm_scope_bridge.cli.common import (
     format_status,
     supervise,
 )
+from n1mm_scope_bridge.legal import DISCLAIMER, SHORT_DISCLAIMER
 from n1mm_scope_bridge.transport.ft4222 import Ft4222Error, load_api
 from n1mm_scope_bridge.transport.replay import CaptureError
 
@@ -52,7 +53,8 @@ and Phil Taylor (M0VSE), licensed under the GNU GPLv3.
 This program comes with ABSOLUTELY NO WARRANTY. It is free software, licensed
 under the GNU General Public License version 3, and you are welcome to
 redistribute it under its conditions. Run with --license for details.
-Source code: {SOURCE_URL}"""
+Source code: {SOURCE_URL}
+{SHORT_DISCLAIMER}"""
 
 LICENSE_TEXT = f"""\
 n1mm-scope-bridge {__version__}
@@ -69,7 +71,9 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 The full license text is in the LICENSE file shipped with this program and at
 <https://www.gnu.org/licenses/gpl-3.0.html>. The complete corresponding source
 code, including the wfview-derived portions (listed in THIRD_PARTY.md), is
-available at {SOURCE_URL}."""
+available at {SOURCE_URL}.
+
+{DISCLAIMER}"""
 
 _REQUIRED = ("NAME", "HELP", "ORDER", "register", "run")
 

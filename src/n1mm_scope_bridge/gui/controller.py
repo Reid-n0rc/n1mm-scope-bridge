@@ -45,7 +45,8 @@ class StreamController(QObject):
     status = Signal(object)  # ScopeStatus, from the sender thread (queued to the GUI)
     stats = Signal(object)  # PipelineStats, every POLL_MS while running
     warning = Signal(str)  # rate-limited bridge warnings (for the log)
-    frame = Signal(object)  # ParsedFrame just sent to N1MM+ (GUI preview), queued
+    frame = Signal(object)  # ParsedFrame just sent to N1MM+, queued
+    preview = Signal(object)  # ParsedFrame at the radio's rate (live display), queued
 
     def __init__(
         self,
@@ -62,6 +63,13 @@ class StreamController(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self._poll)
+        # Read from the pipeline thread on every frame; a plain bool needs no lock.
+        self.preview_enabled = False
+
+    def _emit_preview(self, item: ParsedFrame) -> None:
+        """Forward a frame to the window only while the preview is shown (saves CPU)."""
+        if self.preview_enabled:
+            self.preview.emit(item)
 
     @property
     def running(self) -> bool:
@@ -86,6 +94,7 @@ class StreamController(QObject):
                 on_status=self.status.emit,
                 warn=self.warning.emit,
                 on_frame=self.frame.emit,
+                on_preview=self._emit_preview,
             )
             self._pipe.start()
         except Exception as exc:

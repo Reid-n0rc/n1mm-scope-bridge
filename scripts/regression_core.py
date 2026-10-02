@@ -24,6 +24,10 @@ DRAIN_TIMEOUT = 0.5
 SPECTRUM_BINS = 850
 GUI_SKIP = "skipped: no PySide6 wheels for free-threaded Python (--skip-gui)"
 PENDING = "added by #"
+ARM_SCREENSHOT_SKIP = (
+    "skipped on Windows on ARM: website screenshots come from the x64 job; the wizard walk "
+    "can't click past the licence page on the windows-11-arm runner (#149)"
+)
 """Prefix of ``disabled_reason`` for placeholder steps whose feature has not landed."""
 
 
