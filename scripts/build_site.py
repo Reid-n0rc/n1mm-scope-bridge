@@ -59,6 +59,12 @@ PREVIEW_LABEL = "Development preview"
 # Shown on screenshots whose manifest entry says ``"simulated": true`` (emulator
 # data, not a real radio), in development and release builds alike.
 SIMULATED_LABEL = "Simulated: FT-710 emulator"
+# Committed real-radio captures (``gui --screenshot DIR --source radio``, #119).
+# Scenes listed in this folder's manifest replace the generated ones.
+REAL_DIR = "_real_screenshots"
+REAL_LABEL = "Real radio: Yaesu FT-710"
+# Screenshots showing spectrum data must say where the data came from.
+STREAMING_SCENES = ("main-window",)
 
 
 class SiteError(Exception):
@@ -103,6 +109,11 @@ def load_screenshots(directory: Path) -> Shots:
         for key in ("file", "dark"):
             if key in entry and not (directory / str(entry[key])).is_file():
                 raise SiteError(f"screenshots: {scene!r} file {entry[key]!r} is missing")
+        if scene in STREAMING_SCENES and not (entry.get("simulated") or entry.get("real_radio")):
+            raise SiteError(
+                f"screenshots: {scene!r} shows spectrum data but does not state its source "
+                '("simulated" or "real_radio")'
+            )
     return manifest
 
 
@@ -117,6 +128,8 @@ def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
     label = f' <span class="badge">{PREVIEW_LABEL}</span>' if preview else ""
     if entry.get("simulated"):
         label += f' <span class="badge">{SIMULATED_LABEL}</span>'
+    elif entry.get("real_radio"):
+        label += f' <span class="badge">{REAL_LABEL}</span>'
     return (
         f'<figure class="screenshot" id="shot-{scene}"><picture>{dark}'
         f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
@@ -247,15 +260,24 @@ def build(
     """Render every page into ``out`` (replaced), copy assets, and check links."""
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / PARTIALS).glob("*.html")}
     shots = load_screenshots(screenshots) if screenshots is not None else None
+    origin: dict[str, Path] = {}  # scene -> folder its files come from
+    if screenshots is not None and shots is not None:
+        origin = dict.fromkeys(shots, screenshots)
+        real_dir = src / REAL_DIR
+        if (real_dir / "manifest.json").is_file():
+            for scene, entry in load_screenshots(real_dir).items():
+                shots[scene] = entry
+                origin[scene] = real_dir
     if out.exists():
         shutil.rmtree(out)
-    shutil.copytree(src, out, ignore=shutil.ignore_patterns(PARTIALS, "*.html"))
-    if screenshots is not None and shots is not None:
+    shutil.copytree(src, out, ignore=shutil.ignore_patterns(PARTIALS, REAL_DIR, "*.html"))
+    if shots is not None:
         (out / SHOTS_DIR).mkdir(parents=True, exist_ok=True)
-        for entry in shots.values():
+        for scene, entry in shots.items():
             for key in ("file", "dark"):
                 if key in entry:
-                    shutil.copy2(screenshots / str(entry[key]), out / SHOTS_DIR / str(entry[key]))
+                    name = str(entry[key])
+                    shutil.copy2(origin[scene] / name, out / SHOTS_DIR / name)
     pages = sorted(src.glob("*.html"))
     if not pages:
         raise SiteError(f"no pages in {src}")

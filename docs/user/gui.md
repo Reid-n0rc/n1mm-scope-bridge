@@ -12,9 +12,11 @@ Screenshots of the window and its dialogs are on the website's
 [Using the window](https://reid-n0rc.github.io/n1mm-scope-bridge/use.html) page.
 They are taken automatically from the program itself
 (`n1mm-scope-bridge gui --screenshot DIR`, see [`gui`](cli/gui.md)), so they
-match the version they describe. The streaming screenshots show **simulated
-signals from the built-in FT-710 emulator, not a real radio**, and are
-labelled that way.
+match the version they describe. Every streaming screenshot states where its
+data came from: the main streaming window is a **real Yaesu FT-710** capture
+(`--source radio`), labelled "Real radio" with the band, frequency, and date;
+any screenshot generated from the built-in FT-710 emulator is labelled as
+**simulated signals, not a real radio**.
 
 ## The window
 

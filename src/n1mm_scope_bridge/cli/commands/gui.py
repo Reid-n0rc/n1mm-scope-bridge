@@ -34,6 +34,18 @@ def register(sub: Any) -> argparse.ArgumentParser:
         metavar="DIR",
         help="save website screenshots of the window and dialogs into DIR, then exit",
     )
+    p.add_argument(
+        "--source",
+        choices=("emulator", "radio"),
+        help="with --screenshot: data from the built-in emulator (default) or the radio",
+    )
+    p.add_argument("--ftdi-lib-dir", help="with --source radio: folder with LibFT4222 and D2XX")
+    p.add_argument(
+        "--settle",
+        type=float,
+        metavar="SECONDS",
+        help="with --source radio: stream this long first so the waterfall fills (default 20)",
+    )
     return p
 
 
@@ -49,4 +61,10 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
         argv.append("--self-test")
     if args.screenshot is not None:
         argv += ["--screenshot", str(args.screenshot)]
+    if args.source is not None:
+        argv += ["--source", args.source]
+    if args.ftdi_lib_dir is not None:
+        argv += ["--ftdi-lib-dir", args.ftdi_lib_dir]
+    if args.settle is not None:
+        argv += ["--settle", str(args.settle)]
     return int(app.main(argv))
