@@ -1,12 +1,38 @@
 {
-  "_comment": "Single source of truth for FTDI's LibFT4222/D2XX download (issue #133). Used by scripts/fetch_ftdi.py (CI), scripts/build_installer.py (installer download), and scripts/check_ftdi_download.py (monitoring). FTDI's DLLs are never committed or bundled; the user's installer downloads them. Update all fields together and re-verify signatures.",
+  "_comment": "Single source of truth for FTDI's LibFT4222/D2XX download (issue #133). Used by scripts/fetch_ftdi.py (CI), scripts/build_installer.py (installer download), and scripts/check_ftdi_download.py (monitoring). FTDI's DLLs are never committed or bundled; the user's installer downloads them. Update all fields together and re-verify signatures. The top-level url/sha256/files are the amd64 (x64) pin; 'arches' adds pins for other Windows architectures (issue #149). No verifiable ARM64 source exists yet: ftdichip.com blocks scripted downloads and the PyPI ft4222 package has no win_arm64 wheel, so ARM64 PCs use the x64 app and amd64 DLLs (Windows on ARM x64 emulation).",
   "package": "ft4222",
   "version": "1.13.0",
   "url": "https://files.pythonhosted.org/packages/27/f2/e4704914f5b2b14b891700e4e5ca52eebd9250808a008251d93e58cdbf09/ft4222-1.13.0-cp313-cp313-win_amd64.whl",
   "sha256": "03793163871663b5cc80fc2effd9f52357d8abd601da1064a85cf67624f12df7",
   "files": [
-    {"member": "ft4222/LibFT4222-64.dll", "name": "LibFT4222-64.dll", "signer": "Future Technology Devices International"},
-    {"member": "ft4222/ftd2xx.dll", "name": "ftd2xx.dll", "signer": "Microsoft Windows Hardware Compatibility"}
+    {
+      "member": "ft4222/LibFT4222-64.dll",
+      "name": "LibFT4222-64.dll",
+      "signer": "Future Technology Devices International"
+    },
+    {
+      "member": "ft4222/ftd2xx.dll",
+      "name": "ftd2xx.dll",
+      "signer": "Microsoft Windows Hardware Compatibility"
+    }
   ],
-  "licence_url": "https://ftdichip.com/driver-licence-terms/"
+  "licence_url": "https://ftdichip.com/driver-licence-terms/",
+  "arches": {
+    "i386": {
+      "url": "https://files.pythonhosted.org/packages/83/3b/35e6df3a90280630c891ff8c6fa1acc438b5784c76d88696bb77957d4efc/ft4222-1.13.0-cp313-cp313-win32.whl",
+      "sha256": "872d165fe137d14159bc0fec3afba470e1e9d092f4fa9429dfccfda50c70d3ae",
+      "files": [
+        {
+          "member": "ft4222/LibFT4222.dll",
+          "name": "LibFT4222.dll",
+          "signer": "Future Technology Devices International"
+        },
+        {
+          "member": "ft4222/ftd2xx.dll",
+          "name": "ftd2xx.dll",
+          "signer": "Microsoft Windows Hardware Compatibility"
+        }
+      ]
+    }
+  }
 }

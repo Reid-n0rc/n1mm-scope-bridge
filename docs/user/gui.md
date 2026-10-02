@@ -34,7 +34,12 @@ bottom:
    - the **gear**, which opens [Settings](#settings);
    - the **⋯** menu: **Settings…**, **Copy diagnostics**, **Copy diagnostics
      including source name**, **N1MM+ setup guide**, and **About and license**.
-2. **Preview.** A live spectrum line over a waterfall of the radio's scope,
+2. **Preview** (off by default). Press **Show preview** (eye icon, top right of
+   the preview card, or **⋯ → Show preview**) to turn it on, and **Hide
+   preview** to turn it off again; the choice is remembered. It is off by
+   default because drawing it uses extra CPU. While it is off the window does
+   no drawing work for it at all, and streaming to N1MM+ is exactly the same.
+   When on, it shows a live spectrum line over a waterfall of the radio's scope,
    updated with every frame the radio sends (about 11 per second on an
    FT-710, so it scrolls smoothly) while N1MM+ gets its own steadier rate
    (**Updates per second** in Settings). The bottom axis gives the low, centre, and high

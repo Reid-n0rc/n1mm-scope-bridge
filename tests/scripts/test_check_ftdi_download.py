@@ -119,13 +119,39 @@ def test_non_https_pin_rejected(tmp_path: Path) -> None:
     assert "not HTTPS" in cfd.check(pin=pin, fetch=serve(data), signature_check=None)[0]
 
 
-def test_main_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_reports_every_arch() -> None:
     lines: list[str] = []
-    monkeypatch.setattr(cfd, "check", lambda: [])
-    assert cfd.main([], out=lines.append) == 0
-    assert lines[-1].startswith("FTDI download OK")
-    lines.clear()
-    monkeypatch.setattr(cfd, "check", lambda: ["download returned HTTP 404 (u)"])
-    assert cfd.main([], out=lines.append) == 1
-    assert "FAILED" in lines[0]
+    seen: list[str] = []
+
+    def ok(*, pin: Path, arch: str) -> list[str]:
+        seen.append(arch)
+        return []
+
+    assert cfd.main([], out=lines.append, run_check=ok) == 0
+    assert seen == list(ff.pin_arches())
+    assert all(line.startswith("FTDI download OK for ") for line in lines)
+    assert any(" i386: " in line for line in lines)
+
+
+def test_main_fails_if_any_arch_is_broken() -> None:
+    lines: list[str] = []
+
+    def broken_i386(*, pin: Path, arch: str) -> list[str]:
+        return ["download returned HTTP 404 (u)"] if arch == "i386" else []
+
+    assert cfd.main([], out=lines.append, run_check=broken_i386) == 1
+    assert any(line.startswith("FTDI download OK for amd64") for line in lines)
+    assert any("FAILED for i386" in line for line in lines)
     assert any("ftdi_pin.json" in line for line in lines)
+
+
+def test_check_uses_the_requested_arch(tmp_path: Path) -> None:
+    pin, data = make_pin(tmp_path)
+    raw = json.loads(pin.read_text(encoding="utf-8"))
+    raw["arches"] = {
+        "i386": {"url": "https://x.invalid/other.whl", "sha256": "0" * 64, "files": raw["files"]}
+    }
+    pin.write_text(json.dumps(raw), encoding="utf-8")
+    problems = cfd.check(pin=pin, fetch=serve(data), signature_check=None, arch="i386")
+    assert problems
+    assert "SHA-256" in problems[0] or "sha" in problems[0].lower()
