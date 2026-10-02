@@ -224,7 +224,7 @@ begin
   Log('FTDI download: helper exited with code ' + IntToStr(Code));
   if not LoadStringFromFile(ResultFile, Message) then
     Message := 'ERROR: no result from the FTDI helper';
-  if (Code <> 0) or (Trim(String(Message)) <> 'OK') then
+  if (Code <> 0) or (Pos('OK', Trim(String(Message))) <> 1) then
     FtdiDownloadFailed(Trim(String(Message)))
   else
     Log('FTDI download: LibFT4222-64.dll and ftd2xx.dll installed and signature-verified');

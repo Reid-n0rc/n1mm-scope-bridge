@@ -19,12 +19,17 @@ $ErrorActionPreference = 'Stop'
 $work = Join-Path ([IO.Path]::GetTempPath()) ("n1mm-ftdi-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 
 function Finish([string]$message, [int]$code) {
-    Set-Content -LiteralPath $Result -Value $message -Encoding UTF8
+    # ASCII without a byte-order mark, so setup can compare the text exactly.
+    [IO.File]::WriteAllText($Result, $message, [Text.Encoding]::ASCII)
     if (Test-Path $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
     exit $code
 }
 
 try {
+    # If PowerShell 7 is installed, Windows PowerShell can inherit its module path
+    # and fail to load Get-AuthenticodeSignature; use Windows PowerShell's own modules.
+    $env:PSModulePath = (@("$PSHOME\Modules", [Environment]::GetEnvironmentVariable('PSModulePath', 'Machine')) -join ';')
+    Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     New-Item -ItemType Directory -Path $work | Out-Null
     $wanted = @{ 'LibFT4222-64.dll' = $LibSigner; 'ftd2xx.dll' = $D2xxSigner }
