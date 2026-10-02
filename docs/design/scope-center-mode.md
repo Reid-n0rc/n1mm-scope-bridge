@@ -1,8 +1,13 @@
 # Design: switch the scope to Center mode while streaming (#62)
 
-Status: **implemented behind `CatControl` (src/n1mm_scope_bridge/cat.py) with
-the emulator; the real-radio CAT path is UNVERIFIED (#62). Run
-`tests/test_cat_hardware.py` on the station PC to test a COM port.**
+Status: **decided: no CAT.** The maintainer requires that the bridge never
+open either FT-710 COM port, because N1MM+ needs both (Enhanced for CAT,
+Standard for PTT/keying). N1MM+ offers no interface to send a CAT command on
+the bridge's behalf (below), so the bridge **prompts the operator** to set
+Center and **confirms it from the scope frame** (status byte 17)
+(`src/n1mm_scope_bridge/center.py`). `tests/test_no_com_ports.py` enforces
+that no COM port is ever opened. The CAT research below is kept for
+reference.
 
 ## Problem
 
@@ -39,7 +44,7 @@ operator's previous mode when it stops.
 | Enhanced (CAT-1) port while N1MM+ is closed | Works, but N1MM+ normally holds it, so a restore at exit would usually fail | Fallback only; not automatic |
 | Bridge owns CAT and shares it with N1MM+ (virtual port pair) | Large, separate feature | Out of scope |
 
-## Design
+## Superseded design (CAT path, not implemented)
 
 - **`CatControl` protocol** (`cat.py`), with one method:
   `set_scope_mode(code: str) -> None`. Implementations must send **only** the

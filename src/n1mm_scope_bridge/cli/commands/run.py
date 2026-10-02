@@ -9,25 +9,18 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from n1mm_scope_bridge.bridge import COMBINE_MODES, DEFAULT_RATE_HZ, DEFAULT_SCALING
-from n1mm_scope_bridge.cat import EmulatorCat, ScopeModeKeeper
 from n1mm_scope_bridge.cli.common import Context, UserError, open_radio, radio_args
 from n1mm_scope_bridge.cli.session import Source, StreamSession
 from n1mm_scope_bridge.control import ControlServer, parse_allow
-from n1mm_scope_bridge.emulator import Ft710Emulator
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT
 from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.settings import Settings, settings_path
 from n1mm_scope_bridge.settings import load as load_settings
-from n1mm_scope_bridge.transport.ft4222 import Ft4222Reader
 from n1mm_scope_bridge.transport.replay import CaptureReader
 
 NAME = "run"
 HELP = "stream the radio's scope to N1MM+"
 ORDER = 10
-CENTER_MODE_UNAVAILABLE = (
-    "force_center_mode is not available with a real radio yet (needs a CAT path, #62); "
-    "set the radio's scope to Center by hand. Continuing without it."
-)
 
 
 def register(sub: Any) -> argparse.ArgumentParser:
@@ -55,12 +48,6 @@ def register(sub: Any) -> argparse.ArgumentParser:
     p.add_argument("--combine", choices=COMBINE_MODES, help="latest (default), average, or peak")
     p.add_argument("--duration", type=float, help="stop after this many seconds")
     p.add_argument(
-        "--force-center-mode",
-        action="store_true",
-        default=None,
-        help="switch the scope to Center while streaming, restore it afterwards (off by default)",
-    )
-    p.add_argument(
         "--control-port",
         type=int,
         help="enable UDP remote control on this port (off by default; loopback only)",
@@ -86,7 +73,6 @@ def resolve_settings(args: argparse.Namespace, err: TextIO) -> Settings:
         "scaling": args.scaling,
         "combine": args.combine,
         "control_port": args.control_port,
-        "force_center_mode": args.force_center_mode,
         "control_enabled": True if args.control_port is not None else None,
     }
     settings = base.replace(**{k: v for k, v in overrides.items() if v is not None})
@@ -118,24 +104,7 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
         radio = open_radio(args, ctx.api_loader)
         return radio, radio.stop
 
-    def make_keeper(source: object) -> ScopeModeKeeper | None:
-        if not settings.force_center_mode:
-            return None
-        api = source.api if isinstance(source, Ft4222Reader) else None
-        if isinstance(api, Ft710Emulator):
-            return ScopeModeKeeper(
-                EmulatorCat(api), warn=lambda m: print(f"warning: {m}", file=err)
-            )
-        print(f"warning: {CENTER_MODE_UNAVAILABLE}", file=err)
-        return None
-
-    session = StreamSession(
-        settings,
-        make_source,
-        err,
-        keep_alive=settings.control_enabled,
-        make_keeper=make_keeper,
-    )
+    session = StreamSession(settings, make_source, err, keep_alive=settings.control_enabled)
     server = None
     if settings.control_enabled:
         try:

@@ -24,8 +24,6 @@ connection in one step. Every error the program can show is listed below.
 | `unsupported capture format`, `capture model name … must be`, `frame size must be in` | The capture's header is from a newer version or is damaged | Record it again with this version |
 | `capture frame is … bytes, expected …` | Internal check while recording; the radio returned a frame of the wrong size | Open an issue with the command you ran |
 | `replay fps must be >= 0` | `--fps` is negative | Use a positive number, for example 20 |
-| `force_center_mode is not available with a real radio yet` | The automatic Center switch needs a CAT path that is still being tested with the FT-710 (#62) | Set the radio's scope to **Center** by hand (or with an N1MM+ macro `{CAT1ASC SS0640000;}`). Streaming continues normally |
-| `Could not change the scope mode` | The radio did not accept the scope-mode command | The bridge leaves the scope as it is and keeps streaming; set Center by hand |
 | `Could not start remote control on` | Another program (or a second bridge) already uses the remote-control port | Close the other program or choose another `control_port` / `--control-port` |
 | `No reply from n1mm-scope-bridge at` | `ctl` found no running bridge with remote control enabled at that address | Start the bridge with remote control on (`run --control-port 13070` or the GUI setting) and check `--host`/`--port` |
 | `control port must`, `control address must`, `a non-loopback control address needs` | Invalid remote-control settings | Correct the named setting; see [UDP remote control](udp-control.md) |
@@ -33,12 +31,14 @@ connection in one step. Every error the program can show is listed below.
 | `--name must not be empty` | `--name ""` | Give a name, or leave `--name` out to use the radio model |
 | `n1mm_port: port must be 1-65535` (and other `setting: problem` messages) | An invalid setting or option | Correct the named setting; see [settings](settings.md) |
 
-## Scope mode and restore
+## Center scope mode
 
-With `force_center_mode` on, the bridge restores your previous scope mode when
-streaming stops, when you exit, on Ctrl-C, and after a stream error. It cannot
-restore after a power cut or if the program is killed. If you change the scope
-mode yourself while streaming, the bridge leaves your choice alone.
+`Set the FT-710's scope to Center mode` means the scope is in Cursor or Fixed
+mode, so N1MM+'s frequency scale is approximate. Switch the radio's scope to
+**Center** on the front panel (or with your own N1MM+ macro, for example
+`{CAT1ASC SS0640000;}`, which N1MM+ sends over its CAT port). The bridge
+confirms when it sees Center. It never changes the mode itself and never
+opens the radio's COM ports.
 
 ## N1MM+ shows no spectrum
 

@@ -112,6 +112,3 @@ On a system with no tray (rare), Close exits and Minimize minimizes normally.
 | `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression) |
 | `--version` | Print the version |
 
-> **Force Center scope mode** (setting `force_center_mode`, off by default) is
-> available from the command line today (`run --force-center-mode`); the GUI
-> checkbox is coming (#92).

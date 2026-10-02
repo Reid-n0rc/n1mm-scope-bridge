@@ -41,8 +41,6 @@ USER_MESSAGES = [
     "--frames must be at least 1",
     "--name must not be empty",
     "port must be 1-65535",
-    "force_center_mode is not available with a real radio yet",
-    "Could not change the scope mode",
     "Could not start remote control on",
     "No reply from n1mm-scope-bridge at",
     "control port must",

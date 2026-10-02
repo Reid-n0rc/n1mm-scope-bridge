@@ -30,7 +30,6 @@ a warning.
 | `start_streaming_on_launch` | `false` | — | GUI: start streaming as soon as it opens |
 | `start_minimized` | `false` | — | GUI: start hidden in the system tray |
 | `on_close` | `ask` | — | GUI Close button: `ask`, `tray` (keep streaming in the tray), or `exit` |
-| `force_center_mode` | `false` | `run --force-center-mode` | Switch the radio's scope to **Center** while streaming (exact N1MM+ frequencies) and restore your previous scope mode afterwards. **Off by default.** Works with the emulator today; with a real FT-710 it needs a CAT path still being tested (#62). See [GUI](gui.md) and [troubleshooting](troubleshooting.md) |
 | `control_enabled` | `false` | `run --control-port` | Optional [UDP remote control](udp-control.md). **Off by default.** |
 | `control_port` | `13070` | `run --control-port` | Remote-control UDP port (must differ from the N1MM+ port) |
 | `control_bind` | `127.0.0.1` | — | Address the remote-control listener uses. Leave it on `127.0.0.1` (this PC only) unless you need control from another PC |
