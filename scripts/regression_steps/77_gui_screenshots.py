@@ -3,9 +3,9 @@
 """GUI screenshots for the website (#68, part of #22).
 
 Generates the screenshots from this exact build and zips them as
-``dist/regression/screenshots.zip``. Release hook: lane:packaging's release
-workflow (#6) attaches that file as the release asset ``screenshots.zip``;
-the Pages build (pages.yml) uses it for the published site.
+``dist/regression/screenshots.zip``. The release workflow keeps it as the run
+artifact ``screenshots-<tag>`` (releases carry only the installer); the Pages
+build (pages.yml) uses it for the published site.
 """
 
 from __future__ import annotations

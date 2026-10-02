@@ -5,7 +5,8 @@
 Runs after 77_gui_screenshots and 80_installer: walks the built installer's
 wizard on the Windows desktop (packaging/windows/installer_screenshots.ps1),
 then merges the pages into the same screenshot set and rebuilds
-``dist/regression/screenshots.zip``, the release asset the website uses.
+``dist/regression/screenshots.zip``, which the website uses (via the release
+run's ``screenshots-<tag>`` artifact).
 """
 
 from __future__ import annotations
