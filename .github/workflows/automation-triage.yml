@@ -1,0 +1,49 @@
+# Detects and reports automated PRs (Copilot Autofix, Dependabot) and
+# code-scanning alerts that need adopting under AGENTS.md "Automated PRs" (#78).
+#
+# Report-only: scripts/automation_triage.py labels automated PRs
+# `needs-adoption`, posts one explanatory comment, and maintains a single
+# "Automated PR triage" issue. It never commits to PR branches, edits PR
+# bodies, re-runs checks, creates plan-approved issues, or merges.
+#
+# pull_request_target is safe here: the job checks out the BASE branch only
+# (the default), never PR code, and reads PR metadata through the API.
+name: Automation triage
+
+on:
+  schedule:
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  security-events: read
+
+concurrency:
+  group: automation-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    name: Report automated PRs and alerts
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      startsWith(github.head_ref, 'alert-autofix-') ||
+      startsWith(github.head_ref, 'dependabot/')
+    runs-on: ubuntu-latest
+    steps:
+      # Base branch only (the pull_request_target default). Never check out the PR head.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Triage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/automation_triage.py

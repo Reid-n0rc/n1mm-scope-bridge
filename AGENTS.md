@@ -197,6 +197,18 @@ Copilot's repository instructions are in
 - A bot never satisfies the checks on its own behalf. No labels, edits, or
   exemptions are added just to get its PR through.
 
+**Automation triage** (`.github/workflows/automation-triage.yml`, every two
+hours, on demand, and when an automated PR opens) finds what still needs
+adopting:
+- it labels automated PRs `needs-adoption` and posts one explanatory comment
+  on each;
+- it keeps a single **Automated PR triage** issue listing those PRs and any
+  open code-scanning alert that no PR addresses, closing it when nothing is
+  pending.
+
+It only reports. The adoption itself is done by a person or an agent,
+following the steps above.
+
 ## Testing policy
 
 0. **No automated test may need a radio.** Use the FT-710 emulator
