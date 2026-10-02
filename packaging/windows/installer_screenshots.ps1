@@ -208,9 +208,15 @@ try {
                 # Point the page at a placeholder folder so setup doesn't stop to ask
                 # about FTDI's download page. The empty file exists only on this
                 # machine for this run; the silent uninstall below removes the copy.
-                $edit = $window.FindFirst($Tree::Descendants, (New-Object System.Windows.Automation.PropertyCondition($Prop::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
-                if (-not $edit) { throw 'No folder box on the FTDI page' }
-                $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($FakeFtdi)
+                # Inno's text box isn't always typed "Edit"; find whatever accepts a value.
+                $hasValue = New-Object System.Windows.Automation.PropertyCondition($Prop::IsValuePatternAvailableProperty, $true)
+                $edit = $window.FindFirst($Tree::Descendants, $hasValue)
+                if ($edit) {
+                    $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($FakeFtdi)
+                } else {
+                    Write-Host 'typing the FTDI folder into the focused box'
+                    Send-Accelerator $window ($FakeFtdi -replace '([+^%~(){}\[\]])', '{$1}')
+                }
                 Start-Sleep -Milliseconds 300
                 Activate $window '^&?Next' '%n'
             }
