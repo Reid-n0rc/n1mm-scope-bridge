@@ -272,6 +272,13 @@ by a person or an agent, following the steps above.
    libraries, N1MM, or the network. Use synthetic frames built in the test,
    small binary fixtures under `tests/fixtures/`, a fake `ctypes` library
    object, and a fake or loopback socket.
+
+   **Coverage and test results go to Codecov.** CI runs pytest with
+   `--junitxml=junit.xml -o junit_family=legacy` and uploads both
+   `coverage.xml` and `junit.xml` (Test Analytics) with the `CODECOV_TOKEN`
+   secret. Uploads never fail CI, so a **"CODECOV_TOKEN is empty"** warning in
+   a run means the secret needs setting again, in a real terminal:
+   `gh secret set CODECOV_TOKEN -R Reid-n0rc/n1mm-scope-bridge`.
 2. **Hardware tests are opt-in.** Mark them `@pytest.mark.hardware`. They are
    skipped unless `N1MM_BRIDGE_HARDWARE=1` is set, and they never run in CI.
    Record their results in the issue or PR.

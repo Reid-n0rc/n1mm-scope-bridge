@@ -1,6 +1,8 @@
 # Codecov configuration (issue #39). The hard gate stays pytest's
 # fail_under = 90 in pyproject.toml; Codecov adds per-PR reporting.
-# CI uploads with the CODECOV_TOKEN repository secret (issue #47). The token
+# CI uploads coverage (coverage.xml) and, for Test Analytics, JUnit test
+# results (junit.xml, report_type: test_results; issue #171) with the
+# CODECOV_TOKEN repository secret (issue #47). The token
 # is never stored in this repository; fork PRs have no secrets and skip the
 # upload, which never fails CI (fail_ci_if_error: false).
 codecov:
