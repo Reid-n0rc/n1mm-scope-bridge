@@ -42,6 +42,7 @@ from n1mm_scope_bridge.radios.base import (
     ParsedFrame,
     RadioProfile,
     ScopeStatus,
+    SpanUnavailable,
 )
 from n1mm_scope_bridge.spectrum import SpectrumFrame
 
@@ -58,10 +59,17 @@ DATA_LEN = 150
 # Offsets into the 150-byte status block (haveScopeData comment table).
 STATUS_SCOPE_MODE = 17
 STATUS_SPAN = 32
-STATUS_MODE_FAMILY = 52  # UNVERIFIED (#5): 00 center, 01 cursor, 02 fixed
+STATUS_MODE_FAMILY = 52  # verified on an FT-710 (#111): 00 center, 01 cursor, 02 fixed
 STATUS_VFO_A = 64
 STATUS_VFO_B = 89
 STATUS_S_METER = 110
+STATUS_VFO_A_BIN = 132  # VFO-A, big-endian binary Hz (verified #111)
+STATUS_SCOPE_START = (
+    144  # scope start Hz, big-endian; the fixed start in Fixed mode (verified #111)
+)
+# Byte 32 (verified on an FT-710, #111): low nibble = span index in every mode;
+# high nibble = 0x40 in Cursor mode, 0x80 in Fixed mode.
+SPAN_INDEX_MASK = 0x0F
 BCD_LEN = 5
 
 # wfview inverts every spectrum byte (`~b`) so that larger means stronger.
@@ -108,12 +116,20 @@ def mode_family(name: str | None) -> ModeFamily:
     return "unknown"
 
 
-def parse_frame(raw: bytes, profile: RadioProfile) -> ParsedFrame:
+def parse_frame(
+    raw: bytes, profile: RadioProfile, *, span_fallback_hz: int | None = None
+) -> ParsedFrame:
     """Parse one FT4222 scope frame into a spectrum line and scope status.
 
     Edges are VFO-A +/- span/2, as in wfview. That is exact in Center mode
     only; other modes are reported through ``status.edges_verified``.
-    UNVERIFIED (#5): Cursor and Fixed mode edges.
+
+    Verified on a real FT-710 (#111): byte 32's low nibble is the span index in
+    every mode (its high nibble flags Cursor/Fixed). In Fixed mode the edges are
+    the reported start frequency (byte 144) plus the span. Cursor-mode edges stay
+    VFO-centred and approximate (the cursor position isn't decoded yet).
+    ``span_fallback_hz`` (from ``FrameDecoder``) covers an out-of-range span
+    index outside Center mode; without one ``SpanUnavailable`` is raised.
     """
     if len(raw) != profile.frame_size:
         raise FrameError(f"frame is {len(raw)} bytes, expected {profile.frame_size}")
@@ -121,20 +137,34 @@ def parse_frame(raw: bytes, profile: RadioProfile) -> ParsedFrame:
         raise FrameError("frame does not end with the FT4222 sync pattern")
 
     status = raw[DATA : DATA + DATA_LEN]
-    span_index = status[STATUS_SPAN]
-    if span_index >= len(profile.spans_hz):
-        raise FrameError(f"span index {span_index} is outside 0..{len(profile.spans_hz) - 1}")
-    span_hz = profile.spans_hz[span_index]
+    code = scope_mode_code(status[STATUS_SCOPE_MODE])
+    name = profile.scope_mode_name(code)
+    span_index = status[STATUS_SPAN] & SPAN_INDEX_MASK
+    if span_index < len(profile.spans_hz):
+        span_hz = profile.spans_hz[span_index]
+    elif mode_family(name) != "center" and span_fallback_hz:
+        span_hz = span_fallback_hz
+    elif mode_family(name) != "center":
+        raise SpanUnavailable(
+            f"The scope is in {name or 'an unknown'} mode, where the radio doesn't report the "
+            "span. Set the radio's scope to Center mode."
+        )
+    else:
+        raise FrameError(
+            f"span index {status[STATUS_SPAN]} is outside 0..{len(profile.spans_hz) - 1}"
+        )
     vfo_a = decode_bcd(status[STATUS_VFO_A : STATUS_VFO_A + BCD_LEN])
     vfo_b = decode_bcd(status[STATUS_VFO_B : STATUS_VFO_B + BCD_LEN])
 
-    half = span_hz // 2
-    low, high = vfo_a - half, vfo_a + (span_hz - half)
+    if mode_family(name) == "fixed":
+        low = int.from_bytes(status[STATUS_SCOPE_START : STATUS_SCOPE_START + 4], "big")
+        high = low + span_hz
+    else:
+        half = span_hz // 2
+        low, high = vfo_a - half, vfo_a + (span_hz - half)
     if low < 0:
         raise FrameError(f"VFO-A {vfo_a} Hz minus half the {span_hz} Hz span is below 0 Hz")
 
-    code = scope_mode_code(status[STATUS_SCOPE_MODE])
-    name = profile.scope_mode_name(code)
     levels = tuple(raw[WF1 : WF1 + profile.bins].translate(_INVERT))
 
     return ParsedFrame(

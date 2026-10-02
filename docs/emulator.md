@@ -45,15 +45,14 @@ in the release regression ("Emulator scenarios through the CLI").
 
 ## How it is kept honest
 
-The emulator implements what we know from wfview's code. What we don't yet
-know is marked `UNVERIFIED (#36)`:
-
-- **Padding between the status block and the sync tail.** wfview's resync
-  waits for the sync pattern repeated four times, which suggests the radio
-  pads frames with it. The emulator supports both `padding="sync"` (the
-  default) and `padding="zero"`, and the reader handles both.
-- **Frame rate**, start-up alignment, and how the stream behaves after a USB
-  re-plug. The golden captures (below) record all of these.
+The emulator implements wfview's protocol notes, checked against a real
+FT-710 (#111): frames are zero-filled and end with the sync pattern four times
+(`padding="tail"`, the default; `"sync"` and `"zero"` remain for resync tests),
+the radio streams 11.2 frames per second, byte 32 carries a Cursor/Fixed flag
+in its high nibble, byte 144 is the Fixed-mode start frequency, and the noise
+floor per span uses measured values. Still marked `UNVERIFIED`: Cursor-mode
+edges, transmit flags, and the start-up and re-plug behaviour (operator-only
+cases).
 
 Issue #36 records golden captures from a real FT-710 once and checks the
 emulator against them in CI on every PR
@@ -65,7 +64,7 @@ recapturing; the conformance test fails if the parser changed since the
 captures were taken.
 
 The emulator paces frames against a deadline, so it streams at exactly its
-configured rate (20 frames/s, `EMULATOR_FPS`) however long a frame takes to
+configured rate (11.2 frames/s, `EMULATOR_FPS`, measured on a real FT-710) however long a frame takes to
 build. That is what the radio's measured rate is compared against.
 
 ## Validating against your radio

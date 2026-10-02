@@ -1,0 +1,379 @@
+{
+  "schema": 1,
+  "radio": "FT-710",
+  "firmware": "unknown",
+  "dry_run": false,
+  "captured_at": "2026-10-02T10:45:35Z",
+  "validated_against": "af2e91adb5903b49f9e7baf9c267449125c2cddb",
+  "mode": "auto",
+  "cases": [
+    {
+      "name": "center-span-0",
+      "file": "center-span-0.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 0,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 0,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.067,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 1000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-1",
+      "file": "center-span-1.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 1,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 1,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.076,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 2000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-2",
+      "file": "center-span-2.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 2,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 2,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.064,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 5000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-3",
+      "file": "center-span-3.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 3,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 3,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.066,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 10000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-4",
+      "file": "center-span-4.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 4,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 4,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.073,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 20000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-5",
+      "file": "center-span-5.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 5,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 5,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.074,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 50000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-6",
+      "file": "center-span-6.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 6,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 6,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.07,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 100000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-7",
+      "file": "center-span-7.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 7,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 7,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.084,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 200000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-8",
+      "file": "center-span-8.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 8,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 8,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.072,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 500000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "center-span-9",
+      "file": "center-span-9.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 9,
+        "mode": "4"
+      },
+      "cat_readback": {
+        "span_index": 9,
+        "mode": "4"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.073,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 1000000,
+        "mode_name": "Center (Normal)",
+        "mode_family": "center",
+        "mode_code": "4",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "cursor-mode",
+      "file": "cursor-mode.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 4,
+        "mode": "7"
+      },
+      "cat_readback": {
+        "span_index": 4,
+        "mode": "7"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.072,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 20000,
+        "mode_name": "Cursor (Normal)",
+        "mode_family": "cursor",
+        "mode_code": "7",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "fixed-mode",
+      "file": "fixed-mode.raw",
+      "confirmed": true,
+      "confirmed_by": "cat+scope-stream",
+      "expected": {
+        "span_index": 4,
+        "mode": "A"
+      },
+      "cat_readback": {
+        "span_index": 4,
+        "mode": "A"
+      },
+      "frames": 23,
+      "chunks": 23,
+      "bytes": 94600,
+      "seconds": 2.078,
+      "decoded": {
+        "frames": 23,
+        "span_unavailable_frames": 0,
+        "resyncs": 0,
+        "vfo_hz": 7074000,
+        "span_hz": 20000,
+        "mode_name": "Fixed (Normal)",
+        "mode_family": "fixed",
+        "mode_code": "A",
+        "first_vfo_hz": 7074000
+      }
+    },
+    {
+      "name": "tx-dummy-load",
+      "skipped": true,
+      "reason": "operator-only"
+    },
+    {
+      "name": "power-on-startup",
+      "skipped": true,
+      "reason": "operator-only"
+    },
+    {
+      "name": "usb-replug",
+      "skipped": true,
+      "reason": "operator-only"
+    }
+  ],
+  "original_scope": {
+    "span_index": 3,
+    "mode": "4"
+  },
+  "vfo_a_hz": 7074000
+}

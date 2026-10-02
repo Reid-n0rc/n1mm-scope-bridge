@@ -6,7 +6,7 @@ import pytest
 from frames import bcd, make_ft4222_frame
 
 from n1mm_scope_bridge.radios import yaesu_scope as ys
-from n1mm_scope_bridge.radios.base import FrameError
+from n1mm_scope_bridge.radios.base import FrameDecoder, FrameError, SpanUnavailable
 from n1mm_scope_bridge.radios.ft710 import FT710
 
 
@@ -153,3 +153,50 @@ def test_invalid_vfo_bcd_raises_frame_error() -> None:
 def test_low_edge_exactly_zero_is_allowed() -> None:
     parsed = ys.parse_frame(make_ft4222_frame(vfo_a_hz=500, span_index=0), FT710)
     assert parsed.spectrum.low_hz == 0
+
+
+# --- verified on a real FT-710 (#111) ------------------------------------------------
+
+
+def _with(frame: bytes, offset: int, value: bytes) -> bytes:
+    buf = bytearray(frame)
+    buf[ys.DATA + offset : ys.DATA + offset + len(value)] = value
+    return bytes(buf)
+
+
+@pytest.mark.parametrize(("byte32", "mode"), [(0x44, 0x07), (0x84, 0x0A), (0x04, 0x04)])
+def test_span_index_is_low_nibble_in_every_mode(byte32: int, mode: int) -> None:
+    raw = _with(make_ft4222_frame(scope_mode=mode), ys.STATUS_SPAN, bytes([byte32]))
+    assert FT710.parse(raw).status.span_hz == 20_000
+
+
+def test_fixed_mode_edges_use_reported_start_frequency() -> None:
+    raw = make_ft4222_frame(vfo_a_hz=7_074_000, scope_mode=0x0A)
+    raw = _with(raw, ys.STATUS_SPAN, bytes([0x84]))
+    raw = _with(raw, ys.STATUS_SCOPE_START, (7_000_000).to_bytes(4, "big"))
+    spec = FT710.parse(raw).spectrum
+    assert (spec.low_hz, spec.high_hz) == (7_000_000, 7_020_000)
+
+
+def test_cursor_mode_edges_stay_vfo_centred() -> None:
+    raw = _with(make_ft4222_frame(vfo_a_hz=7_074_000, scope_mode=0x07), ys.STATUS_SPAN, b"\x44")
+    spec = FT710.parse(raw).spectrum
+    assert (spec.low_hz, spec.high_hz) == (7_064_000, 7_084_000)
+
+
+def test_out_of_range_span_outside_center_needs_a_fallback() -> None:
+    raw = _with(make_ft4222_frame(scope_mode=0x07), ys.STATUS_SPAN, b"\x4c")
+    with pytest.raises(SpanUnavailable, match="Center mode"):
+        FT710.parse(raw)
+    parsed = ys.parse_frame(raw, FT710, span_fallback_hz=50_000)
+    assert parsed.status.span_hz == 50_000
+
+
+def test_frame_decoder_remembers_last_center_span() -> None:
+    decoder = FrameDecoder(FT710)
+    with pytest.raises(SpanUnavailable):
+        decoder(_with(make_ft4222_frame(scope_mode=0x07), ys.STATUS_SPAN, b"\x4c"))
+    assert decoder(make_ft4222_frame(span_index=5)).status.span_hz == 50_000
+    assert decoder.last_span_hz == 50_000
+    cursor = _with(make_ft4222_frame(scope_mode=0x07), ys.STATUS_SPAN, b"\x4c")
+    assert decoder(cursor).status.span_hz == 50_000

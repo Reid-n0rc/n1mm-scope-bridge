@@ -47,6 +47,7 @@ from dev_cat import CatError, DevCat, EmulatorCatPort, ScopeRestorer, connect
 
 from n1mm_scope_bridge.cli.common import EMULATOR_FPS
 from n1mm_scope_bridge.emulator import Ft710Emulator, RadioState
+from n1mm_scope_bridge.radios.base import FrameDecoder, SpanUnavailable
 from n1mm_scope_bridge.radios.ft710 import FT710
 from n1mm_scope_bridge.radios.yaesu_scope import FRAME_SIZE
 from n1mm_scope_bridge.transport.ft4222 import Ft4222Api, Ft4222Error, Ft4222Reader, load_api
@@ -174,19 +175,25 @@ def decode(path: Path) -> dict[str, Any]:
     """What the bridge decodes from a raw capture (first and last whole frame)."""
     _, _, chunks = read_raw_stream(path)
     reader = Ft4222Reader(RawStreamApi(chunks))
+    decoder = FrameDecoder(FT710)
     parsed = []
+    unavailable = 0  # frames whose mode doesn't report the span (no Center frame before them)
     resyncs = 0  # resyncs needed before the last whole frame (not the end-of-file attempts)
     try:
         for raw in reader:
-            parsed.append(FT710.parse(raw))
+            try:
+                parsed.append(decoder(raw))
+            except SpanUnavailable:
+                unavailable += 1
             resyncs = reader.resyncs
     except Ft4222Error:
         pass  # the capture ends mid-stream; whole frames so far are what matters
     if not parsed:
-        return {"frames": 0}
+        return {"frames": 0, "span_unavailable_frames": unavailable}
     first, last = parsed[0].status, parsed[-1].status
     return {
         "frames": len(parsed),
+        "span_unavailable_frames": unavailable,
         "resyncs": resyncs,
         "vfo_hz": last.vfo_hz,
         "span_hz": last.span_hz,
