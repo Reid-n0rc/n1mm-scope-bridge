@@ -52,7 +52,7 @@ from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
 from n1mm_scope_bridge.settings import Settings
-from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader
+from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader, normalize_dir
 
 APP_TITLE = "N1MM Scope Bridge"
 SETUP_GUIDE_URL = "https://reid-n0rc.github.io/n1mm-scope-bridge/n1mm.html"
@@ -466,7 +466,7 @@ class MainWindow(QMainWindow):
         return self._settings.replace(
             radio=self.radio.currentData(),
             emulator=self.emulator.isChecked(),
-            ftdi_lib_dir=self.ftdi_dir.text().strip(),
+            ftdi_lib_dir=normalize_dir(self.ftdi_dir.text()),
             source_name=self.source_name.text(),
             n1mm_host=self.host.text().strip(),
             n1mm_port=self.port.value(),
@@ -578,7 +578,7 @@ class MainWindow(QMainWindow):
     def _browse_ftdi(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "FTDI library folder", self.ftdi_dir.text())
         if folder:
-            self.ftdi_dir.setText(folder)
+            self.ftdi_dir.setText(normalize_dir(folder))
 
     # -- streaming ----------------------------------------------------------------
 
