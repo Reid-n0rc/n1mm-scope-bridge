@@ -30,6 +30,7 @@
 #define GuiExe "N1MM Scope Bridge.exe"
 #define CliExe "n1mm-scope-bridge.exe"
 #define FtdiUrl "https://ftdichip.com/products/ft4222h/"
+#define PrivacyUrl "https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html"
 #ifndef FtdiWheelUrl
   #error FTDI pin defines missing; build with scripts/build_installer.py
 #endif
@@ -69,9 +70,8 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "ftdidownload"; Description: "&Download FTDI's LibFT4222 library (needed for the Yaesu FT-710 scope)"; GroupDescription: "FTDI library:"
+Name: "ftdidownload"; Description: "&Download FTDI's LibFT4222 library from PyPI (needed for the Yaesu FT-710 scope)"; GroupDescription: "FTDI library:"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "autostart"; Description: "Start {#AppName} when I sign in to &Windows"; GroupDescription: "Startup:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -86,7 +86,9 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#GuiExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#GuiExe}"""; Flags: uninsdeletevalue; Tasks: autostart
+; The program never starts with Windows (#136). Remove the Run value an earlier
+; release candidate could create, on upgrade and on uninstall.
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "{#AppName}"; Flags: deletevalue uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#GuiExe}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent
@@ -155,8 +157,11 @@ begin
   if (CurPageID = wpSelectTasks) and WizardIsTaskSelected('ftdidownload') and not WizardSilent() then
   begin
     Result := MsgBox('Setup will download FTDI''s LibFT4222 and D2XX libraries from ' +
-      'PyPI (the ft4222 package, which redistributes FTDI''s unmodified, signed DLLs), ' +
-      'check them, and put them in the program folder.' + #13#10#13#10 +
+      'the Python Package Index (PyPI, run by the Python Software Foundation): the ' +
+      'ft4222 package, which redistributes FTDI''s unmodified, signed DLLs. Setup checks ' +
+      'them and puts them in the program folder.' + #13#10#13#10 +
+      'Privacy: like any download, this request shows PyPI your IP address. Nothing else ' +
+      'is sent. See the privacy notice: {#PrivacyUrl}' + #13#10#13#10 +
       'FTDI licence terms (summary): FTDI drivers may be used only in conjunction with ' +
       'products based on FTDI parts (the FT-710 uses FTDI''s FT4222H). The software is ' +
       'provided "as is" without warranty. Full terms: {#FtdiLicenceUrl}' + #13#10#13#10 +
