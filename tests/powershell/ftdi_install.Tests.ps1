@@ -40,16 +40,18 @@ Describe 'ftdi_install.ps1' {
         $script:ModulePath = $env:PSModulePath
         $script:Dest = Join-Path $TestDrive ("app-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:Dest | Out-Null
-        $script:Status = @{}
-        $script:Signers = $script:Subjects.Clone()
+        # Mock bodies run inside the helper script, where $script: is the helper's scope.
+        $global:FtdiInstallFake = @{ Status = @{}; Signers = $script:Subjects.Clone() }
         Mock Import-Module {} -ParameterFilter { "$Name" -like '*Microsoft.PowerShell.Security*' }
         Mock Get-AuthenticodeSignature {
             $leaf = Split-Path $LiteralPath -Leaf
-            $status = if ($script:Status.ContainsKey($leaf)) { $script:Status[$leaf] } else { 'Valid' }
-            [pscustomobject]@{ Status = $status; SignerCertificate = [pscustomobject]@{ Subject = $script:Signers[$leaf] } }
+            $fake = $global:FtdiInstallFake
+            $status = if ($fake.Status.ContainsKey($leaf)) { $fake.Status[$leaf] } else { 'Valid' }
+            [pscustomobject]@{ Status = $status; SignerCertificate = [pscustomobject]@{ Subject = $fake.Signers[$leaf] } }
         }
     }
     AfterEach { $env:PSModulePath = $script:ModulePath }
+    AfterAll { Remove-Variable -Name FtdiInstallFake -Scope Global -ErrorAction SilentlyContinue }
 
     It 'installs both signed DLLs for the 64-bit app' {
         $r = Invoke-Helper (New-Wheel 'ft4222/libs/LibFT4222-64.dll', 'ft4222/libs/ftd2xx.dll', 'ft4222/__init__.py')
@@ -85,7 +87,7 @@ Describe 'ftdi_install.ps1' {
     }
 
     It 'rejects a DLL whose signature is not valid' {
-        $script:Status['ftd2xx.dll'] = 'HashMismatch'
+        $global:FtdiInstallFake.Status['ftd2xx.dll'] = 'HashMismatch'
         $r = Invoke-Helper (New-Wheel 'libs/LibFT4222-64.dll', 'libs/ftd2xx.dll')
         $r.Text | Should -BeExactly 'ERROR: ftd2xx.dll signature is not valid (HashMismatch)'
         $r.Code | Should -Be 1
@@ -94,7 +96,7 @@ Describe 'ftdi_install.ps1' {
     }
 
     It 'rejects a valid signature from the wrong signer' {
-        $script:Signers['LibFT4222-64.dll'] = 'CN=Someone Else'
+        $global:FtdiInstallFake.Signers['LibFT4222-64.dll'] = 'CN=Someone Else'
         $r = Invoke-Helper (New-Wheel 'libs/LibFT4222-64.dll', 'libs/ftd2xx.dll')
         $r.Text | Should -BeExactly "ERROR: LibFT4222-64.dll is signed by 'CN=Someone Else', expected 'Future Technology Devices International'"
         $r.Code | Should -Be 1
