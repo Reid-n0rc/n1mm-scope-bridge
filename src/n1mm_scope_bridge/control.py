@@ -166,7 +166,8 @@ class ControlServer:
     def _serve(self) -> None:
         while not self._stop.is_set():
             try:
-                data, peer = self._sock.recvfrom(MAX_REQUEST + 1)
+                # Read the whole datagram: Windows raises WSAEMSGSIZE instead of truncating.
+                data, peer = self._sock.recvfrom(65535)
             except OSError:  # timeout, or closed during shutdown
                 continue
             if peer[0] not in self._allowed:
