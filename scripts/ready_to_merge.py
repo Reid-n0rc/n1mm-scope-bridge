@@ -42,6 +42,9 @@ from check_issue_policy import (
 
 OK_CONCLUSIONS = {"success", "skipped", "neutral"}
 DEPENDENCY_REVIEW = "Dependency review"
+# Reduce secret-scanning alerts to their numbers inside gh, so the leaked value
+# never enters this process (and can never be logged).
+LEAK_ALERT_JQ = "[.[].number]"
 
 Gh = Callable[[Sequence[str]], Any]
 
@@ -102,12 +105,13 @@ def code_scanning_problems(alerts: Sequence[Mapping[str, Any]]) -> list[str]:
     return out
 
 
-def secret_scanning_problems(alerts: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Check (c)."""
+def leak_alert_problems(alert_numbers: Sequence[int]) -> list[str]:
+    """Check (c). Only alert numbers reach this script (see ``LEAK_ALERT_JQ``), never
+    the leaked value itself, so nothing sensitive can be printed."""
     return [
-        f"open secret-scanning alert #{a.get('number')} ({a.get('secret_type_display_name')}): "
-        "revoke the secret and resolve the alert"
-        for a in alerts
+        f"open secret-scanning alert #{int(n)}: revoke the leaked credential and close "
+        "the alert (repository Security tab)"
+        for n in alert_numbers
     ]
 
 
@@ -146,7 +150,14 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json) -> list[str]:
             f"repos/{repo}/code-scanning/alerts?ref=refs/pull/{number}/merge&state=open&per_page=100",
         ]
     )
-    secret_alerts = gh(["api", f"repos/{repo}/secret-scanning/alerts?state=open&per_page=100"])
+    leak_numbers = gh(
+        [
+            "api",
+            f"repos/{repo}/secret-scanning/alerts?state=open&per_page=100",
+            "--jq",
+            LEAK_ALERT_JQ,
+        ]
+    )
     issues: dict[int, IssueInfo | None] = {}
     for n in linked_issues(pr.get("body")):
         try:
@@ -156,7 +167,7 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json) -> list[str]:
     return (
         check_problems(runs, statuses)
         + code_scanning_problems(code_alerts or [])
-        + secret_scanning_problems(secret_alerts or [])
+        + leak_alert_problems(leak_numbers or [])
         + pr_problems(pr, issues)
     )
 

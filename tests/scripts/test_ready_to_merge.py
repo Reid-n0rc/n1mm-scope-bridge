@@ -39,7 +39,7 @@ def fake_gh(
     runs: list[dict[str, Any]] | None = None,
     statuses: list[dict[str, Any]] | None = None,
     code: list[dict[str, Any]] | None = None,
-    secrets: list[dict[str, Any]] | None = None,
+    leaks: list[int] | None = None,
     issue: dict[str, Any] | None = None,
     missing_issue: bool = False,
 ) -> rtm.Gh:
@@ -54,7 +54,8 @@ def fake_gh(
         if "code-scanning" in path:
             return code or []
         if "secret-scanning" in path:
-            return secrets or []
+            assert args[-2:] == ["--jq", rtm.LEAK_ALERT_JQ]  # only numbers reach the script
+            return leaks or []
         if "/issues/" in path:
             if missing_issue:
                 raise RuntimeError("HTTP 404")
@@ -128,12 +129,11 @@ def test_security_severity_preferred() -> None:
     assert "(high)" in rtm.code_scanning_problems([alert])[0]
 
 
-def test_open_secret_alert_blocks() -> None:
-    problems = rtm.evaluate(
-        5, "o/r", fake_gh(secrets=[{"number": 2, "secret_type_display_name": "GitHub token"}])
-    )
+def test_open_leak_alert_blocks() -> None:
+    problems = rtm.evaluate(5, "o/r", fake_gh(leaks=[2]))
     assert problems == [
-        "open secret-scanning alert #2 (GitHub token): revoke the secret and resolve the alert"
+        "open secret-scanning alert #2: revoke the leaked credential and close the alert "
+        "(repository Security tab)"
     ]
 
 
@@ -185,5 +185,5 @@ def test_main_reports_gh_errors(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_parse_helpers_directly() -> None:
     assert rtm.latest_check_runs([]) == {}
-    assert rtm.secret_scanning_problems([]) == []
+    assert rtm.leak_alert_problems([]) == []
     assert rtm.pr_problems(pr(), {9: APPROVED}) == []
