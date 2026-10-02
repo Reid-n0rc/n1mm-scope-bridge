@@ -161,6 +161,11 @@ Building the Windows app: [docs/building-windows.md](docs/building-windows.md).
 Read [AGENTS.md](AGENTS.md) before contributing. Humans and AI agents follow
 the same rules. See also [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Code signing and privacy
+
+- [Code signing policy](docs/code-signing-policy.md): team roles, what is signed, and how to verify a release.
+- [Privacy statement](docs/privacy.md): the program collects no personal data.
+
 ## Credits and license
 
 The Yaesu FT4222 scope protocol knowledge, and the code ported from it, come from
