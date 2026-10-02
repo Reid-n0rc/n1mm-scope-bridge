@@ -10,6 +10,9 @@
 <main id="main" class="wrap">
   <h1>Frequently asked questions</h1>
 
+  <h2 id="no-scope">The bridge says it can't find the radio's scope (<code>Could not open 'FT4222 A'</code>)</h2>
+  <p>On the FT-710, open the menu <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> and set it to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. After changing it, turn the radio off and on <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), then press <strong>Start</strong> again. Also check that the radio is on, the USB cable is connected, FTDI's LibFT4222 is installed, and no other program (such as wfview) is using the scope.</p>
+
   <h2 id="cat">Does the bridge conflict with N1MM+'s CAT connection?</h2>
   <p>No. The bridge never opens the radio's COM ports, so N1MM+ keeps full control of the radio for CAT and keying.</p>
 
