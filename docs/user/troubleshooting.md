@@ -32,6 +32,15 @@ connection in one step. Every error the program can show is listed below.
 | `--name must not be empty` | `--name ""` | Give a name, or leave `--name` out to use the radio model |
 | `n1mm_port: port must be 1-65535` (and other `setting: problem` messages) | An invalid setting or option | Correct the named setting; see [settings](settings.md) |
 
+## Center scope mode
+
+`Set the FT-710's scope to Center mode` means the scope is in Cursor or Fixed
+mode, so N1MM+'s frequency scale is approximate. Switch the radio's scope to
+**Center** on the front panel (or with your own N1MM+ macro, for example
+`{CAT1ASC SS0640000;}`, which N1MM+ sends over its CAT port). The bridge
+confirms when it sees Center. It never changes the mode itself and never
+opens the radio's COM ports.
+
 ## N1MM+ shows no spectrum
 
 1. In N1MM+, open **Window → Spectrum Display**, click the gear, choose

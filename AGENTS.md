@@ -81,9 +81,11 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
 7. **Never commit or bundle FTDI libraries** (LibFT4222, ftd2xx), not even in
    release builds. They are proprietary and not GPL-compatible. Users install
    them from FTDI. The `pre-commit` hook blocks them.
-8. **Never transmit, and never key the radio.** This project only reads scope
-   data. Do not add code that sends CAT commands that change radio state
-   unless an approved issue says so explicitly.
+8. **Never transmit, never key the radio, and never open a COM port.** This
+   project only reads scope data through the FT4222 device. N1MM+ needs both
+   FT-710 COM ports (Enhanced for CAT, Standard for PTT/keying), so the bridge
+   never opens either, not even briefly (maintainer decision on #62; enforced by
+   `tests/test_no_com_ports.py`). It sends no CAT commands.
 9. **Test everything, and regress before merging.** See the Testing policy.
 10. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
