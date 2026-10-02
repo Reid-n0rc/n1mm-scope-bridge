@@ -15,8 +15,9 @@ They are taken automatically from the program itself
 match the version they describe. Every streaming screenshot states where its
 data came from: the main streaming window is a **real Yaesu FT-710** capture
 (`--source radio`), labelled "Real radio" with the band, frequency, and date.
-The home page shows a **live recording** of the window streaming real FT-710
-data (`gui --record`, played back from a capture of the radio); visitors who
+The home page shows a **live recording** (a short looping video, with a GIF
+fallback) of the window streaming real FT-710 data at the radio's own frame
+rate (`gui --record`, played back from a capture of the radio); visitors who
 prefer reduced motion see a still image instead. Any screenshot generated from the built-in FT-710 emulator is labelled as
 **simulated signals, not a real radio**.
 
@@ -33,8 +34,10 @@ bottom:
    - the **gear**, which opens [Settings](#settings);
    - the **⋯** menu: **Settings…**, **Copy diagnostics**, **N1MM+ setup
      guide**, and **About and license**.
-2. **Preview.** A live spectrum line over a waterfall, showing exactly what
-   N1MM+ receives. The bottom axis gives the low, centre, and high
+2. **Preview.** A live spectrum line over a waterfall of the radio's scope,
+   updated with every frame the radio sends (about 11 per second on an
+   FT-710, so it scrolls smoothly) while N1MM+ gets its own steadier rate
+   (**Updates per second** in Settings). The bottom axis gives the low, centre, and high
    frequencies, and the left axis the level in dB. The level scale adapts to
    the strongest recent signal. Before you press Start it says *Press Start to
    stream your Yaesu scope to N1MM+* and points to the emulator.

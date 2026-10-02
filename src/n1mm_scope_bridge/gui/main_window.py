@@ -134,7 +134,7 @@ class MainWindow(QMainWindow):
         self.controller.stopped.connect(self._on_stopped)
         self.controller.status.connect(self._on_status)
         self.controller.stats.connect(self._on_stats)
-        self.controller.frame.connect(self._on_frame)
+        self.controller.preview.connect(self._on_frame)
         self.controller.warning.connect(lambda message: self._log("warning", message))
         self.tray: TrayController | None = None
         if tray_available():

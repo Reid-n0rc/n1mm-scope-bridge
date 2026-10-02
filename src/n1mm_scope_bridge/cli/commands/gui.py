@@ -38,10 +38,20 @@ def register(sub: Any) -> argparse.ArgumentParser:
         "--record",
         type=Path,
         metavar="DIR",
-        help="record an animated GIF/WebP of the streaming window into DIR, then exit",
+        help="record a video (MP4/WebM) and GIF of the streaming window into DIR, then exit",
     )
-    p.add_argument("--seconds", type=float, help="with --record: length in seconds (default 6)")
-    p.add_argument("--fps", type=float, help="with --record: frames per second (default 4)")
+    p.add_argument("--seconds", type=float, help="with --record: length in seconds (default 15)")
+    p.add_argument(
+        "--fps",
+        type=float,
+        help="with --record: frames per second (default: the source's own rate, about 11)",
+    )
+    p.add_argument(
+        "--format",
+        action="append",
+        choices=("mp4", "webm", "gif"),
+        help="with --record: output format; repeat for several (default: mp4, webm and gif)",
+    )
     p.add_argument(
         "--source",
         choices=("emulator", "radio", "replay"),
@@ -77,6 +87,8 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
         argv += ["--seconds", str(args.seconds)]
     if args.fps is not None:
         argv += ["--fps", str(args.fps)]
+    for fmt in args.format or ():
+        argv += ["--format", fmt]
     if args.source is not None:
         argv += ["--source", args.source]
     if args.replay is not None:

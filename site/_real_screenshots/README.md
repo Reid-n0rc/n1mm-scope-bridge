@@ -15,7 +15,8 @@ n1mm-scope-bridge record --frames 700 ft710-live.cap      # at the radio (receiv
 n1mm-scope-bridge gui --record site/_real_screenshots --source replay --replay ft710-live.cap
 ```
 
-The capture itself is not committed (2.9 MB, over the 1 MiB file limit).
+It records every radio frame (about 11 per second) as MP4 and WebM video (needs
+ffmpeg), with a smaller GIF fallback. The capture itself is not committed (2.9 MB, over the 1 MiB file limit).
 
 `scripts/build_site.py` uses any scene listed in this folder's `manifest.json`
 instead of the generated (emulator) one, and badges it "Real radio". Every

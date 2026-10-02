@@ -131,6 +131,13 @@ comment, the issue, or the doc instead.
 
 - Source: <https://pypi.org/project/pytest-qt/>; license: MIT.
 
+### FFmpeg (development tool, invoked, not distributed)
+
+- Source: <https://ffmpeg.org/>; LGPL-2.1+/GPL-2.0+ depending on build.
+- Use: `gui --record` runs the `ffmpeg` program (or the binary from the
+  optional `imageio-ffmpeg` package) to encode the website's recording. It is
+  never imported, linked, or bundled; the encoded videos contain no FFmpeg code.
+
 ### N1MM Logger+ external spectrum interface (facts only)
 
 - Source: <https://n1mmwp.hamdocs.com/appendices/external-udp-broadcasts/>

@@ -143,3 +143,18 @@ def test_idle_poll_and_finish_are_noops(qtbot: QtBot) -> None:
     with qtbot.assertNotEmitted(ctl.stats), qtbot.assertNotEmitted(ctl.stopped):
         ctl._poll()
     assert ctl._finish() == ""
+
+
+def test_preview_signal_runs_faster_than_n1mm_updates(
+    qtbot: QtBot, listener: socket.socket
+) -> None:
+    """#126: the live display follows the radio's frame rate, not the N1MM+ send rate."""
+    ctl = StreamController(source_factory=demo_factory)
+    previews: list[object] = []
+    sent: list[object] = []
+    ctl.preview.connect(previews.append)
+    ctl.frame.connect(sent.append)
+    assert ctl.start(Settings(n1mm_port=listener.getsockname()[1], rate_hz=2.0))
+    qtbot.waitUntil(lambda: len(previews) >= 20, timeout=5000)
+    ctl.stop()
+    assert len(previews) > 3 * max(1, len(sent))
