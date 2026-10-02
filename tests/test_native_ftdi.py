@@ -44,8 +44,9 @@ def test_real_libraries_load_and_bind() -> None:
         assert fn.restype is ctypes.c_uint32, attr
         assert fn.argtypes, attr
     if sys.platform == "win32":
-        # The exports really are the stdcall (WinDLL) flavour wfview calls.
-        assert isinstance(api._open, ctypes.WinDLL._FuncPtr)  # type: ignore[attr-defined]
+        # Bound with the stdcall convention (WinDLL), as FTDI's FTAPI exports require.
+        stdcall = getattr(ctypes, "_FUNCFLAG_STDCALL", 0)
+        assert api._open._flags_ & stdcall == stdcall
 
 
 def test_no_device_is_reported_as_not_found() -> None:
