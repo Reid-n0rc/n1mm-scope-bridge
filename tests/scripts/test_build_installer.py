@@ -129,6 +129,7 @@ def test_installer_script_never_bundles_ftdi() -> None:
     assert sources[0].startswith('Source: "{#SourceDir}\\*"; DestDir: "{app}"')
     assert sources[1] == 'Source: "ftdi_install.ps1"; Flags: dontcopy'
     assert ".dll" not in "".join(sources).lower()
-    assert "DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}'" in iss
+    download = "DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}'"
+    assert download in iss
     assert "LicenseFile=..\\..\\LICENSE" in iss
     assert "PrivilegesRequired=lowest" in iss

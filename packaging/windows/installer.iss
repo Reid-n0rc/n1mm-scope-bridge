@@ -197,12 +197,14 @@ var
   Code: Integer;
   Message: AnsiString;
 begin
+  Log('FTDI download: fetching {#FtdiWheelUrl}');
   try
     DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}', nil);
   except
     FtdiDownloadFailed('download failed: ' + GetExceptionMessage());
     exit;
   end;
+  Log('FTDI download: SHA-256 verified; extracting and checking signatures');
   ExtractTemporaryFile('ftdi_install.ps1');
   Wheel := ExpandConstant('{tmp}\{#FtdiWheelFile}');
   Helper := ExpandConstant('{tmp}\ftdi_install.ps1');
@@ -216,6 +218,7 @@ begin
     FtdiDownloadFailed('could not run PowerShell: ' + SysErrorMessage(Code));
     exit;
   end;
+  Log('FTDI download: helper exited with code ' + IntToStr(Code));
   if not LoadStringFromFile(ResultFile, Message) then
     Message := 'ERROR: no result from the FTDI helper';
   if (Code <> 0) or (Trim(String(Message)) <> 'OK') then

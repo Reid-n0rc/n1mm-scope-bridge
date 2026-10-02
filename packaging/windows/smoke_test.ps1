@@ -30,16 +30,22 @@ function Check([bool]$ok, [string]$what) {
     if ($ok) { Write-Host "ok   - $what" } else { Write-Host "FAIL - $what"; $failures.Add($what) }
 }
 
-function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120) {
+function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120, [string]$logFile = '') {
     $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
-    if (-not $p.WaitForExit($timeoutSec * 1000)) { $p.Kill(); throw "$file timed out" }
+    if (-not $p.WaitForExit($timeoutSec * 1000)) {
+        $p.Kill()
+        if ($logFile -and (Test-Path $logFile)) { Write-Host '--- log (tail) ---'; Get-Content $logFile -Tail 80 }
+        Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'powershell|setup|n1mm' } |
+            ForEach-Object { Write-Host "still running: $($_.ProcessName) $($_.Id)" }
+        throw "$file timed out"
+    }
     return $p.ExitCode
 }
 
 # --- install ------------------------------------------------------------------------
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
 $code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
-    "/DIR=`"$Dir`"", '/TASKS=desktopicon,ftdidownload', "/LOG=`"$log`"")
+    "/DIR=`"$Dir`"", '/TASKS=desktopicon,ftdidownload', "/LOG=`"$log`"") -timeoutSec 300 -logFile $log
 Check ($code -eq 0) "silent install exits 0 (got $code)"
 if ($code -ne 0) {
     Write-Host '--- install log ---'
