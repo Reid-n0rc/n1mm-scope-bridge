@@ -19,6 +19,7 @@ from n1mm_scope_bridge.gui import app as gui_app
 from n1mm_scope_bridge.gui import main_window as mw
 from n1mm_scope_bridge.gui.controller import StreamController
 from n1mm_scope_bridge.gui.main_window import MainWindow
+from n1mm_scope_bridge.gui.screenshot import demo_frames
 from n1mm_scope_bridge.gui.style import (
     Theme,
     apply_style,
@@ -146,6 +147,7 @@ def test_menu_actions(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     texts = [a.text() for a in window.menu.actions()]
     assert texts == [
         "Settings…",
+        "Show preview",
         "Copy diagnostics",
         "Copy diagnostics including source name",
         "N1MM+ setup guide",
@@ -189,8 +191,10 @@ def test_start_stop_with_emulator(qtbot: QtBot, listener: socket.socket) -> None
     qtbot.waitUntil(
         lambda: window.cards["frequency"].value.text() == "14.074 000 MHz", timeout=3000
     )
-    qtbot.waitUntil(lambda: window.spectrum.frame is not None, timeout=3000)
     qtbot.waitUntil(lambda: "total" in window.status_rows["Sent to N1MM+"], timeout=3000)
+    assert window.spectrum.frame is None  # preview is off by default: nothing drawn
+    window.preview_toggle.click()
+    qtbot.waitUntil(lambda: window.spectrum.frame is not None, timeout=3000)
     assert window.status.text().startswith("Streaming to N1MM+ at 127.0.0.1:")
     assert rec.saved  # settings saved on Start
     with qtbot.waitSignal(window.controller.stopped, timeout=6000):
@@ -420,3 +424,51 @@ def test_about_dialog_shows_non_affiliation_disclaimer(
     assert len(shown) == 1
     assert DISCLAIMER in shown[0]
     assert "ABSOLUTELY NO WARRANTY" in shown[0]
+
+
+# --- preview toggle (off by default to save CPU) -------------------------------------------
+
+
+def test_preview_is_off_by_default(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    assert window.preview_visible is False
+    assert window.preview_stack.currentWidget() is window.preview_placeholder
+    assert window.controller.preview_enabled is False
+    assert window.preview_toggle.text() == "Show preview"
+    assert not window.action_preview.isChecked()
+    assert window.preview_toggle.toolTip() == mw.PREVIEW_TOOLTIP
+
+
+def test_hidden_preview_ignores_frames(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    frame = _demo_parsed_frame()
+    window._on_frame(frame)  # e.g. queued just before the preview was hidden
+    assert window.spectrum.frame is None
+
+
+def test_toggle_shows_and_hides_and_persists(qtbot: QtBot) -> None:
+    window, rec = make_window(qtbot)
+    window.preview_toggle.click()
+    assert window.preview_visible is True
+    assert window.preview_stack.currentWidget() is window.spectrum
+    assert window.controller.preview_enabled is True
+    assert window.action_preview.isChecked()
+    assert window.preview_toggle.text() == "Hide preview"
+    window._on_frame(_demo_parsed_frame())
+    assert window.spectrum.frame is not None
+    qtbot.waitUntil(lambda: bool(rec.saved), timeout=3000)
+    assert rec.saved[-1].show_preview is True
+    window.action_preview.trigger()  # the ⋯ menu item does the same
+    assert window.preview_visible is False
+    assert window.spectrum.frame is None  # cleared when hidden
+    assert window.controller.preview_enabled is False
+
+
+def test_saved_preview_setting_is_restored(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot, Settings(show_preview=True))
+    assert window.preview_stack.currentWidget() is window.spectrum
+    assert window.controller.preview_enabled is True
+
+
+def _demo_parsed_frame() -> Any:
+    return demo_frames(1)[0]

@@ -59,6 +59,8 @@ class Settings:
     """Use the built-in FT-710 emulator instead of the radio (demo, N1MM+ setup)."""
     start_streaming_on_launch: bool = False
     start_minimized: bool = False
+    show_preview: bool = False
+    """Show the live spectrum/waterfall preview in the window (uses extra CPU)."""
     on_close: str = "ask"
     """What the window's Close button does: ask, tray (keep streaming), or exit."""
     control_enabled: bool = False

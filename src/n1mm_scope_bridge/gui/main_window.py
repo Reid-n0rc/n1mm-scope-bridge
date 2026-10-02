@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QStackedWidget,
     QSystemTrayIcon,
     QToolButton,
     QVBoxLayout,
@@ -104,6 +105,9 @@ def short_mode(name: str) -> str:
     return name.split(" (", maxsplit=1)[0]
 
 
+PREVIEW_TOOLTIP = "Preview uses extra CPU; streaming to N1MM+ is unaffected"
+
+
 class MainWindow(QMainWindow):
     def __init__(
         self,
@@ -147,6 +151,7 @@ class MainWindow(QMainWindow):
         self.controller.status.connect(self._on_status)
         self.controller.stats.connect(self._on_stats)
         self.controller.preview.connect(self._on_frame)
+        self.set_preview_visible(settings.show_preview, persist=False)
         self.controller.warning.connect(lambda message: self._log("warning", message))
         self.tray: TrayController | None = None
         if tray_available():
@@ -225,6 +230,11 @@ class MainWindow(QMainWindow):
         self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.menu = QMenu(self.menu_button)
         self.action_settings = self._action("Settings…", self.open_settings)
+        self.action_preview = QAction("Show preview", self)
+        self.action_preview.setCheckable(True)
+        self.action_preview.setToolTip(PREVIEW_TOOLTIP)
+        self.action_preview.toggled.connect(self.set_preview_visible)
+        self.menu.addAction(self.action_preview)
         self.action_diagnostics = self._action("Copy diagnostics", self.copy_diagnostics)
         self.action_diagnostics_named = self._action(
             "Copy diagnostics including source name", self.copy_diagnostics_with_name
@@ -254,9 +264,53 @@ class MainWindow(QMainWindow):
         hero.setObjectName("card")
         layout = QVBoxLayout(hero)
         layout.setContentsMargins(8, 8, 8, 8)
+        top = QHBoxLayout()
+        title = QLabel("Spectrum preview")
+        title.setObjectName("cardTitle")
+        self.preview_toggle = QToolButton()
+        self.preview_toggle.setObjectName("flat")
+        self.preview_toggle.setCheckable(True)
+        self.preview_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.preview_toggle.setToolTip(PREVIEW_TOOLTIP)
+        self.preview_toggle.toggled.connect(self.set_preview_visible)
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.preview_toggle)
+        layout.addLayout(top)
         self.spectrum = SpectrumView()
-        layout.addWidget(self.spectrum)
+        self.preview_placeholder = QLabel(
+            "Preview off. Streaming to N1MM+ is not affected.\n"
+            "Turn it on with Show preview (it uses extra CPU)."
+        )
+        self.preview_placeholder.setObjectName("message")
+        self.preview_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.addWidget(self.preview_placeholder)
+        self.preview_stack.addWidget(self.spectrum)
+        layout.addWidget(self.preview_stack, 1)
         return hero
+
+    @property
+    def preview_visible(self) -> bool:
+        return self._settings.show_preview
+
+    def set_preview_visible(self, on: bool, *, persist: bool = True) -> None:
+        """Show or hide the live preview; when hidden, no frames reach the window."""
+        self.controller.preview_enabled = on
+        if not on:
+            self.spectrum.clear()
+        self.preview_stack.setCurrentWidget(self.spectrum if on else self.preview_placeholder)
+        for widget in (self.preview_toggle, self.action_preview):
+            widget.blockSignals(True)
+            widget.setChecked(on)
+            widget.blockSignals(False)
+        self.preview_toggle.setText("Hide preview" if on else "Show preview")
+        self.preview_toggle.setAccessibleName("Hide preview" if on else "Show preview")
+        if on != self._settings.show_preview:
+            self._settings = self._settings.replace(show_preview=on)
+            if persist:
+                self._save_timer.start()
+        self._apply_icons()
 
     def _build_cards(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -321,6 +375,10 @@ class MainWindow(QMainWindow):
         )
         self.settings_button.setIcon(icons.icon("settings", theme.text))
         self.menu_button.setIcon(icons.icon("ellipsis", theme.text))
+        if hasattr(self, "preview_toggle"):
+            name = "eye-off" if self._settings.show_preview else "eye"
+            self.preview_toggle.setIcon(icons.icon(name, theme.text))
+            self.action_preview.setIcon(icons.icon("eye", theme.text))
         self.activity_toggle.setIcon(
             icons.icon("chevron-up" if self.log_view.isVisible() else "chevron-down", theme.text)
         )
@@ -663,6 +721,8 @@ class MainWindow(QMainWindow):
         self._refresh_status()
 
     def _on_frame(self, item: ParsedFrame) -> None:
+        if not self._settings.show_preview:  # a frame queued just before it was hidden
+            return
         self.spectrum.set_frame(item.spectrum, self._settings.scaling)
 
     def show_error(self, message: str) -> QMessageBox:
