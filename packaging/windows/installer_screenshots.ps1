@@ -100,18 +100,44 @@ function Get-Page($window) {
     return $null
 }
 
-function Find-Control($window, [System.Windows.Automation.ControlType]$type, [string]$pattern) {
-    $ctype = New-Object System.Windows.Automation.PropertyCondition($Prop::ControlTypeProperty, $type)
-    foreach ($el in $window.FindAll($Tree::Descendants, $ctype)) {
+function Find-Named($window, [string]$pattern) {
+    # Any control type: Inno Setup's custom controls don't always map to the
+    # UI Automation type you'd expect (for example its license radio buttons).
+    foreach ($el in $window.FindAll($Tree::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
         if ($el.Current.Name -match $pattern) { return $el }
     }
     return $null
 }
 
-function Invoke-Button($window, [string]$pattern) {
-    $button = Find-Control $window ([System.Windows.Automation.ControlType]::Button) $pattern
-    if (-not $button) { throw "No button matching '$pattern' on the wizard page" }
-    $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+function Use-Control($el) {
+    # Select, press, or tick a control, whichever pattern it supports.
+    foreach ($pat in [System.Windows.Automation.SelectionItemPattern]::Pattern,
+                     [System.Windows.Automation.InvokePattern]::Pattern,
+                     [System.Windows.Automation.TogglePattern]::Pattern) {
+        $obj = $null
+        if ($el.TryGetCurrentPattern($pat, [ref]$obj)) {
+            if ($pat -eq [System.Windows.Automation.SelectionItemPattern]::Pattern) { $obj.Select() }
+            elseif ($pat -eq [System.Windows.Automation.InvokePattern]::Pattern) { $obj.Invoke() }
+            else { $obj.Toggle() }
+            return $true
+        }
+    }
+    return $false
+}
+
+function Send-Accelerator($window, [string]$keys) {
+    # Wizard keyboard shortcuts (for example Alt+N for "&Next >").
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][WizardShot]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle)
+    Start-Sleep -Milliseconds 200
+    [System.Windows.Forms.SendKeys]::SendWait($keys)
+}
+
+function Activate($window, [string]$pattern, [string]$keys) {
+    $el = Find-Named $window $pattern
+    if ($el -and (Use-Control $el)) { return }
+    Write-Host "using keyboard $keys for '$pattern'"
+    Send-Accelerator $window $keys
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -151,25 +177,24 @@ try {
         Write-Host "captured $scene ($($size[0])x$($size[1]))"
         $last = $page
 
+        Write-Host ("page '$page' names: " + ((Get-Names $window | Select-Object -First 40) -join ' | '))
         switch ($page) {
             'License Agreement' {
-                $accept = Find-Control $window ([System.Windows.Automation.ControlType]::RadioButton) '^I accept'
-                if (-not $accept) { throw 'No "I accept" option on the license page' }
-                $accept.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-                Invoke-Button $window '^Next'
+                Activate $window '^I &?accept' '%a'
+                Start-Sleep -Milliseconds 300
+                Activate $window '^&?Next' '%n'
             }
-            'Ready to Install' { Invoke-Button $window '^Install' }
+            'Ready to Install' { Activate $window '^&?Install$' '%i' }
             'Completing the' {
                 # Don't launch the app from the finished page.
-                $launch = Find-Control $window ([System.Windows.Automation.ControlType]::CheckBox) '^Start '
+                $launch = Find-Named $window '^&?Start '
                 if ($launch) {
-                    $toggle = $launch.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
-                    if ($toggle.Current.ToggleState -eq 'On') { $toggle.Toggle() }
+                    $obj = $null
+                    if ($launch.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$obj) -and $obj.Current.ToggleState -eq 'On') { $obj.Toggle() }
                 }
-                Invoke-Button $window '^Finish'
-                break
+                Activate $window '^&?Finish' '%f'
             }
-            default { Invoke-Button $window '^Next' }
+            default { Activate $window '^&?Next' '%n' }
         }
         if ($page -eq 'Completing the') { break }
     }
