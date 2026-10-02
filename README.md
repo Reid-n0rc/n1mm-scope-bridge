@@ -10,12 +10,19 @@ spectrum scope built into Yaesu radios and shows it in **N1MM Logger+'s
 Spectrum Display window**. The **Yaesu FT-710** is the first supported model.
 Other Yaesu models are planned (see [Supported radios](#supported-radios)).
 
-> **Status: in development, not released yet.** The bridge, its command line,
-> the Windows GUI (with system tray), and a built-in FT-710 emulator are
-> working and tested in CI. Validation on a real radio is still pending (#5),
-> and there is no installer release yet. To follow along or try it from
-> source, see the **[website](https://reid-n0rc.github.io/n1mm-scope-bridge/)**
-> and the **[user guide](docs/user/README.md)**.
+> **Status: released ([latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)).**
+> Validated on a real Yaesu FT-710: live scope streaming, all spans, and
+> Center/Cursor/Fixed modes (the radio needs **SCU-LAN10 = ON**, then a power
+> cycle and a USB replug; see [radio setup](docs/user/radio-setup.md)). One
+> Windows installer covers x64, ARM64 and 32-bit PCs and handles FTDI's
+> library and, optionally, its USB driver. Still to do: an on-air check with
+> N1MM+ (#5), operator-only test captures (#36) and code signing (#130).
+> See the **[website](https://reid-n0rc.github.io/n1mm-scope-bridge/)** and
+> the **[user guide](docs/user/README.md)**.
+
+## Test coverage
+
+[![Codecov coverage tree graph](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/graphs/tree.svg?token=X0SYOVMX1M)](https://app.codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
 
 ## Disclaimer
 
@@ -81,7 +88,7 @@ More detail: [docs/architecture.md](docs/architecture.md).
 
 | Radio | Transport | Status |
 |-------|-----------|--------|
-| Yaesu FT-710 | USB, FT4222 SPI | In development (first supported model; hardware validation pending, #5) |
+| Yaesu FT-710 | USB, FT4222 SPI | Supported (validated on a real radio; N1MM+ on-air check pending, #5) |
 | Yaesu FTDX10 | USB, FT4222 SPI (believed same as FT-710) | Planned, needs an owner to verify (#7) |
 | Yaesu FTDX101D/MP | USB, FT4222 SPI (expected dual-receiver frames) | Planned, needs an owner to verify (#7) |
 | Yaesu radios on SCU-LAN10 | Network (wfview's Yaesu LAN protocol) | Planned (#7) |
@@ -99,8 +106,7 @@ N1MM Scope Bridge runs on **Windows 10/11**, next to N1MM Logger+.
 You don't need Python or a command prompt.
 
 1. Download `n1mm-scope-bridge-setup-<version>.exe` from
-   [Releases](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases). (No
-   release has been published yet; the installer is built and tested in CI.)
+   the [latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest).
    It is **one installer for all Windows PCs**: it picks the right version
    for your PC.
    - **64-bit Windows (Intel/AMD):** the full app.
@@ -123,7 +129,13 @@ You don't need Python or a command prompt.
    and signatures, and puts them in the program folder. (We can't ship FTDI's
    library inside our GPL installer, so your setup downloads it.) No internet
    during install? Untick it and download LibFT4222 from
-   [ftdichip.com](https://ftdichip.com/products/ft4222h/) instead.
+   [ftdichip.com](https://ftdichip.com/products/ft4222h/) instead. If
+   Windows has no FTDI USB driver yet, setup also offers an optional
+   **Install FTDI USB driver** step (needs administrator; otherwise Windows
+   Update installs it when you plug in the radio).
+
+   The installer isn't code-signed yet (#130), so Windows SmartScreen may
+   warn: choose **More info → Run anyway**.
 4. Start **N1MM Scope Bridge**, press **Start**, and pick its name in N1MM+'s
    Spectrum Display settings. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
 
@@ -136,19 +148,21 @@ see Development below and install with the `gui` extra.
 Work is tracked as GitHub issues, each small enough for one focused change
 (see [AGENTS.md](AGENTS.md), Task sizing).
 
-**Done:** N1MM `<Spectrum>` sender, FT-710 frame parser, LibFT4222 reader
-(tested against FTDI's real DLLs in Windows CI), multi-core pipeline, command
-line, settings, Windows GUI with system tray and live status, FT-710 emulator,
-release regression suite, Windows app build, user docs, and the website.
+**Done:** N1MM `<Spectrum>` sender, FT-710 frame parser and FT4222 reader
+(validated on a real FT-710 and tested against FTDI's real DLLs on x64, ARM64
+and x86 in CI), multi-core pipeline, command line, settings, Windows GUI
+(system tray, close prompt, live status, preview off by default,
+Center-mode helper, remote control), optional UDP remote control, FT-710
+emulator with golden captures from the real radio, one universal Windows
+installer with FTDI library download and optional driver install, release
+regression suite, user docs, and the website.
 
 **Next:**
 
-1. Windows installer (#20)
-2. Hardware validation and golden captures on a real FT-710 (#5, #36)
-3. Optional UDP remote control, off by default (#30)
-4. Optional "switch the scope to Center mode while streaming" (#62)
-5. Website screenshots and full install and usage guide (#22, #23)
-6. More Yaesu radios (#7)
+1. On-air check with N1MM+ (#5) and the operator-only test captures (#36)
+2. Code signing for the installer (#130)
+3. Verify Cursor-mode frequency edges (currently unverified)
+4. More Yaesu radios (#7)
 
 ## Command line (advanced)
 

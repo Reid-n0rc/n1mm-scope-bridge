@@ -16,7 +16,11 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   `socket`, `argparse`), and uv, pytest, ruff, and mypy (strict) for development
 - Commands:
   - `uv sync`: create `.venv` with the dev tools
-  - `uv run pytest --cov`: unit tests. Coverage must stay at 90% or higher.
+  - `uv run pytest --cov && uv run python scripts/coverage_gate.py`: unit tests,
+    then per-area coverage floors: the app package (`src/n1mm_scope_bridge`)
+    must stay at 90% or higher, and `scripts/` at or above its ratchet floor in
+    `scripts/coverage_gate.py` (raise it when coverage improves, never lower
+    it). Codecov shows them as the `app` and `scripts` components.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
   - `sh tests/hooks/run.sh`: git hook and agent hook tests
@@ -272,6 +276,13 @@ by a person or an agent, following the steps above.
    libraries, N1MM, or the network. Use synthetic frames built in the test,
    small binary fixtures under `tests/fixtures/`, a fake `ctypes` library
    object, and a fake or loopback socket.
+
+   **Coverage and test results go to Codecov.** CI runs pytest with
+   `--junitxml=junit.xml -o junit_family=legacy` and uploads both
+   `coverage.xml` and `junit.xml` (Test Analytics) with the `CODECOV_TOKEN`
+   secret. Uploads never fail CI, so a **"CODECOV_TOKEN is empty"** warning in
+   a run means the secret needs setting again, in a real terminal:
+   `gh secret set CODECOV_TOKEN -R Reid-n0rc/n1mm-scope-bridge`.
 2. **Hardware tests are opt-in.** Mark them `@pytest.mark.hardware`. They are
    skipped unless `N1MM_BRIDGE_HARDWARE=1` is set, and they never run in CI.
    Record their results in the issue or PR.
@@ -283,7 +294,8 @@ by a person or an agent, following the steps above.
    maintainer runs an on-air check with a real FT-710 and N1MM+:
    ```bash
    uv sync --locked && uv run ruff check . && uv run ruff format --check . \
-     && uv run mypy && uv run pytest --cov && sh tests/hooks/run.sh
+     && uv run mypy && uv run pytest --cov && uv run python scripts/coverage_gate.py \
+     && sh tests/hooks/run.sh
    ```
 
 ## Code conventions
@@ -390,7 +402,7 @@ has the `no-changelog` label.
    GitHub's Source code archives as the GPL source. If the release already
    exists (made in the web UI), it is filled in instead of failing: other
    files are removed, the maintainer's notes are kept, and only the highest
-   final version is marked Latest. A missing CHANGELOG section is noted in the
+   final version is marked Latest and rebuilds the website. A missing CHANGELOG section is noted in the
    release, not fatal. Rehearse first with a dry run (builds everything,
    publishes nothing): `gh workflow run release.yml --ref dev -f tag=vX.Y.Z-rc1`.
    To repair a release that has no installer:
@@ -400,5 +412,11 @@ has the `no-changelog` label.
    `dev` as usual, followed by another RC.
 4. **Release.** The maintainer tags `vX.Y.Z` on the same commit as the
    accepted RC. The regression runs on the tag, and the release and website
-   publish.
+   publish. The website's download button links straight to the release's
+   installer (`releases/download/<tag>/n1mm-scope-bridge-setup-<version>.exe`)
+   and shows its SHA-256; `scripts/build_site.py` fails if the release has no
+   such asset. `release.yml` rebuilds the site by dispatching `pages.yml` on
+   `master`, so the **`github-pages` environment's deployment branches must
+   allow `dev`, `master`, and `v*` tags** (Settings → Environments); a ref it
+   doesn't allow makes the Pages deploy fail.
 5. Agents never tag, release, or bump versions.

@@ -8,7 +8,21 @@ from pathlib import Path
 import build_site as bs
 import pytest
 
-RELEASE = bs.context("v1.2.3", "2026-11-01")
+SHA = "ab" * 32
+
+
+def assets(tag: str = "v1.2.3", **over: object) -> list[dict[str, object]]:
+    name = bs.installer_name(tag[1:])
+    asset: dict[str, object] = {
+        "name": name,
+        "state": "uploaded",
+        "digest": f"sha256:{SHA}",
+        "browser_download_url": f"{bs.REPO_URL}/releases/download/{tag}/{name}",
+    }
+    return [{"name": "other.txt"}, {**asset, **over}]
+
+
+RELEASE = bs.context("v1.2.3", "2026-11-01", assets())
 DEV = bs.context(None, None)
 
 
@@ -31,6 +45,42 @@ def test_release_context() -> None:
     assert RELEASE["release_url"].endswith("/releases/tag/v1.2.3")
     assert RELEASE["docs_url"].endswith("/tree/v1.2.3/docs/user")
     assert RELEASE["ref"] == "v1.2.3"
+    assert RELEASE["download_url"] == (
+        f"{bs.REPO_URL}/releases/download/v1.2.3/n1mm-scope-bridge-setup-1.2.3.exe"
+    )
+    assert RELEASE["installer_checksum"] == SHA
+
+
+@pytest.mark.parametrize(
+    ("assets_", "message"),
+    [
+        ([], "has no n1mm-scope-bridge-setup-1.2.3.exe; the download link would not resolve"),
+        (assets("v1.2.2"), "has no n1mm-scope-bridge-setup-1.2.3.exe"),
+        (assets(state="starter"), "not fully uploaded"),
+        (assets(digest=None), "no SHA-256 digest"),
+        (assets(browser_download_url="https://x.invalid/a.exe"), "unexpected URL"),
+        (None, "needs --release-assets"),
+    ],
+)
+def test_download_must_be_a_real_release_asset(
+    assets_: list[dict[str, object]] | None, message: str
+) -> None:
+    with pytest.raises(bs.SiteError, match=message):
+        bs.context("v1.2.3", "2026-11-01", assets_)
+
+
+def test_load_assets(tmp_path: Path) -> None:
+    f = tmp_path / "a.json"
+    f.write_text(json.dumps(assets()), encoding="utf-8")
+    assert bs.load_assets(f) == assets()
+    f.write_text(json.dumps({"assets": assets()}), encoding="utf-8")
+    assert bs.load_assets(f) == assets()
+    for bad in ("{", '{"assets": 3}', "[1]"):
+        f.write_text(bad, encoding="utf-8")
+        with pytest.raises(bs.SiteError, match="release assets"):
+            bs.load_assets(f)
+    with pytest.raises(bs.SiteError, match="cannot read"):
+        bs.load_assets(tmp_path / "missing.json")
 
 
 def test_dev_context_has_no_version() -> None:
@@ -50,7 +100,9 @@ def test_dev_context_has_no_version() -> None:
 )
 def test_context_validation(tag: str | None, date: str | None, message: str) -> None:
     with pytest.raises(bs.SiteError, match=message):
-        bs.context(tag, date)
+        bs.context(tag, date, assets(tag) if tag and tag.startswith("v") else None)
+    with pytest.raises(bs.SiteError, match="--release-assets needs --tag"):
+        bs.context(None, None, [])
 
 
 # --- render ----------------------------------------------------------------------------
@@ -144,7 +196,7 @@ def test_build_needs_pages(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("tag", [None, "v0.1.0"])
 def test_real_site_builds_cleanly(tmp_path: Path, tag: str | None) -> None:
-    ctx = bs.context(tag, "2026-11-01" if tag else None)
+    ctx = bs.context(tag, "2026-11-01" if tag else None, assets(tag) if tag else None)
     pages = bs.build(tmp_path / "out", ctx)
     assert {p.name for p in pages} >= {"index.html", "install.html", "n1mm.html", "about.html"}
     text = "".join(p.read_text(encoding="utf-8") for p in pages)
@@ -152,6 +204,12 @@ def test_real_site_builds_cleanly(tmp_path: Path, tag: str | None) -> None:
     assert "<!-- if:" not in text
     if tag:
         assert "Download 0.1.0 for Windows" in text
+        url = f"{bs.REPO_URL}/releases/download/v0.1.0/n1mm-scope-bridge-setup-0.1.0.exe"
+        for page in ("index.html", "install.html"):
+            assert f'class="button" href="{url}"' in (tmp_path / "out" / page).read_text(
+                encoding="utf-8"
+            )
+        assert SHA in (tmp_path / "out" / "install.html").read_text(encoding="utf-8")
         assert "In development." not in text
     else:
         assert "In development." in text
@@ -169,10 +227,15 @@ def test_real_site_pages_have_titles_and_language() -> None:
 def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert bs.main(["--out", str(tmp_path / "a")]) == 0
     assert "no release yet" in capsys.readouterr().out
-    assert (
-        bs.main(["--out", str(tmp_path / "b"), "--tag", "v1.0.0", "--release-date", "2026-11-01"])
-        == 0
-    )
+    listing = tmp_path / "assets.json"
+    listing.write_text(json.dumps(assets("v1.0.0")), encoding="utf-8")
+    release = ["--tag", "v1.0.0", "--release-date", "2026-11-01"]
+    assert bs.main(["--out", str(tmp_path / "b"), *release, "--release-assets", str(listing)]) == 0
+    assert bs.main(["--out", str(tmp_path / "b"), *release]) == 1
+    assert "needs --release-assets" in capsys.readouterr().err
+    listing.write_text("[]", encoding="utf-8")
+    assert bs.main(["--out", str(tmp_path / "b"), *release, "--release-assets", str(listing)]) == 1
+    assert "download link would not resolve" in capsys.readouterr().err
     assert (
         bs.main(
             ["--out", str(tmp_path / "c"), "--tag", "v1.0.0-rc1", "--release-date", "2026-11-01"]
