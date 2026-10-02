@@ -187,3 +187,30 @@ def test_parse_helpers_directly() -> None:
     assert rtm.latest_check_runs([]) == {}
     assert rtm.leak_alert_problems([]) == []
     assert rtm.pr_problems(pr(), {9: APPROVED}) == []
+
+
+def test_copilot_review_failure_is_advisory_when_codeql_passed(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runs = [run("CodeQL", "success"), run("github-advanced-security", "failure")]
+    assert rtm.main(["5"], gh=fake_gh(runs=runs)) == 0
+    out = capsys.readouterr().out
+    assert "NOTE: advisory check 'github-advanced-security' concluded failure" in out
+    assert "READY" in out
+
+
+@pytest.mark.parametrize("codeql", [None, "failure"])
+def test_copilot_review_failure_blocks_without_passing_codeql(codeql: str | None) -> None:
+    runs = [run("github-advanced-security", "failure")]
+    if codeql:
+        runs.append(run("CodeQL", codeql))
+    problems = rtm.evaluate(5, "o/r", fake_gh(runs=runs))
+    assert any("github-advanced-security" in p for p in problems)
+
+
+def test_advisory_does_not_hide_open_alerts() -> None:
+    runs = [run("CodeQL", "success"), run("github-advanced-security", "failure")]
+    alert = {"number": 7, "rule": {"id": "py/x", "severity": "error"}}
+    problems = rtm.evaluate(5, "o/r", fake_gh(runs=runs, code=[alert]))
+    assert len(problems) == 1
+    assert "#7" in problems[0]

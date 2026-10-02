@@ -42,6 +42,8 @@ from check_issue_policy import (
 
 OK_CONCLUSIONS = {"success", "skipped", "neutral"}
 DEPENDENCY_REVIEW = "Dependency review"
+CODEQL = "CodeQL"
+ADVISORY_WHEN_CODEQL_PASSED = ("github-advanced-security",)
 # Reduce secret-scanning alerts to their numbers inside gh, so the leaked value
 # never enters this process (and can never be logged).
 LEAK_ALERT_JQ = "[.[].number]"
@@ -68,18 +70,41 @@ def latest_check_runs(runs: Sequence[Mapping[str, Any]]) -> dict[str, Mapping[st
     return latest
 
 
+def advisory_checks(latest: Mapping[str, Mapping[str, Any]]) -> set[str]:
+    """Failed checks that do not block, because a stronger check already covered them.
+
+    ``github-advanced-security`` is GitHub's optional Copilot AI security review.
+    When it fails (for example because the Copilot quota ran out, HTTP 402) but
+    the real ``CodeQL`` code-scanning check passed, it carries no security
+    finding: the open-alert check (b) still blocks any CodeQL alert.
+    """
+    codeql = latest.get(CODEQL)
+    if codeql is None or codeql.get("conclusion") != "success":
+        return set()
+    return {name for name in ADVISORY_WHEN_CODEQL_PASSED if name in latest}
+
+
 def check_problems(
-    runs: Sequence[Mapping[str, Any]], statuses: Sequence[Mapping[str, Any]]
+    runs: Sequence[Mapping[str, Any]],
+    statuses: Sequence[Mapping[str, Any]],
+    notes: list[str] | None = None,
 ) -> list[str]:
-    """Checks (a) and (d)."""
+    """Checks (a) and (d). Advisory skips are appended to ``notes``."""
     problems: list[str] = []
     latest = latest_check_runs(runs)
+    advisory = advisory_checks(latest)
     if not latest and not statuses:
         problems.append("no checks have reported on the PR head yet")
     for name, run in sorted(latest.items()):
         status, conclusion = run.get("status"), run.get("conclusion")
         if status != "completed":
             problems.append(f"check '{name}' is {status} (wait for it to finish)")
+        elif conclusion not in OK_CONCLUSIONS and name in advisory:
+            if notes is not None:
+                notes.append(
+                    f"advisory check '{name}' concluded {conclusion}; not blocking because "
+                    f"'{CODEQL}' passed (open CodeQL alerts are checked separately)"
+                )
         elif conclusion not in OK_CONCLUSIONS:
             label = "dependency review" if name == DEPENDENCY_REVIEW else "check"
             problems.append(f"{label} '{name}' concluded {conclusion}")
@@ -133,7 +158,7 @@ def pr_problems(pr: Mapping[str, Any], issues: Mapping[int, IssueInfo | None]) -
     return problems
 
 
-def evaluate(number: int, repo: str, gh: Gh = gh_json) -> list[str]:
+def evaluate(number: int, repo: str, gh: Gh = gh_json, notes: list[str] | None = None) -> list[str]:
     """Every reason the PR is not ready to merge (empty list = ready)."""
     pr = gh(
         [
@@ -165,7 +190,7 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json) -> list[str]:
         except RuntimeError:
             issues[n] = None
     return (
-        check_problems(runs, statuses)
+        check_problems(runs, statuses, notes)
         + code_scanning_problems(code_alerts or [])
         + leak_alert_problems(leak_numbers or [])
         + pr_problems(pr, issues)
@@ -179,11 +204,14 @@ def main(argv: Sequence[str] | None = None, gh: Gh = gh_json) -> int:
         return 2
     number = int(args[0])
     repo = args[1] if len(args) == 2 else "Reid-n0rc/n1mm-scope-bridge"
+    notes: list[str] = []
     try:
-        problems = evaluate(number, repo, gh)
+        problems = evaluate(number, repo, gh, notes)
     except (RuntimeError, KeyError, TypeError) as err:
         print(f"NOT READY: could not evaluate PR #{number}: {err}")
         return 1
+    for note in notes:
+        print(f"NOTE: {note}")
     if problems:
         print(f"NOT READY: PR #{number} must not be merged:")
         for p in problems:

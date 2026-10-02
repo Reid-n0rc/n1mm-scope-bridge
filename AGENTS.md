@@ -98,6 +98,10 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     positive, dismiss it with a written justification
     (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
     -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    One narrow exception is printed as a `NOTE`: a failed
+    `github-advanced-security` run (GitHub's optional Copilot AI review, which
+    fails when the Copilot quota runs out) does not block when the real
+    `CodeQL` check passed, because open CodeQL alerts are still checked.
 11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
