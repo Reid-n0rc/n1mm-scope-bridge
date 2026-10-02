@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -108,11 +109,20 @@ def ftdi_defines(pin: Path = fetch_ftdi.PIN, *, i386: bool = False) -> list[str]
     return defines
 
 
+def numeric_version(version: str) -> str:
+    """Windows' file version is numbers only: 0.1.0rc3 -> 0.1.0 (rc tags, #167)."""
+    match = re.match(r"\d+(?:\.\d+){0,3}", version)
+    if match is None:
+        raise ValueError(f"version {version!r} does not start with a number")
+    return match[0]
+
+
 def iscc_command(iscc: str, version: str, apps: dict[str, Path], out_dir: Path) -> list[str]:
     """``apps`` maps payload name (x64, arm64, x86) to its one-folder app."""
     # Absolute paths: ISCC resolves relative ones against the .iss folder.
     sources = [f"/D{define}={apps[name].absolute()}" for name, define in PAYLOADS if name in apps]
-    return [iscc, "/Q", f"/DAppVersion={version}", *sources, f"/DOutputDir={out_dir}",
+    return [iscc, "/Q", f"/DAppVersion={version}",
+            f"/DAppNumericVersion={numeric_version(version)}", *sources, f"/DOutputDir={out_dir}",
             *ftdi_defines(i386="x86" in apps), *ftdi_driver.installer_defines(),
             str(ISS)]  # fmt: skip
 
