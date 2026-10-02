@@ -132,6 +132,7 @@ def build_pipeline(
     *,
     close_source: Callable[[], object] | None = None,
     on_status: Callable[[ScopeStatus], object] | None = None,
+    on_frame: Callable[[ParsedFrame], object] | None = None,
     warn: Callable[[str], object] = print,
     clock: Callable[[], float] = time.monotonic,
 ) -> Pipeline[ParsedFrame]:
@@ -147,6 +148,8 @@ def build_pipeline(
             warn(CENTER_MODE_WARNING.format(model=config.profile.model, mode=item.status.mode_name))
         if on_status is not None:
             on_status(item.status)
+        if on_frame is not None:  # exactly what was just sent (the GUI preview)
+            on_frame(item)
 
     return Pipeline(
         config.profile.key,
