@@ -36,11 +36,12 @@ def test_iscc_command() -> None:
     cmd = bi.iscc_command("ISCC.exe", "1.2.3", {"x64": Path("app")}, Path("out"))
     assert cmd[:2] == ["ISCC.exe", "/Q"]
     assert "/DAppVersion=1.2.3" in cmd
-    assert f"/DSourceX64={Path('app')}" in cmd
+    assert f"/DSourceX64={Path('app').absolute()}" in cmd
     assert not any(
         c.startswith(("/DSourceArm64=", "/DSourceX86=", "/DFtdiWheelUrl86=")) for c in cmd
     )
     assert cmd[-1].endswith("installer.iss")
+    assert all(Path(c.split("=", 1)[1]).is_absolute() for c in cmd if c.startswith("/DSource"))
     assert any(
         c.startswith("/DFtdiWheelSha256=") and len(c) == len("/DFtdiWheelSha256=") + 64 for c in cmd
     )
@@ -202,9 +203,9 @@ def make_cli_app(tmp_path: Path) -> Path:
 def test_iscc_command_with_every_payload() -> None:
     apps = {"x64": Path("a64"), "arm64": Path("aarm"), "x86": Path("a86")}
     cmd = bi.iscc_command("ISCC.exe", "1.2.3", apps, Path("out"))
-    assert f"/DSourceX64={Path('a64')}" in cmd
-    assert f"/DSourceArm64={Path('aarm')}" in cmd
-    assert f"/DSourceX86={Path('a86')}" in cmd
+    assert f"/DSourceX64={Path('a64').absolute()}" in cmd
+    assert f"/DSourceArm64={Path('aarm').absolute()}" in cmd
+    assert f"/DSourceX86={Path('a86').absolute()}" in cmd
     defines = dict(c[2:].split("=", 1) for c in cmd if c.startswith("/DFtdi"))
     assert defines["FtdiWheelFile86"].endswith("-win32.whl")
     assert len(defines["FtdiWheelSha25686"]) == 64

@@ -109,7 +109,8 @@ def ftdi_defines(pin: Path = fetch_ftdi.PIN, *, i386: bool = False) -> list[str]
 
 def iscc_command(iscc: str, version: str, apps: dict[str, Path], out_dir: Path) -> list[str]:
     """``apps`` maps payload name (x64, arm64, x86) to its one-folder app."""
-    sources = [f"/D{define}={apps[name]}" for name, define in PAYLOADS if name in apps]
+    # Absolute paths: ISCC resolves relative ones against the .iss folder.
+    sources = [f"/D{define}={apps[name].absolute()}" for name, define in PAYLOADS if name in apps]
     return [iscc, "/Q", f"/DAppVersion={version}", *sources, f"/DOutputDir={out_dir}",
             *ftdi_defines(i386="x86" in apps), str(ISS)]  # fmt: skip
 
