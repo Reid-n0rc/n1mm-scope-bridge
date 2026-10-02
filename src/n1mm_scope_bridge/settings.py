@@ -29,7 +29,8 @@ from n1mm_scope_bridge.bridge import (
 from n1mm_scope_bridge.control import (
     DEFAULT_CONTROL_BIND,
     DEFAULT_CONTROL_PORT,
-    is_loopback,
+    WILDCARD_ERROR,
+    interface_address,
     parse_allow,
 )
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT
@@ -117,10 +118,12 @@ class Settings:
         elif self.control_port == self.n1mm_port:
             problems["control_port"] = "control port must differ from the N1MM+ spectrum port"
         try:
-            loopback = is_loopback(self.control_bind)
-        except ValueError:
+            loopback = interface_address(self.control_bind).is_loopback
+        except ValueError as err:
             problems["control_bind"] = (
-                "control address must be an IP address, for example 127.0.0.1"
+                WILDCARD_ERROR
+                if str(err) == WILDCARD_ERROR
+                else "control address must be an IP address, for example 127.0.0.1"
             )
             loopback = True
         try:
