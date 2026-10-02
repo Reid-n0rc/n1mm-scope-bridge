@@ -144,13 +144,21 @@ def test_setup_guide_menu_opens_docs(qtbot: QtBot) -> None:
 def test_menu_actions(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
     window, _ = make_window(qtbot)
     texts = [a.text() for a in window.menu.actions()]
-    assert texts == ["Settings…", "Copy diagnostics", "N1MM+ setup guide", "About and license"]
+    assert texts == [
+        "Settings…",
+        "Copy diagnostics",
+        "Copy diagnostics including source name",
+        "N1MM+ setup guide",
+        "About and license",
+    ]
     window.action_settings.trigger()
     assert window.settings_dialog.isVisible()
     shown: list[str] = []
     monkeypatch.setattr(QMessageBox, "about", lambda parent, title, text: shown.append(text))
     window.action_about.trigger()
     assert "GNU General Public License" in shown[0]
+    window.action_diagnostics_named.trigger()
+    assert "including source name" in window.log.lines()[-1]
 
 
 def test_save_failure_is_reported(qtbot: QtBot) -> None:

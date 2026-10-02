@@ -11,10 +11,14 @@ import pytest
 
 from n1mm_scope_bridge.gui.status import (
     DIAGNOSTIC_LOG_LINES,
+    REDACTED_HOST,
+    REDACTED_IP,
+    REDACTED_NAME,
     LogBuffer,
     StatusModel,
     diagnostics,
     redact_home,
+    redact_network,
 )
 from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios.base import ScopeStatus
@@ -129,8 +133,62 @@ def test_diagnostics_content(tmp_path: Path) -> None:
     assert log_part[0].endswith("info: line 5")
     assert f"line {DIAGNOSTIC_LOG_LINES + 4}" in text
     settings_json = text.split("Settings:\n", 1)[1].split("\n\nStatus:", 1)[0]
-    assert json.loads(settings_json)["source_name"] == "Shack"
+    assert json.loads(settings_json)["source_name"] == REDACTED_NAME
+    assert "Shack" not in text  # the source name is often a call sign: opt-in only
+    named = diagnostics(settings, model, log, home=tmp_path, include_identity=True)
+    assert (
+        json.loads(named.split("Settings:\n", 1)[1].split("\n\nStatus:", 1)[0])["source_name"]
+        == "Shack"
+    )
 
 
 def test_diagnostics_without_stats() -> None:
     assert "Frames read: 0" in diagnostics(Settings(), StatusModel(), LogBuffer())
+
+
+def test_diagnostics_redacts_network_identity(tmp_path: Path) -> None:
+    settings = Settings(
+        n1mm_host="192.168.1.20",
+        control_enabled=True,
+        control_bind="10.0.0.5",
+        control_allow="10.0.0.7, 10.0.0.8",
+        source_name="N0RC",
+    )
+    log = LogBuffer()
+    log.add("info", "Started streaming FT-710 to N1MM+ at 192.168.1.20:13064 as 'N0RC'")
+    log.add(
+        "warning", "Remote control: ignored request from 10.0.0.99 (fe80::1c2d:3e4f) on shack-pc"
+    )
+    log.add("info", "Loopback 127.0.0.1 and ::1 stay readable at 14:13:20")
+    text = diagnostics(settings, StatusModel(), log, home=tmp_path, hostname="shack-pc")
+    for secret in (
+        "192.168.1.20",
+        "10.0.0.5",
+        "10.0.0.7",
+        "10.0.0.99",
+        "fe80::1c2d:3e4f",
+        "shack-pc",
+        "N0RC",
+    ):
+        assert secret not in text, secret
+    assert REDACTED_IP in text
+    assert REDACTED_HOST in text
+    assert "127.0.0.1" in text
+    assert "::1" in text
+    assert "14:13:20" in text  # times are not mistaken for IPv6 addresses
+
+
+def test_source_name_equal_to_model_is_kept() -> None:
+    text = diagnostics(Settings(source_name="FT-710"), StatusModel(), LogBuffer(), hostname="")
+    assert REDACTED_NAME not in text
+    assert "FT-710" in text
+
+
+def test_redact_network_helpers() -> None:
+    assert (
+        redact_network("host localhost 127.0.0.1", hostname="localhost")
+        == "host localhost 127.0.0.1"
+    )
+    assert redact_network("from 8.8.8.8", hostname="") == f"from {REDACTED_IP}"
+    assert redact_network("v1.2.3.4.5 build", hostname="") == "v1.2.3.4.5 build"
+    assert redact_network("at 999.1.1.1", hostname="") == "at 999.1.1.1"  # not an address

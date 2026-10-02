@@ -7,8 +7,11 @@ Pure Python (no widgets) so it is fully testable without a display.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import platform
+import re
+import socket
 import time
 from collections import deque
 from collections.abc import Callable
@@ -17,6 +20,7 @@ from pathlib import Path, PurePath
 
 from n1mm_scope_bridge import __version__
 from n1mm_scope_bridge.pipeline import PipelineStats
+from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 
@@ -125,21 +129,77 @@ def redact_home(text: str, home: PurePath | None = None) -> str:
     return text
 
 
+REDACTED_HOST = "<redacted host>"
+REDACTED_IP = "<redacted IP>"
+REDACTED_NAME = "<redacted source name>"
+_IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+_IPV6 = re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Fa-f:])")
+
+
+def _is_loopback(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return address.lower() == "localhost"
+
+
+def redact_network(text: str, hostname: str | None = None) -> str:
+    """Replace non-loopback IP addresses and this PC's host name (GDPR: personal data)."""
+
+    def ip(match: re.Match[str]) -> str:
+        value = match.group(0)
+        try:
+            ipaddress.ip_address(value)
+        except ValueError:
+            return value  # not an address (e.g. a time like 12:34:56)
+        return value if _is_loopback(value) else REDACTED_IP
+
+    text = _IPV6.sub(ip, _IPV4.sub(ip, text))
+    host = socket.gethostname() if hostname is None else hostname
+    if host and host.lower() not in ("localhost", ""):
+        text = re.sub(re.escape(host), REDACTED_HOST, text, flags=re.IGNORECASE)
+    return text
+
+
+def _private_settings(settings: Settings, include_identity: bool) -> dict[str, object]:
+    data = settings.to_dict()
+    for key in ("n1mm_host", "control_bind"):
+        value = str(data.get(key, ""))
+        if value and not _is_loopback(value):
+            data[key] = REDACTED_HOST
+    if data.get("control_allow"):
+        data["control_allow"] = REDACTED_IP
+    if (
+        data.get("source_name")
+        and not include_identity
+        and data["source_name"] != _radio_model(settings)
+    ):
+        data["source_name"] = REDACTED_NAME
+    return data
+
+
 def diagnostics(
     settings: Settings,
     model: StatusModel,
     log: LogBuffer,
     *,
     home: PurePath | None = None,
+    hostname: str | None = None,
+    include_identity: bool = False,
 ) -> str:
-    """Text for bug reports: version, platform, settings, status, recent log."""
+    """Text for bug reports: version, platform, settings, status, recent log.
+
+    Privacy by design: the user's home folder, non-loopback IP addresses, this
+    PC's host name and the N1MM+ source name (often a call sign) are redacted
+    unless ``include_identity`` is set (the operator's explicit choice).
+    """
     stats = model.stats
     lines = [
         f"n1mm-scope-bridge {__version__}",
-        f"Python {platform.python_version()} on {platform.platform()}",
+        f"Python {platform.python_version()} on {platform.system()} {platform.release()}",
         "",
         "Settings:",
-        json.dumps(settings.to_dict(), indent=2, sort_keys=True),
+        json.dumps(_private_settings(settings, include_identity), indent=2, sort_keys=True),
         "",
         "Status:",
         *(f"  {label}: {value}" for label, value in model.rows()),
@@ -148,4 +208,16 @@ def diagnostics(
         f"Log (last {DIAGNOSTIC_LOG_LINES} lines):",
         *log.lines()[-DIAGNOSTIC_LOG_LINES:],
     ]
-    return redact_home("\n".join(lines), home)
+    text = redact_network(redact_home("\n".join(lines), home), hostname)
+    name = settings.source_name.strip()
+    # A source name equal to the radio model ("FT-710") identifies nobody; keep it.
+    if name and not include_identity and name != _radio_model(settings):
+        text = text.replace(name, REDACTED_NAME)
+    return text
+
+
+def _radio_model(settings: Settings) -> str:
+    try:
+        return get_radio(settings.radio).model
+    except KeyError:
+        return ""
