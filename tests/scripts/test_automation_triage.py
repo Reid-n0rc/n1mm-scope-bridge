@@ -46,7 +46,7 @@ class FakeApi:
         self.comments: dict[int, list[dict[str, Any]]] = {}
         self.calls: list[tuple[str, str]] = []
 
-    def request(  # noqa: PLR0911 - one branch per fake endpoint
+    def request(  # noqa: PLR0911, PLR0912 - one branch per fake endpoint
         self, method: str, path: str, body: Mapping[str, Any] | None = None
     ) -> Any:
         self.calls.append((method, path))
@@ -65,6 +65,8 @@ class FakeApi:
             return body
         if path.endswith("/labels") and method == "POST":
             return []
+        if method == "DELETE" and f"/labels/{at.LABEL}" in path:
+            return None
         if path.endswith("/comments") or "/comments?" in path:
             number = int(path.split("/")[2])
             if method == "GET":
@@ -229,3 +231,25 @@ def test_dry_run_changes_nothing() -> None:
     assert api.writes() == []
     assert out[0] == "2 item(s) waiting for adoption"
     assert any("PR #65" in line for line in out)
+
+
+# --- adopted automated PRs (#83) ---------------------------------------------------
+
+
+def test_adopted_autofix_pr_is_not_pending_and_is_unflagged() -> None:
+    adopted = pr(65, "alert-autofix-21", body="Closes #90\n\nPotential fix")
+    adopted["labels"] = [{"name": at.LABEL}]
+    fresh = pr(66, "alert-autofix-22", body="Potential fix")
+    api = FakeApi(prs=[adopted, fresh])
+    assert [p.number for p in at.find_pending(api)] == [66]
+    out: list[str] = []
+    at.run(api, out=out.append)
+    assert ("DELETE", f"/issues/65/labels/{at.LABEL}") in api.calls
+    assert any("PR #65 adopted" in line for line in out)
+
+
+def test_is_adopted_and_has_label() -> None:
+    assert at.is_adopted(pr(1, "x", body="fixes #4"))
+    assert not at.is_adopted(pr(1, "x", body="see #4"))
+    assert at.has_label({"labels": [at.LABEL]})
+    assert not at.has_label({"labels": [{"name": "other"}]})

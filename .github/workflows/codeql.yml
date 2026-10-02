@@ -8,6 +8,7 @@ on:
     branches: [dev, master]
   schedule:
     - cron: "23 6 * * 1"
+  workflow_dispatch: # also used by the Copilot Autofix conformance workflow (#83)
 
 permissions:
   contents: read

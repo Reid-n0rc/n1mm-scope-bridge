@@ -195,7 +195,20 @@ Copilot's repository instructions are in
   does the work properly. Do this when its change is wrong or incomplete, for
   example when it rewrites an intentional pattern.
 - A bot never satisfies the checks on its own behalf. No labels, edits, or
-  exemptions are added just to get its PR through.
+  exemptions are added just to get its PR through. **The one exception,
+  approved by the maintainer (#83), is Copilot Autofix:**
+  `.github/workflows/autofix-conform.yml` runs when a same-repo
+  `alert-autofix-*` PR opens or changes. It:
+  - creates or reuses the tracking issue "Code scanning alert #N: <rule>"
+    (`plan-approved`, `process`, `lane:core`, assigned to the maintainer);
+  - links it with `Closes #<n>` and retargets the PR to `dev`;
+  - commits `changelog.d/<n>.security.md` and removes `needs-adoption`;
+  - re-dispatches CI, CodeQL, Changelog, and Issue policy on the PR branch
+    (commits made with the workflow token don't trigger checks on their own).
+
+  It never merges, approves, or runs the PR's code. The checks still have to
+  pass, and merging happens through the normal adoption routine or the
+  maintainer. Dependabot PRs are still adopted by a person or agent.
 
 **Automation triage** (`.github/workflows/automation-triage.yml`, every two
 hours, on demand, and when an automated PR opens) finds what still needs
@@ -206,8 +219,9 @@ adopting:
   open code-scanning alert that no PR addresses, closing it when nothing is
   pending.
 
-It only reports. The adoption itself is done by a person or an agent,
-following the steps above.
+It only reports, and it drops `needs-adoption` once a PR links its issue.
+Apart from the Copilot Autofix conformance above, the adoption itself is done
+by a person or an agent, following the steps above.
 
 ## Testing policy
 
