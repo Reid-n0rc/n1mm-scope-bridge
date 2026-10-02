@@ -91,7 +91,7 @@ class _Handle:
 class Ft710Emulator:
     """An FT-710 scope stream behind ``Ft4222Api`` (thread-safe)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - keyword-only options plus injected sleep/clock
         self,
         state: RadioState | None = None,
         *,
@@ -102,6 +102,7 @@ class Ft710Emulator:
         on_frame: FrameHook | None = None,
         padding: Literal["sync", "zero"] = "sync",
         sleep: Callable[[float], object] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.state = state or RadioState()
         self.signals = signals
@@ -112,6 +113,8 @@ class Ft710Emulator:
         self.padding = padding
         self._period = 1.0 / fps if fps > 0 else 0.0
         self._sleep = sleep
+        self._clock = clock
+        self._next_due: float | None = None
         self._rng = random.Random(seed)
         self._lock = threading.Lock()
         self._buffer = bytearray()
@@ -189,7 +192,13 @@ class Ft710Emulator:
             raise AssertionError(f"emulator built a {len(frame)}-byte frame")
         self.frames_generated += 1
         if self._period:
-            self._sleep(self._period)
+            # Deadline-based pacing: generation time counts toward the period, so
+            # the emulator streams at exactly `fps` (checked against the radio, #36).
+            now = self._clock()
+            due = now + self._period if self._next_due is None else self._next_due + self._period
+            due = max(due, now)  # fell behind (slow machine): don't catch up in a burst
+            self._next_due = due
+            self._sleep(max(0.0, due - now))
         return bytes(frame)
 
     # -- Ft4222Api ---------------------------------------------------------------

@@ -20,6 +20,7 @@ connection in one step. Every error the program can show is listed below.
 | `was recorded from a … not a …` | The replayed capture came from a different radio model | Use `--radio` matching the capture |
 | `not an n1mm-scope-bridge capture` | The file given to `--replay` isn't a capture | Record one with `record` |
 | `trailing partial frame` | The capture file was cut short | Record it again |
+| `not an n1mm-scope-bridge raw stream capture`, `truncated raw record header`, `truncated raw chunk`, `raw chunk of … bytes exceeds` | A `record --raw-stream` file is damaged, cut short, or isn't a raw capture | Record it again with `record --raw-stream`; raw captures are only for checking the emulator against a radio |
 | `capture has no frames to loop` | `--loop` with an empty capture | Record a capture with at least one frame |
 | `unsupported capture format`, `capture model name … must be`, `frame size must be in` | The capture's header is from a newer version or is damaged | Record it again with this version |
 | `capture frame is … bytes, expected …` | Internal check while recording; the radio returned a frame of the wrong size | Open an issue with the command you ran |
@@ -30,6 +31,15 @@ connection in one step. Every error the program can show is listed below.
 | `--frames must be at least 1` | `record --frames 0` | Use 1 or more |
 | `--name must not be empty` | `--name ""` | Give a name, or leave `--name` out to use the radio model |
 | `n1mm_port: port must be 1-65535` (and other `setting: problem` messages) | An invalid setting or option | Correct the named setting; see [settings](settings.md) |
+
+## Center scope mode
+
+`Set the FT-710's scope to Center mode` means the scope is in Cursor or Fixed
+mode, so N1MM+'s frequency scale is approximate. Switch the radio's scope to
+**Center** on the front panel (or with your own N1MM+ macro, for example
+`{CAT1ASC SS0640000;}`, which N1MM+ sends over its CAT port). The bridge
+confirms when it sees Center. It never changes the mode itself and never
+opens the radio's COM ports.
 
 ## N1MM+ shows no spectrum
 

@@ -15,10 +15,11 @@ from collections.abc import Callable, Iterable
 from typing import Any, TextIO
 
 from n1mm_scope_bridge.bridge import build_pipeline
+from n1mm_scope_bridge.center import CenterModeMonitor
 from n1mm_scope_bridge.cli.common import LatestStatus, format_status
 from n1mm_scope_bridge.n1mm import N1mmSender
 from n1mm_scope_bridge.pipeline import Pipeline
-from n1mm_scope_bridge.radios.base import ParsedFrame
+from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 
 Source = tuple[Iterable[bytes], Callable[[], object]]
@@ -78,13 +79,21 @@ class StreamSession:
                 return
             self._finish()
             source, close = self._make_source()
+            monitor = CenterModeMonitor(
+                self.settings.effective_name(), lambda m: print(m, file=self._err)
+            )
             self._sender = N1mmSender(self.settings.n1mm_host, self.settings.n1mm_port)
+
+            def on_status(status: ScopeStatus) -> None:
+                self._latest.update(status)
+                monitor.observe(status)
+
             self._pipe = build_pipeline(
                 self.settings.to_bridge_config(),
                 source,
                 self._sender,
                 close_source=close,
-                on_status=self._latest.update,
+                on_status=on_status,
                 warn=lambda m: print(f"warning: {m}", file=self._err),
             )
             self._pipe.start()
@@ -142,6 +151,7 @@ class StreamSession:
                 self._finish()
 
     def _finish(self) -> None:
+        """Stop the stream and close the sender; a stream error is re-raised."""
         pipe, sender = self._pipe, self._sender
         self._pipe, self._sender = None, None
         try:
