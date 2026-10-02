@@ -220,6 +220,21 @@ def test_self_test_passes(qapp: QApplication, tmp_path: Path) -> None:
     assert "self-test: OK" in message
 
 
+def test_self_test_never_prompts_with_a_tray(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On a desktop with a system tray, closing normally asks the operator.
+    def window_with_tray(*args: Any, **kwargs: Any) -> MainWindow:
+        def ask() -> tuple[str, bool]:
+            raise AssertionError("self-test prompted the operator")
+
+        return MainWindow(*args, tray_available=lambda: True, ask=ask, **kwargs)
+
+    monkeypatch.setattr(gui_app, "MainWindow", window_with_tray)
+    ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
+    assert ok, message
+
+
 def test_main_self_test(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 0
     assert "self-test: OK" in capsys.readouterr().out

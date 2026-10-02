@@ -241,3 +241,42 @@ def test_main_success(
                    runner=fake_pyinstaller(["n1mm-scope-bridge.exe"]))  # fmt: skip
     assert code == 0
     assert "GUI exe: not yet" in capsys.readouterr().out
+
+
+def test_gui_self_test_passes_and_enables_qt_plugin_debugging() -> None:
+    seen: dict[str, str] = {}
+
+    def run(cmd: Sequence[str], env: dict[str, str] | None) -> tuple[int, str]:
+        assert cmd[-1] == "--self-test"
+        seen.update(env or {})
+        return 0, "self-test: OK"
+
+    bw.gui_self_test(Path("N1MM Scope Bridge.exe"), run)
+    assert seen["QT_DEBUG_PLUGINS"] == "1"
+
+
+def test_gui_self_test_failure_includes_output() -> None:
+    def run(cmd: Sequence[str], env: dict[str, str] | None) -> tuple[int, str]:
+        return 124, "timed out\nqt.qpa.plugin: Could not find the Qt platform plugin"
+
+    with pytest.raises(bw.BuildError, match="platform plugin"):
+        bw.gui_self_test(Path("N1MM Scope Bridge.exe"), run)
+
+
+def test_build_with_gui_runs_gui_self_test(tmp_path: Path) -> None:
+    pyi = fake_pyinstaller(["n1mm-scope-bridge.exe", "n1mm-scope-bridge",
+                            "N1MM Scope Bridge.exe", "N1MM Scope Bridge"])  # fmt: skip
+    app = fake_app()
+    gui_runs: list[str] = []
+
+    def runner(cmd: Sequence[str], env: dict[str, str] | None) -> tuple[int, str]:
+        if cmd[0] == "pyinstaller":
+            return pyi(cmd, env)
+        if cmd[-1] == "--self-test":
+            gui_runs.append(cmd[0])
+            return 0, "self-test: OK"
+        return app(cmd, env)
+
+    bw.build(gui=True, out=tmp_path / "d", work=tmp_path / "w", smoke=True, runner=runner,
+             qt_files=list)  # fmt: skip
+    assert len(gui_runs) == 1
