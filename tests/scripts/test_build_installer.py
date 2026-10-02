@@ -40,10 +40,34 @@ def fake_iscc(produce: bool = True, code: int = 0) -> bi.Runner:
     return run
 
 
+@pytest.mark.parametrize(
+    ("version", "numeric"),
+    [("0.1.2", "0.1.2"), ("0.1.0rc3", "0.1.0"), ("1.2.3.4", "1.2.3.4"), ("2", "2")],
+)
+def test_numeric_version(version: str, numeric: str) -> None:
+    # Inno's VersionInfoVersion takes numbers only; rc tags failed to build (#167).
+    assert bi.numeric_version(version) == numeric
+
+
+def test_numeric_version_rejects_non_numeric() -> None:
+    with pytest.raises(ValueError, match="does not start with a number"):
+        bi.numeric_version("rc1")
+
+
+def test_rc_build_passes_full_and_numeric_versions() -> None:
+    cmd = bi.iscc_command("ISCC.exe", "0.1.0rc3", {"x64": Path("app")}, Path("out"))
+    assert "/DAppVersion=0.1.0rc3" in cmd
+    assert "/DAppNumericVersion=0.1.0" in cmd
+    iss = bi.ISS.read_text(encoding="utf-8")
+    assert "VersionInfoVersion={#AppNumericVersion}" in iss
+    assert "OutputBaseFilename=n1mm-scope-bridge-setup-{#AppVersion}" in iss
+
+
 def test_iscc_command() -> None:
     cmd = bi.iscc_command("ISCC.exe", "1.2.3", {"x64": Path("app")}, Path("out"))
     assert cmd[:2] == ["ISCC.exe", "/Q"]
     assert "/DAppVersion=1.2.3" in cmd
+    assert "/DAppNumericVersion=1.2.3" in cmd
     assert f"/DSourceX64={Path('app').absolute()}" in cmd
     assert not any(
         c.startswith(("/DSourceArm64=", "/DSourceX86=", "/DFtdiWheelUrl86=")) for c in cmd
