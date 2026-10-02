@@ -32,6 +32,11 @@ def test_capture_writes_every_scene_with_manifest(qtbot: QtBot, tmp_path: Path) 
     assert (image.width(), image.height()) == (main["width"], main["height"])
     assert (main["width"], main["height"]) == ss.WINDOW_SIZE
     assert all(entry["alt"] and entry["caption"] for entry in manifest.values())
+    # Streaming scenes show emulator data and must say so (honesty about the source).
+    assert main["simulated"] is True
+    assert ss.SIMULATED_NOTE in main["alt"]
+    assert ss.SIMULATED_NOTE in main["caption"]
+    assert "simulated" not in manifest["settings"]
     assert all(entry["dark"] == f"{name}-dark.png" for name, entry in manifest.items())
     light = QImage(str(tmp_path / "main-window.png")).pixelColor(4, 4).lightness()
     dark = QImage(str(tmp_path / "main-window-dark.png")).pixelColor(4, 4).lightness()

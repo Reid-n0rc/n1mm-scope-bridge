@@ -56,6 +56,9 @@ SCREENSHOT_GROUP = re.compile(r"<!-- screenshots:([a-z0-9]+) -->")
 GROUP_FALLBACK = '<p class="note">Screenshots of these steps are added from each release build.</p>'
 SHOTS_DIR = "assets/screenshots"
 PREVIEW_LABEL = "Development preview"
+# Shown on screenshots whose manifest entry says ``"simulated": true`` (emulator
+# data, not a real radio), in development and release builds alike.
+SIMULATED_LABEL = "Simulated: FT-710 emulator"
 
 
 class SiteError(Exception):
@@ -112,6 +115,8 @@ def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
         else ""
     )
     label = f' <span class="badge">{PREVIEW_LABEL}</span>' if preview else ""
+    if entry.get("simulated"):
+        label += f' <span class="badge">{SIMULATED_LABEL}</span>'
     return (
         f'<figure class="screenshot" id="shot-{scene}"><picture>{dark}'
         f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
