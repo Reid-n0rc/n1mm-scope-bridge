@@ -19,6 +19,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from build_windows_app import zip_name  # single source of truth for the zip name
+
 ROOT = Path(__file__).resolve().parent.parent
 _TAG = re.compile(r"^v(?P<version>\d+\.\d+\.\d+)(?:-rc(?P<rc>[1-9]\d*))?$")
 _SECTION = r"^## \[{name}\][^\n]*\n(?P<body>.*?)(?=^## \[|\Z)"
@@ -103,7 +105,7 @@ def release_notes(
     parts.append(
         "## Downloads\n\n"
         "- `n1mm-scope-bridge-setup-*.exe`: Windows installer (recommended)\n"
-        "- `n1mm-scope-bridge-*-windows.zip`: portable Windows app\n"
+        f"- `{zip_name(info.version)}`: portable Windows app\n"
         "- `*.whl`: Python wheel; `*.tar.gz`: complete source code (GPLv3 corresponding source)\n"
         "- `SHA256SUMS`: checksums for every file\n\n"
         "FTDI's LibFT4222 is not included; the installer links to FTDI's download page."
