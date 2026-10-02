@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import capture_golden as cg
+import dev_cat as dc
 import pytest
 
 from n1mm_scope_bridge.emulator import Faults, Ft710Emulator
@@ -136,4 +137,52 @@ def test_main_real_radio_path_uses_one_device(
     assert code == 0
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["dry_run"] is False
+    assert manifest["cases"][0]["confirmed"] is True
+
+
+# --- unattended (--auto) mode --------------------------------------------------------
+
+
+def test_cases_know_their_auto_settings() -> None:
+    by_name = {c.name: c for c in cg.CASES}
+    assert (by_name["center-span-9"].auto_span, by_name["center-span-9"].auto_mode) == (9, "4")
+    assert by_name["cursor-mode"].auto_mode == "7"
+    assert by_name["fixed-mode"].auto_mode == "A"
+    operator = {c.name for c in cg.CASES if c.operator_only}
+    assert operator == {"tx-dummy-load", "power-on-startup", "usb-replug"}
+
+
+def test_auto_session_sets_confirms_and_restores(tmp_path: Path) -> None:
+    emu = Ft710Emulator()
+    emu.set_span(3)
+    emu.set_scope_mode(0x07)  # the operator's own setting: Cursor, 10 kHz
+    port = dc.EmulatorCatPort(emu)
+    cat = dc.DevCat(port, sleep=lambda _: None)
+    cases = [c for c in cg.CASES if c.name in ("center-span-0", "fixed-mode", "usb-replug")]
+    manifest = cg.run_session(
+        cg._iter_same(emu), tmp_path, ask=lambda _: "", say=lambda _: None, auto_yes=True,
+        dry_run=True, cases=cases, seconds=0.3, cat=cat, firmware="test", settle=lambda: None,
+    )  # fmt: skip
+    results = {c["name"]: c for c in manifest["cases"]}
+    assert manifest["mode"] == "auto"
+    assert manifest["original_scope"] == {"span_index": 3, "mode": "7"}
+    assert results["center-span-0"]["confirmed"] is True
+    assert results["center-span-0"]["confirmed_by"] == "cat+scope-stream"
+    assert results["fixed-mode"]["confirmed"] is True
+    assert results["usb-replug"] == {
+        "name": "usb-replug",
+        "skipped": True,
+        "reason": "operator-only",
+    }
+    assert (emu.state.span_index, emu.state.scope_mode) == (3, 0x07)  # restored
+    sets = [w for w in port.writes if len(w) > 5]
+    assert all(dc.SET_PATTERN.match(w) for w in sets)  # only span/mode sets were sent
+
+
+def test_auto_main_dry_run_and_argument_checks(tmp_path: Path) -> None:
+    assert cg.main(["--auto"]) == 1  # needs --cat-port unless --dry-run
+    out = tmp_path / "auto"
+    assert cg.main(["--auto", "--dry-run", "--out", str(out), "--only", "center-span-4",
+                    "--seconds", "0.3"]) == 0  # fmt: skip
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["cases"][0]["confirmed"] is True

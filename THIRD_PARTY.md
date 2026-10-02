@@ -80,6 +80,22 @@ comment, the issue, or the doc instead.
   (including wfview's) combined with a GPL-incompatible library, which we
   don't do without written permission from the wfview copyright holders.
 
+### FTDI LibFT4222 / D2XX for macOS (local bench use only, not included)
+
+- Source used for development: the `osx/` folder of the PyPI sdist
+  `ft4222-1.13.0.tar.gz` (sha256
+  `0bf8cdd8402aaafb0d4f990f699e9f9b3a81b50fab101781e8c03ef5d8ff69ec`).
+  It contains `libft4222.1.4.4.221.dylib` (LibFT4222 1.4.4.221, sha256
+  `eb767f21619cc737a9d0cb58b8a3f7f1f0233d470f86eadb69d4a823e580f2ab`; not code
+  signed, because the packager rewrote its install names) and `libftd2xx.dylib`
+  (D2XX 1.4.30, sha256
+  `e89fbc2b1313072e6b0eaa3d45d7ed6ab7f31970662af1b19b0d1e18e9b7e1f5`, signed
+  "Developer ID Application: Future Technology Devices International Limited
+  (658CPPCMJJ)").
+- Kept outside the repository (for example
+  `~/Library/Application Support/n1mm-scope-bridge-dev/ftdi/`). Never committed
+  or bundled; FTDI licence terms apply.
+
 ### PySide6 / Qt 6 (GUI dependency)
 
 - Source: <https://pypi.org/project/PySide6-Essentials/> (Qt for Python, The Qt Company)

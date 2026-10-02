@@ -1,0 +1,4 @@
+# Reviewed false positives only. Each entry: <commit>:<file>:<rule>:<line> with a reason.
+# generic-api-key matched `seconds=args.minutes * 60` (an argument name, not a secret);
+# the line was rewritten in a later commit, but gitleaks scans the PR's full history.
+b9252ba5ce8b5e4e42d9f7bfc9e241e386e2d29c:scripts/hardware_smoke.py:generic-api-key:279
