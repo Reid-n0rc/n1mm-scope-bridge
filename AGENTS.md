@@ -164,6 +164,23 @@ hold (#43):
    (`git worktree add ../n1mm-wt-<lane> -b issue-<n>-<slug> origin/dev`) so
    parallel agents never share a checkout.
 
+## Automated PRs
+
+Copilot Autofix, Dependabot, and any other bot get **no exemption** from the
+**Issue policy** and **Changelog** checks, or from review of what they change.
+Copilot's repository instructions are in
+[.github/copilot-instructions.md](.github/copilot-instructions.md).
+
+- **Adopt it.** File (or link) a `plan-approved`, assigned issue and add
+  `Closes #<n>` to the PR body. Add the `changelog.d/` fragment, and push any
+  fixes to the PR branch through the normal process. Then CI runs on the
+  pushed commit and the PR merges like any other.
+- **Or replace it.** Close the bot's PR with a comment linking a tracked PR that
+  does the work properly. Do this when its change is wrong or incomplete, for
+  example when it rewrites an intentional pattern.
+- A bot never satisfies the checks on its own behalf. No labels, edits, or
+  exemptions are added just to get its PR through.
+
 ## Testing policy
 
 0. **No automated test may need a radio.** Use the FT-710 emulator
