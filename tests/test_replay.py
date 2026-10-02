@@ -183,13 +183,21 @@ def test_recording_api_records_reads_and_passes_through() -> None:
 def test_raw_stream_api_serves_bytes_across_chunk_boundaries() -> None:
     api = RawStreamApi([RawChunk(0, 0, b"abc"), RawChunk(1, 0, b"defg"), RawChunk(2, 4, b"")])
     status, handle = api.open_ex("FT4222 A")
+    setup = [
+        api.set_timeouts(handle, 1, 1),
+        api.set_latency_timer(handle, 2),
+        api.spi_master_init(handle),
+        api.set_clock(handle),
+    ]
+    reads = [api.spi_read(handle, 5) for _ in range(4)]
+    teardown = [api.uninitialize(handle), api.close(handle)]
     assert status == 0
-    assert all(f(handle) == 0 for f in (api.spi_master_init, api.set_clock, api.uninitialize))
-    assert api.set_timeouts(handle, 1, 1) == 0
-    assert api.set_latency_timer(handle, 2) == 0
-    assert api.spi_read(handle, 5) == (0, b"abcde")
-    assert api.spi_read(handle, 5) == (0, b"fg")  # bytes before the error come first
-    assert api.spi_read(handle, 5) == (4, b"")  # then the recorded error
-    assert api.spi_read(handle, 5) == (0, b"")  # then end of capture
-    assert api.close(handle) == 0
+    assert setup == [0, 0, 0, 0]
+    assert reads == [
+        (0, b"abcde"),
+        (0, b"fg"),  # bytes before the error come first
+        (4, b""),  # then the recorded error
+        (0, b""),  # then end of capture
+    ]
+    assert teardown == [0, 0]
     assert api.calls == ["open", "close"]

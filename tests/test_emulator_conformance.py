@@ -35,14 +35,16 @@ def _load() -> dict[str, Any] | None:
 GOLDEN = _load()
 CASES = [c for c in (GOLDEN or {}).get("cases", []) if c.get("file")]
 
-if not CASES:
-    pytestmark = pytest.mark.xfail(strict=True, reason="awaiting golden capture (#36)")
+# Expected to fail (strictly) until the golden captures are committed.
+awaiting_capture = pytest.mark.xfail(not CASES, strict=True, reason="awaiting golden capture (#36)")
 
 
+@awaiting_capture
 def test_golden_captures_exist() -> None:
     assert CASES, "record them at the radio: see docs/emulator.md, Validating against your radio"
 
 
+@awaiting_capture
 def test_golden_captures_match_current_parser() -> None:
     """Changing the parser means re-validating against the radio."""
     assert GOLDEN is not None
@@ -52,6 +54,7 @@ def test_golden_captures_match_current_parser() -> None:
     )
 
 
+@awaiting_capture
 def test_operator_confirmed_every_case() -> None:
     assert CASES
     unconfirmed = [c["name"] for c in CASES if not c.get("confirmed")]
@@ -59,6 +62,7 @@ def test_operator_confirmed_every_case() -> None:
 
 
 @pytest.mark.parametrize("case", CASES or [{"name": "none", "file": ""}], ids=lambda c: c["name"])
+@awaiting_capture
 def test_emulator_matches_radio(case: dict[str, Any]) -> None:
     _, _, chunks = read_raw_stream(GOLDEN_DIR / case["file"])
     if case["name"].startswith(STEADY):
@@ -72,6 +76,7 @@ def _padding() -> cf.Padding:
     return style
 
 
+@awaiting_capture
 def test_fixtures_are_small() -> None:
     assert CASES
     for case in CASES:
