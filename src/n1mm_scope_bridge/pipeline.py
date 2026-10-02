@@ -206,15 +206,24 @@ class Pipeline(Generic[R]):
 
     # -- stages ------------------------------------------------------------------
 
+    def _record(self, exc: BaseException) -> None:
+        """Keep the first stage failure for join() and stop every stage."""
+        with self._error_lock:
+            if self._error is None:
+                self._error = exc
+        self.stop()
+
     def _guard(self, fn: Callable[[], None]) -> Callable[[], None]:
         def run() -> None:
             try:
                 fn()
-            except BaseException as exc:  # recorded, then re-raised by join()
-                with self._error_lock:
-                    if self._error is None:
-                        self._error = exc
-                self.stop()
+            except Exception as exc:  # recorded, then re-raised by join()
+                self._record(exc)
+            except BaseException as exc:
+                # SystemExit/KeyboardInterrupt in a stage: stop everything, keep it
+                # for join(), and let it continue to propagate out of the thread.
+                self._record(exc)
+                raise
 
         return run
 

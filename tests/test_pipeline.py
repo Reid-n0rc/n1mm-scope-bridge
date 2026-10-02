@@ -317,3 +317,23 @@ def test_process_stage_waits_through_idle_periods() -> None:
     resume.set()
     p.join(timeout=5)
     assert out == [9]
+
+
+def test_base_exception_in_stage_stops_pipeline_and_reraises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SystemExit/KeyboardInterrupt in a stage are recorded, stop everything, and re-raise."""
+    seen: list[type[BaseException]] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: seen.append(args.exc_type))
+    device = Device()
+
+    def emit(item: int) -> None:
+        raise SystemExit("emit asked to exit")
+
+    p = Pipeline("base-exc", device, as_int, emit, rate_hz=FAST, close_source=device.close)
+    p.start()
+    with pytest.raises(SystemExit, match="emit asked to exit"):
+        p.join(timeout=5)
+    assert device.close_calls == 1
+    assert not p.alive
+    assert no_leaked_threads("base-exc")
