@@ -134,6 +134,36 @@ def test_main_skipped_windows_steps_are_not_releasable(
     assert "NOT RELEASABLE" in capsys.readouterr().err
 
 
+def test_portable_mode_passes_but_reports_not_releasable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    steps = [rr.Step("lint", ("ruff",)), rr.Step("win", ("w",), windows_only=True)]
+    report = tmp_path / "r.md"
+    code = rr.main(
+        ["--report", str(report), "--portable"], steps=steps, meta={}, runner=fake_runner()
+    )
+    assert code == 0
+    text = report.read_text(encoding="utf-8")
+    assert "portable subset" in text
+    assert "| 2 | win | SKIPPED |" in text
+    err = capsys.readouterr().err
+    assert "NOT RELEASABLE" in err
+    assert "--portable" in err
+
+
+def test_portable_mode_still_fails_on_real_failures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = rr.main(
+        ["--report", str(tmp_path / "r.md"), "--portable"],
+        steps=[rr.Step("lint", ("ruff",))],
+        meta={},
+        runner=fake_runner({"ruff": 1}),
+    )
+    assert code == 1
+    capsys.readouterr()
+
+
 def test_environment_metadata() -> None:
     meta = rr.environment()
     assert set(meta) == {"commit", "ref", "platform", "python", "date (UTC)"}

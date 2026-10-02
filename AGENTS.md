@@ -250,6 +250,8 @@ automatically on every PR into `master` and on every `v*` tag, and on demand:
 uv run --no-project python scripts/release_regression.py --report regression-report.md
 # off Windows (development only, not releasable):
 uv run --no-project python scripts/release_regression.py --skip-windows-only
+# CI portability job (Ubuntu): same, but exits 0 when the portable steps pass
+uv run --no-project python scripts/release_regression.py --portable
 ```
 
 It covers: a locked clean environment, lint, format, strict mypy, every test

@@ -18,7 +18,8 @@ $AppName = 'N1MM Scope Bridge'
 $Dir = Join-Path $env:RUNNER_TEMP ("n1mm-sb-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 if (-not $env:RUNNER_TEMP) { $Dir = Join-Path $env:TEMP ("n1mm-sb-" + [guid]::NewGuid().ToString('N').Substring(0, 8)) }
 $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppId"
-$StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk"
+# Inno Setup puts the shortcuts in a {group} folder named after the app.
+$StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$AppName.lnk"
 $Desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
 $failures = [System.Collections.Generic.List[string]]::new()
 

@@ -171,7 +171,15 @@ def main(
         action="store_true",
         help="for local runs off Windows; the result is not releasable",
     )
+    parser.add_argument(
+        "--portable",
+        action="store_true",
+        help="CI portability job off Windows: skip Windows-only steps and pass if the rest "
+        "pass (the report says it is not releasable)",
+    )
     args = parser.parse_args(argv)
+    if args.portable:
+        args.skip_windows_only = True
     if args.skip_gui:
         # Every `uv run` re-syncs default groups; keep PySide6 out on free-threaded Python.
         os.environ["UV_NO_GROUP"] = "gui-dev"
@@ -184,12 +192,17 @@ def main(
     blocking_skips = [
         r for r in results if r.status == "SKIPPED" and not r.detail.startswith((PENDING, GUI_SKIP))
     ]
-    ok = passed(results, allow_skips=True) and not blocking_skips
-    report = render_report(results, meta if meta is not None else environment(), ok=ok)
+    ok = passed(results, allow_skips=True) and (args.portable or not blocking_skips)
+    meta = dict(meta if meta is not None else environment())
+    if args.portable:
+        meta["scope"] = "portable subset (Windows-only steps skipped; not releasable)"
+    report = render_report(results, meta, ok=ok)
     args.report.write_text(report, encoding="utf-8")
     print(report)
     if blocking_skips:
         print("NOT RELEASABLE: Windows-only steps were skipped.", file=sys.stderr)
+        if args.portable:
+            print("(--portable: allowed for this portability job)", file=sys.stderr)
     return 0 if ok else 1
 
 
