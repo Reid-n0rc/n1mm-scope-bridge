@@ -28,6 +28,12 @@ def register(sub: Any) -> argparse.ArgumentParser:
         action="store_true",
         help="stream the emulator through the window to a local listener and exit 0 on success",
     )
+    p.add_argument(
+        "--screenshot",
+        type=Path,
+        metavar="DIR",
+        help="save website screenshots of the window and dialogs into DIR, then exit",
+    )
     return p
 
 
@@ -41,4 +47,6 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
         argv += ["--settings", str(args.settings)]
     if args.self_test:
         argv.append("--self-test")
+    if args.screenshot is not None:
+        argv += ["--screenshot", str(args.screenshot)]
     return int(app.main(argv))
