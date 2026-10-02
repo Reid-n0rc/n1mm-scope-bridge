@@ -42,11 +42,27 @@ FTDI_ERROR = (
 MANIFEST = "manifest.json"
 
 
+# Streaming screenshots show the built-in FT-710 emulator, not a real radio, and
+# say so in their alt text and caption. Change this (and ``simulated``) once
+# screenshots are taken from a real radio (after #111).
+SIMULATED_NOTE = "Simulated signals from the built-in FT-710 emulator, not a real radio."
+
+
 @dataclass(frozen=True)
 class Scene:
     name: str
     alt: str
     caption: str
+    simulated: bool = False
+    """True when the image shows emulator spectrum data (labelled as such)."""
+
+    @property
+    def full_alt(self) -> str:
+        return f"{self.alt} {SIMULATED_NOTE}" if self.simulated else self.alt
+
+    @property
+    def full_caption(self) -> str:
+        return f"{self.caption} {SIMULATED_NOTE}" if self.simulated else self.caption
 
 
 SCENES = (
@@ -56,6 +72,7 @@ SCENES = (
         "a live spectrum and waterfall of the FT8 segment, cards for frequency, span, "
         "scope mode, N1MM+ rate and health, and the Start/Stop button.",
         "Streaming: the preview shows exactly what N1MM+ receives.",
+        simulated=True,
     ),
     Scene(
         "main-window-idle",
@@ -209,8 +226,9 @@ def capture(
             "file": f"{scene.name}.png",
             "width": light[scene.name][0],
             "height": light[scene.name][1],
-            "alt": scene.alt,
-            "caption": scene.caption,
+            "alt": scene.full_alt,
+            "caption": scene.full_caption,
+            **({"simulated": True} if scene.simulated else {}),
             **({"dark": f"{scene.name}-dark.png"} if scene.name in dark_sizes else {}),
         }
         for scene in SCENES

@@ -12,7 +12,9 @@ Screenshots of the window and its dialogs are on the website's
 [Using the window](https://reid-n0rc.github.io/n1mm-scope-bridge/use.html) page.
 They are taken automatically from the program itself
 (`n1mm-scope-bridge gui --screenshot DIR`, see [`gui`](cli/gui.md)), so they
-match the version they describe.
+match the version they describe. The streaming screenshots show **simulated
+signals from the built-in FT-710 emulator, not a real radio**, and are
+labelled that way.
 
 ## The window
 

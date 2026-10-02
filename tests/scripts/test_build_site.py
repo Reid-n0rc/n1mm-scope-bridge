@@ -221,6 +221,22 @@ def test_screenshot_figure_is_accessible(
     assert (out / bs.SHOTS_DIR / "main-window.png").exists()
 
 
+@pytest.mark.parametrize("ctx", [DEV, RELEASE])
+def test_simulated_screenshot_is_labelled(tmp_path: Path, ctx: dict[str, str]) -> None:
+    out = tmp_path / "out"
+    shots = write_shots(tmp_path / "shots", simulated=True)
+    bs.build(out, ctx, write_site(tmp_path / "src", SHOT_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert bs.SIMULATED_LABEL in text
+    assert "emulator" in text
+
+
+def test_real_screenshot_has_no_simulated_label(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", SHOT_PAGE), write_shots(tmp_path / "shots"))
+    assert bs.SIMULATED_LABEL not in (out / "index.html").read_text(encoding="utf-8")
+
+
 def test_dark_variant_uses_picture_source(tmp_path: Path) -> None:
     out = tmp_path / "out"
     shots = write_shots(tmp_path / "shots", dark=True)
