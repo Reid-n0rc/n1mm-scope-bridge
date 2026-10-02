@@ -1,7 +1,7 @@
 # Setting up N1MM Logger+
 
-> The bridge is pre-alpha. These steps describe the intended setup, and they
-> will be confirmed during hardware validation.
+> The bridge is validated on a real FT-710. These N1MM+ steps follow N1MM+'s
+> documentation; an on-air check with N1MM+ is still pending (#5).
 
 0. Set up the radio first: on the FT-710, set the menu
    **OPERATION SETTING → GENERAL → SCU-LAN10** to **ON** (no adapter needed).
