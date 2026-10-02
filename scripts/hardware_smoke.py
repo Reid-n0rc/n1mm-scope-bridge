@@ -276,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {err}")
             return 1
     try:
-        result = run_smoke(api, seconds=args.minutes * 60, rate_hz=args.rate, cat=cat)
+        duration = 60.0 * args.minutes
+        result = run_smoke(api, seconds=duration, rate_hz=args.rate, cat=cat)
     finally:
         if cat is not None:
             cat.close()

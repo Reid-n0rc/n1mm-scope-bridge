@@ -49,13 +49,17 @@ class CatError(RuntimeError):
 
 
 class SerialLike(Protocol):
-    def write(self, data: bytes, /) -> int | None: ...
+    def write(self, data: bytes, /) -> int | None:
+        """Send bytes to the radio."""
 
-    def read_until(self, expected: bytes = ..., size: int | None = ...) -> bytes: ...
+    def read_until(self, expected: bytes = b";", size: int | None = None) -> bytes:
+        """Read up to and including ``expected`` (or until the timeout)."""
 
-    def reset_input_buffer(self) -> None: ...
+    def reset_input_buffer(self) -> None:
+        """Drop unread input."""
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Release the port."""
 
 
 def check_command(cmd: str) -> str:

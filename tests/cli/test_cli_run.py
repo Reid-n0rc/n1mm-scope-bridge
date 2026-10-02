@@ -121,7 +121,17 @@ def test_run_exits_1_when_the_radio_stream_fails() -> None:
 
 def test_run_prompts_for_center_and_confirms() -> None:
     code, _, err = cli(
-        "run", "--scenario", "mode-change", "--duration", "4", "--port", "9", "--rate", "10"
+        # mode-change cycles Center -> Cursor -> Fixed every 20 frames (3 s at 20 fps);
+        # 8 s leaves slow CI runners time to return to Center.
+        "run",
+        "--scenario",
+        "mode-change",
+        "--duration",
+        "8",
+        "--port",
+        "9",
+        "--rate",
+        "10",
     )
     assert code == 0
     assert "FT-710 scope left Center mode (Cursor (Normal))" in err
