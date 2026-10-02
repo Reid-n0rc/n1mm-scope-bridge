@@ -13,7 +13,8 @@
 ; Authenticode signatures (ftdi_install.ps1), and puts them in the program
 ; folder (#133). Otherwise the user can pick a folder they unzipped from FTDI.
 ; Either way the user obtains their own copy; we never distribute it.
-; Silent installs: /MERGETASKS="!ftdidownload" skips the download.
+; Silent installs: the download task is on by default and selecting it (or not
+; deselecting it) accepts FTDI's licence terms; /MERGETASKS="!ftdidownload" skips it.
 
 #ifndef AppVersion
   #error AppVersion must be defined (/DAppVersion=x.y.z)
@@ -149,7 +150,9 @@ var
   ErrorCode: Integer;
 begin
   Result := True;
-  if (CurPageID = wpSelectTasks) and WizardIsTaskSelected('ftdidownload') then
+  // Silent installs: choosing the ftdidownload task (the default) is the acceptance;
+  // a plain MsgBox here would block a silent install on an invisible dialog.
+  if (CurPageID = wpSelectTasks) and WizardIsTaskSelected('ftdidownload') and not WizardSilent() then
   begin
     Result := MsgBox('Setup will download FTDI''s LibFT4222 and D2XX libraries from ' +
       'PyPI (the ft4222 package, which redistributes FTDI''s unmodified, signed DLLs), ' +

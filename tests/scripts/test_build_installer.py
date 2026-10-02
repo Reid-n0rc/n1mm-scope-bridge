@@ -133,3 +133,13 @@ def test_installer_script_never_bundles_ftdi() -> None:
     assert download in iss
     assert "LicenseFile=..\\..\\LICENSE" in iss
     assert "PrivilegesRequired=lowest" in iss
+
+
+def test_no_blocking_dialogs_in_silent_installs() -> None:
+    """Plain MsgBox ignores /SUPPRESSMSGBOXES; every MsgBox path must skip silent mode."""
+    iss = bi.ISS.read_text(encoding="utf-8")
+    code = iss[iss.index("[Code]") :]
+    licence = code[code.index("(CurPageID = wpSelectTasks)") :]
+    assert "not WizardSilent()" in licence.splitlines()[0]
+    failed = code[code.index("procedure FtdiDownloadFailed") :]
+    assert "if not WizardSilent() then" in failed[: failed.index("end;")]
