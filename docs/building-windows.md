@@ -42,7 +42,8 @@ uv run --no-project python scripts/build_installer.py [--iscc "C:\path\to\ISCC.e
 - Installs per user by default (no admin prompt); the dialog offers an
   all-users install.
 - Creates a Start menu shortcut (plus the setup guide and licenses), an
-  optional desktop shortcut, and an optional *Start with Windows* entry.
+  optional desktop shortcut. (It never adds a *Start with Windows* entry, and
+  removes one left by an earlier release candidate.)
 - Shows the GPL license page and installs `licenses/`.
 - **FTDI LibFT4222 is never included.** If it isn't in `System32`, a wizard
   page explains why, offers FTDI's download page, and can copy

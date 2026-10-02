@@ -143,3 +143,25 @@ def test_no_blocking_dialogs_in_silent_installs() -> None:
     assert "not WizardSilent()" in licence.splitlines()[0]
     failed = code[code.index("procedure FtdiDownloadFailed") :]
     assert "if not WizardSilent() then" in failed[: failed.index("end;")]
+
+
+def test_never_starts_with_windows_and_cleans_old_run_value() -> None:
+    iss = bi.ISS.read_text(encoding="utf-8")
+    assert "autostart" not in iss
+    run = [
+        line
+        for line in iss.splitlines()
+        if "CurrentVersion\\Run" in line and not line.startswith(";")
+    ]
+    assert run == [
+        'Root: HKA; Subkey: "Software\\Microsoft\\Windows\\CurrentVersion\\Run"; ValueType: none; '
+        'ValueName: "{#AppName}"; Flags: deletevalue uninsdeletevalue'
+    ]
+
+
+def test_ftdi_prompt_names_pypi_and_links_privacy_notice() -> None:
+    iss = bi.ISS.read_text(encoding="utf-8")
+    assert "Python Package Index (PyPI" in iss
+    assert "your IP address" in iss
+    assert '#define PrivacyUrl "https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html"' in iss
+    assert "{#PrivacyUrl}" in iss
