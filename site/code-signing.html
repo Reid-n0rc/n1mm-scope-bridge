@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>Code signing policy | N1MM Scope Bridge</title>
+<meta name="description" content="How N1MM Scope Bridge releases are built and signed: team roles, what is signed, and how to verify a release.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Code signing policy</h1>
+  <p><strong>Planned:</strong> Free code signing provided by <a href="https://signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>.</p>
+  <p>The project has applied to the SignPath Foundation for free code signing. Until signing is active, the Windows installer and programs are <strong>not</strong> code-signed, and Windows SmartScreen shows a warning when you run them. This page describes the policy that will apply to every signed release.</p>
+
+  <h2 id="roles">Team roles</h2>
+  <table>
+    <thead><tr><th scope="col">Role</th><th scope="col">Members</th><th scope="col">Responsibility</th></tr></thead>
+    <tbody>
+      <tr><td>Authors</td><td>Reid Crowe, N0RC (<a href="https://github.com/Reid-n0rc">@Reid-n0rc</a>)</td><td>Trusted to change the source code</td></tr>
+      <tr><td>Reviewers</td><td>Reid Crowe, N0RC</td><td>Review and approve changes from anyone else</td></tr>
+      <tr><td>Approvers</td><td>Reid Crowe, N0RC</td><td>Approve each signing request</td></tr>
+    </tbody>
+  </table>
+  <p>AI coding agents work on this project only through the maintainer's GitHub account. Every change reaches the release branch through a pull request that must pass CI, CodeQL code scanning, secret scanning and dependency review. Signing a release always needs the maintainer's manual approval.</p>
+  <p>All team members use multi-factor authentication on GitHub and on SignPath.</p>
+
+  <h2 id="signed">What gets signed</h2>
+  <ul>
+    <li>The Windows installer (<code>n1mm-scope-bridge-setup-&lt;version&gt;.exe</code>).</li>
+    <li>The program files inside it (<code>N1MM Scope Bridge.exe</code> and <code>n1mm-scope-bridge.exe</code>).</li>
+  </ul>
+  <p>These files are built by GitHub Actions from this repository's tagged source code. Nothing is built or signed on a personal computer.</p>
+  <p>Signed files contain no proprietary code. FTDI's LibFT4222 and D2XX libraries, which the program needs to talk to the radio, are <strong>never</strong> bundled in the installer or the program. They come from FTDI: either you install them yourself, or the installer downloads FTDI's own signed copy if you leave that option ticked.</p>
+
+  <h2 id="verify">How you can check a release</h2>
+  <ul>
+    <li>Each release lists SHA-256 checksums (<code>SHA256SUMS</code>).</li>
+    <li>GitHub build provenance attestations show that the files were built by this repository's release workflow from the tagged commit: <code>gh attestation verify &lt;file&gt; --repo Reid-n0rc/n1mm-scope-bridge</code>.</li>
+    <li>The full source code for each release is attached to the release.</li>
+  </ul>
+  <p>See also the <a href="privacy.html">privacy statement</a>.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>
