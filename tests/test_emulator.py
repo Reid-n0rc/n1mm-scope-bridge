@@ -87,10 +87,43 @@ def test_deterministic_with_seed() -> None:
 
 
 def test_pacing_uses_sleep() -> None:
+    now = [0.0]
     sleeps: list[float] = []
-    emu = Ft710Emulator(fps=20, sleep=sleeps.append)
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(round(seconds, 6))
+        now[0] += seconds
+
+    emu = Ft710Emulator(fps=20, sleep=sleep, clock=lambda: now[0])
     read_parsed(emu, 2)
     assert sleeps[:2] == [0.05, 0.05]
+
+
+def test_pacing_absorbs_generation_time() -> None:
+    """Time spent building a frame counts toward the period, so the rate stays exact."""
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(round(seconds, 6))
+        now[0] += seconds + 0.01  # each wake-up plus 10 ms of frame generation
+
+    emu = Ft710Emulator(fps=20, sleep=sleep, clock=lambda: now[0])
+    read_parsed(emu, 4)
+    assert sleeps[1:4] == [0.04, 0.04, 0.04]
+
+
+def test_pacing_does_not_burst_after_falling_behind() -> None:
+    now = [0.0]
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(round(seconds, 6))
+        now[0] += seconds + 0.2  # far slower than 20 frames/s
+
+    emu = Ft710Emulator(fps=20, sleep=sleep, clock=lambda: now[0])
+    read_parsed(emu, 3)
+    assert all(s == 0.0 for s in sleeps[1:])
 
 
 # --- faults ------------------------------------------------------------------------------
