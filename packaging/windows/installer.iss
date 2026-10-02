@@ -311,8 +311,8 @@ procedure FtdiDriverFailed(Reason: String);
 begin
   Log('FTDI driver: ' + Reason);
   if not WizardSilent() then
-    MsgBox('N1MM Scope Bridge is installed, but setup could not install the FTDI USB driver:' +
-      #13#10 + Reason + #13#10#13#10 +
+    MsgBox('N1MM Scope Bridge is installed, but setup could not install the FTDI USB driver:' + #13#10 +
+      Reason + #13#10#13#10 +
       'Windows Update usually installs it when you plug in the radio''s USB cable. ' +
       'See {#FtdiDriverHelpUrl} for other options.', mbError, MB_OK);
 end;

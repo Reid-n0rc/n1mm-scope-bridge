@@ -178,3 +178,11 @@ def test_ftdi_prompt_names_pypi_and_links_privacy_notice() -> None:
     assert "your IP address" in iss
     assert '#define PrivacyUrl "https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html"' in iss
     assert "{#PrivacyUrl}" in iss
+
+
+def test_no_code_line_starts_with_a_hash() -> None:
+    """ISPP treats any line starting with # as a preprocessor directive (#152 build break)."""
+    iss = bi.ISS.read_text(encoding="utf-8")
+    code = iss[iss.index("[Code]") :]
+    offenders = [line for line in code.splitlines() if line.lstrip().startswith("#")]
+    assert offenders == []
