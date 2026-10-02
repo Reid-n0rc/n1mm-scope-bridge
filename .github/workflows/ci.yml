@@ -139,6 +139,49 @@ jobs:
       - run: sh tests/hooks/run.sh
       - run: HOOK_SHELL=dash sh tests/hooks/run.sh
 
+  pester:
+    name: PowerShell tests (Pester)
+    # The installer's PowerShell helpers, under Windows PowerShell 5.1 as setup
+    # runs them (#181). Pester is pinned by version and SHA-256 in run.ps1.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pester
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/powershell/run.ps1
+          exit $LASTEXITCODE
+      - name: Check Codecov token
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ -z "$CODECOV_TOKEN" ]; then
+            echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
+          fi
+      - name: Upload coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: pester-coverage.xml
+          disable_search: true
+          flags: powershell
+          fail_ci_if_error: false
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: pester-junit.xml
+          disable_search: true
+          flags: powershell
+          fail_ci_if_error: false
+
   build:
     name: Build sdist and wheel
     runs-on: ubuntu-latest

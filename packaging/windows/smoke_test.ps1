@@ -22,6 +22,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'smoke_lib.ps1')
 $AppId = '{5B454E52-482B-4DB9-9888-C9C98FCD1306}_is1'
 $AppName = 'N1MM Scope Bridge'
 $Dir = Join-Path $env:RUNNER_TEMP ("n1mm-sb-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -32,22 +33,13 @@ $StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$App
 $Desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
 $CliShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$AppName (command line).lnk"
 $failures = [System.Collections.Generic.List[string]]::new()
-$Expected = if ($Payload) { $Payload } else { 'x64' }
-$HasGui = $Expected -ne 'x86'
-$Downloads = $Expected -ne 'arm64'  # no verifiable ARM64 FTDI download exists
-$LibName = if ($Expected -eq 'x86') { 'LibFT4222.dll' } else { 'LibFT4222-64.dll' }
-$Machine = @{ 'x64' = 0x8664; 'arm64' = 0xAA64; 'x86' = 0x14C }[$Expected]
+$plan = Get-PayloadPlan $Payload
+$Expected = $plan.Expected
+$HasGui = $plan.HasGui
+$Downloads = $plan.Downloads
+$LibName = $plan.LibName
+$Machine = $plan.Machine
 Write-Host "payload: $Expected (requested: '$Payload'; OS: $env:PROCESSOR_ARCHITECTURE)"
-
-function Check([bool]$ok, [string]$what) {
-    if ($ok) { Write-Host "ok   - $what" } else { Write-Host "FAIL - $what"; $failures.Add($what) }
-}
-
-function Get-PeMachine([string]$path) {
-    $bytes = [IO.File]::ReadAllBytes($path)
-    $pe = [BitConverter]::ToInt32($bytes, 0x3C)
-    return [BitConverter]::ToUInt16($bytes, $pe + 4)
-}
 
 function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120, [string]$logFile = '') {
     $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -82,7 +74,7 @@ $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if (-not (Test-Path $runKey)) { New-Item -Path $runKey -Force | Out-Null }  # fresh runners lack it
 New-ItemProperty -Path $runKey -Name $AppName -Value 'stale-from-rc1' -PropertyType String -Force | Out-Null
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
-$tasks = if ($Expected -eq 'x86') { 'ftdidownload' } elseif ($Downloads) { 'desktopicon,ftdidownload' } else { 'desktopicon' }
+$tasks = $plan.Tasks
 $setupArgs = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
     "/DIR=`"$Dir`"", "/TASKS=$tasks", "/LOG=`"$log`"")
 if ($Payload) { $setupArgs += "/PAYLOAD=$Payload" }
