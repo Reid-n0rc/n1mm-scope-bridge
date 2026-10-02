@@ -15,10 +15,11 @@ from collections.abc import Callable, Iterable
 from typing import Any, TextIO
 
 from n1mm_scope_bridge.bridge import build_pipeline
+from n1mm_scope_bridge.cat import ScopeModeKeeper
 from n1mm_scope_bridge.cli.common import LatestStatus, format_status
 from n1mm_scope_bridge.n1mm import N1mmSender
 from n1mm_scope_bridge.pipeline import Pipeline
-from n1mm_scope_bridge.radios.base import ParsedFrame
+from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 
 Source = tuple[Iterable[bytes], Callable[[], object]]
@@ -38,6 +39,7 @@ class StreamSession:
         err: TextIO,
         *,
         keep_alive: bool = False,
+        make_keeper: Callable[[Iterable[bytes]], ScopeModeKeeper | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.settings = settings
@@ -49,6 +51,8 @@ class StreamSession:
         self._pipe: Pipeline[ParsedFrame] | None = None
         self._sender: N1mmSender | None = None
         self._latest = LatestStatus()
+        self._make_keeper = make_keeper
+        self._keeper: ScopeModeKeeper | None = None
 
     # -- BridgeController ---------------------------------------------------------
 
@@ -78,13 +82,21 @@ class StreamSession:
                 return
             self._finish()
             source, close = self._make_source()
+            keeper = self._make_keeper(source) if self._make_keeper else None
+            self._keeper = keeper
             self._sender = N1mmSender(self.settings.n1mm_host, self.settings.n1mm_port)
+
+            def on_status(status: ScopeStatus) -> None:
+                self._latest.update(status)
+                if keeper is not None:
+                    keeper.observe(status)
+
             self._pipe = build_pipeline(
                 self.settings.to_bridge_config(),
                 source,
                 self._sender,
                 close_source=close,
-                on_status=self._latest.update,
+                on_status=on_status,
                 warn=lambda m: print(f"warning: {m}", file=self._err),
             )
             self._pipe.start()
@@ -142,9 +154,16 @@ class StreamSession:
                 self._finish()
 
     def _finish(self) -> None:
-        pipe, sender = self._pipe, self._sender
-        self._pipe, self._sender = None, None
+        """Stop the stream and restore the scope mode, even after a stream error.
+
+        The keeper restores *before* the source closes, while the radio is
+        still connected; a stream error is re-raised afterwards.
+        """
+        pipe, sender, keeper = self._pipe, self._sender, self._keeper
+        self._pipe, self._sender, self._keeper = None, None, None
         try:
+            if keeper is not None:
+                keeper.restore()
             if pipe is not None:
                 pipe.stop()
                 pipe.join(timeout=5)

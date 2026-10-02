@@ -29,6 +29,7 @@ VFO 14.074000 MHz, span 20 kHz, Center (Normal) | read 412 | sent 40 | dropped 0
 | `--loop` | off | With `--replay`, start again at the end of the file |
 | `--fps N` | `20` | With `--replay`, frames per second to replay |
 | `--duration SECONDS` | until Ctrl-C | Stop after this many seconds |
+| `--force-center-mode` | off | Switch the scope to Center while streaming and restore the previous mode afterwards (emulator only for now; with a real radio it warns and continues, #62) |
 | `--control-port PORT` | off | Turn on [UDP remote control](../udp-control.md) on this port (normally `13070`), listening on this PC only |
 
 Examples:

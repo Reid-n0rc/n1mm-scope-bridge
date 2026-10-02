@@ -300,6 +300,11 @@ class Ft4222Reader:
         self.reinits = 0
 
     @property
+    def api(self) -> Ft4222Api:
+        """The FTDI (or emulator) API this reader uses."""
+        return self._api
+
+    @property
     def is_open(self) -> bool:
         return self._handle is not None
 

@@ -1,8 +1,8 @@
 # Design: switch the scope to Center mode while streaming (#62)
 
-Status: **design accepted for implementation behind a protocol; the
-real-radio CAT path is UNVERIFIED (#62) until the maintainer's hardware
-session.**
+Status: **implemented behind `CatControl` (src/n1mm_scope_bridge/cat.py) with
+the emulator; the real-radio CAT path is UNVERIFIED (#62). Run
+`tests/test_cat_hardware.py` on the station PC to test a COM port.**
 
 ## Problem
 

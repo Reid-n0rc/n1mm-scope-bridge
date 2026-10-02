@@ -60,6 +60,8 @@ class Settings:
     start_minimized: bool = False
     on_close: str = "ask"
     """What the window's Close button does: ask, tray (keep streaming), or exit."""
+    force_center_mode: bool = False
+    """Switch the scope to Center while streaming, then restore it (#62). Off by default."""
     control_enabled: bool = False
     """Optional UDP remote control (docs/user/udp-control.md). Off by default."""
     control_port: int = DEFAULT_CONTROL_PORT
