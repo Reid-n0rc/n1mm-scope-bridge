@@ -311,9 +311,14 @@ has the `no-changelog` label.
    artifact) into the PR, and run
    `python scripts/build_changelog.py --version X.Y.Z` to fold the fragments
    into [CHANGELOG.md](CHANGELOG.md).
-2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The regression
-   runs again on the tag, and the release workflow publishes a GitHub
-   **pre-release**.
+2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The
+   **Release** workflow (`.github/workflows/release.yml`) checks that the tag
+   matches `pyproject.toml` and points at `master`, runs the release
+   regression on the tag, builds the installer, app zip, wheel, and sdist,
+   writes `SHA256SUMS`, attests build provenance, and publishes a GitHub
+   **pre-release** whose notes are the CHANGELOG section plus the regression
+   report. Rehearse first with a dry run (builds everything, publishes
+   nothing): `gh workflow run release.yml --ref dev -f tag=vX.Y.Z-rc1`.
 3. **On-air check.** The maintainer installs the RC on the station PC and
    verifies the waterfall with a real FT-710 and N1MM+. Fixes go through
    `dev` as usual, followed by another RC.
