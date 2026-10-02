@@ -9,7 +9,14 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QAction, QIcon
-from PySide6.QtWidgets import QCheckBox, QMenu, QMessageBox, QSystemTrayIcon, QWidget
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QCheckBox,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+    QWidget,
+)
 
 TRAY_HINT = "N1MM Scope Bridge is still running in the system tray. Right-click its icon to exit."
 
@@ -35,8 +42,10 @@ def decide_close(on_close: str, tray_available: bool, ask: Asker) -> CloseDecisi
     return CloseDecision(choice, choice if remember else None)
 
 
-def ask_close(parent: QWidget | None) -> tuple[str, bool]:
-    """Ask: keep streaming in the tray, exit, or cancel. Returns (choice, remember)."""
+def build_close_box(
+    parent: QWidget | None,
+) -> tuple[QMessageBox, QAbstractButton, QAbstractButton, QCheckBox]:
+    """The close prompt, not yet shown (also used for website screenshots)."""
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
     box.setWindowTitle("Close N1MM Scope Bridge")
@@ -48,6 +57,12 @@ def ask_close(parent: QWidget | None) -> tuple[str, bool]:
     box.setDefaultButton(tray)
     remember = QCheckBox("Remember my choice")
     box.setCheckBox(remember)
+    return box, tray, exit_button, remember
+
+
+def ask_close(parent: QWidget | None) -> tuple[str, bool]:
+    """Ask: keep streaming in the tray, exit, or cancel. Returns (choice, remember)."""
+    box, tray, exit_button, remember = build_close_box(parent)
     box.exec()
     clicked = box.clickedButton()
     choice = "tray" if clicked is tray else "exit" if clicked is exit_button else "cancel"

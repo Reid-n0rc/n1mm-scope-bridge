@@ -14,12 +14,17 @@ Template syntax:
   <!-- if:release --> ... <!-- endif:release -->        only when --tag is given
   <!-- if:prerelease --> ... <!-- endif:prerelease -->  only without --tag
   {{name}}                                   a value from the build context
+  <!-- screenshot:NAME -->                   a GUI screenshot from --screenshots DIR
+                                             (manifest.json written by
+                                             `n1mm-scope-bridge gui --screenshot DIR`)
 """
 
 from __future__ import annotations
 
 import argparse
+import html
 import html.parser
+import json
 import re
 import shutil
 import sys
@@ -36,6 +41,9 @@ DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 INCLUDE = re.compile(r"<!-- include:([a-z0-9_-]+) -->")
 BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re.S)
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
+SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
+SHOTS_DIR = "assets/screenshots"
+PREVIEW_LABEL = "Development preview"
 
 
 class SiteError(Exception):
@@ -62,13 +70,67 @@ def context(tag: str | None, release_date: str | None) -> dict[str, str]:
     }
 
 
-def render(text: str, ctx: dict[str, str], partials: dict[str, str], *, name: str) -> str:
+Shots = dict[str, dict[str, object]]
+
+
+def load_screenshots(directory: Path) -> Shots:
+    """Read ``manifest.json`` from a ``gui --screenshot`` run and check its files."""
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as err:
+        raise SiteError(f"screenshots: cannot read {directory / 'manifest.json'}: {err}") from None
+    if not isinstance(manifest, dict) or not manifest:
+        raise SiteError("screenshots: manifest.json lists no screenshots")
+    for scene, entry in manifest.items():
+        for key in ("file", "width", "height", "alt", "caption"):
+            if not isinstance(entry, dict) or key not in entry:
+                raise SiteError(f"screenshots: {scene!r} has no {key!r}")
+        for key in ("file", "dark"):
+            if key in entry and not (directory / str(entry[key])).is_file():
+                raise SiteError(f"screenshots: {scene!r} file {entry[key]!r} is missing")
+    return manifest
+
+
+def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
+    """Accessible <figure> for one screenshot (explicit size; dark variant if any)."""
+    src = f"{SHOTS_DIR}/{entry['file']}"
+    dark = (
+        f'<source srcset="{SHOTS_DIR}/{entry["dark"]}" media="(prefers-color-scheme: dark)">'
+        if "dark" in entry
+        else ""
+    )
+    label = f' <span class="badge">{PREVIEW_LABEL}</span>' if preview else ""
+    return (
+        f'<figure class="screenshot" id="shot-{scene}"><picture>{dark}'
+        f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
+        f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}" loading="lazy">'
+        f"</picture><figcaption>{html.escape(str(entry['caption']))}{label}</figcaption></figure>"
+    )
+
+
+def render(
+    text: str,
+    ctx: dict[str, str],
+    partials: dict[str, str],
+    *,
+    name: str,
+    shots: Shots | None = None,
+) -> str:
     def include(m: re.Match[str]) -> str:
         if m.group(1) not in partials:
             raise SiteError(f"{name}: unknown partial {m.group(1)!r}")
         return partials[m.group(1)]
 
     text = INCLUDE.sub(include, text)
+
+    def screenshot(m: re.Match[str]) -> str:
+        if shots is None:
+            return ""  # built without --screenshots (local preview)
+        if m.group(1) not in shots:
+            raise SiteError(f"{name}: no screenshot {m.group(1)!r} in the manifest")
+        return figure(m.group(1), shots[m.group(1)], preview="version" not in ctx)
+
+    text = SCREENSHOT.sub(screenshot, text)
     released = "version" in ctx
 
     def block(m: re.Match[str]) -> str:
@@ -94,16 +156,19 @@ class _Links(html.parser.HTMLParser):
         self.refs: list[str] = []
         self.ids: set[str] = set()
         self.images_without_alt = 0
+        self.images_without_size = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = dict(attrs)
         if a.get("id"):
             self.ids.add(a["id"] or "")
-        for key in ("href", "src"):
+        for key in ("href", "src", "srcset"):
             if a.get(key):
                 self.refs.append(a[key] or "")
         if tag == "img" and a.get("alt") is None:
             self.images_without_alt += 1
+        if tag == "img" and (not a.get("width") or not a.get("height")):
+            self.images_without_size += 1
 
 
 def check_site(out: Path) -> list[str]:
@@ -117,6 +182,8 @@ def check_site(out: Path) -> list[str]:
     for name, parsed in pages.items():
         if parsed.images_without_alt:
             problems.append(f"{name}: {parsed.images_without_alt} image(s) without alt text")
+        if parsed.images_without_size:
+            problems.append(f"{name}: {parsed.images_without_size} image(s) without width/height")
         for ref in parsed.refs:
             parts = urlsplit(ref)
             if parts.scheme or parts.netloc:
@@ -131,12 +198,21 @@ def check_site(out: Path) -> list[str]:
     return problems
 
 
-def build(out: Path, ctx: dict[str, str], src: Path = SITE) -> list[Path]:
+def build(
+    out: Path, ctx: dict[str, str], src: Path = SITE, screenshots: Path | None = None
+) -> list[Path]:
     """Render every page into ``out`` (replaced), copy assets, and check links."""
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / PARTIALS).glob("*.html")}
+    shots = load_screenshots(screenshots) if screenshots is not None else None
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(src, out, ignore=shutil.ignore_patterns(PARTIALS, "*.html"))
+    if screenshots is not None and shots is not None:
+        (out / SHOTS_DIR).mkdir(parents=True, exist_ok=True)
+        for entry in shots.values():
+            for key in ("file", "dark"):
+                if key in entry:
+                    shutil.copy2(screenshots / str(entry[key]), out / SHOTS_DIR / str(entry[key]))
     pages = sorted(src.glob("*.html"))
     if not pages:
         raise SiteError(f"no pages in {src}")
@@ -144,7 +220,7 @@ def build(out: Path, ctx: dict[str, str], src: Path = SITE) -> list[Path]:
     for page in pages:
         target = out / page.name
         target.write_text(
-            render(page.read_text(encoding="utf-8"), ctx, partials, name=page.name),
+            render(page.read_text(encoding="utf-8"), ctx, partials, name=page.name, shots=shots),
             encoding="utf-8",
         )
         written.append(target)
@@ -160,9 +236,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "_site")
     parser.add_argument("--tag", help="final release tag (vX.Y.Z); omit before the first release")
     parser.add_argument("--release-date", help="release date, YYYY-MM-DD (with --tag)")
+    parser.add_argument(
+        "--screenshots",
+        type=Path,
+        help="folder from `n1mm-scope-bridge gui --screenshot DIR` (omit: no screenshots)",
+    )
     args = parser.parse_args(argv)
     try:
-        pages = build(args.out, context(args.tag, args.release_date))
+        pages = build(args.out, context(args.tag, args.release_date), screenshots=args.screenshots)
     except SiteError as err:
         print(f"error: {err}", file=sys.stderr)
         return 1
