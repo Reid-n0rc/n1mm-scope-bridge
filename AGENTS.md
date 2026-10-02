@@ -27,6 +27,22 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   - [docs/n1mm-spectrum-protocol.md](docs/n1mm-spectrum-protocol.md): N1MM packet
   - [docs/adding-a-radio.md](docs/adding-a-radio.md): how a new radio plugs in
 
+## Product target
+
+- **Windows 10/11 x64 is the product platform**, because N1MM Logger+ runs only
+  on Windows. Operators install with the Windows installer and use the GUI;
+  they never need Python or a terminal.
+- **Every user-facing feature is usable from the GUI.** The CLI exists for
+  scripts, headless station PCs, and troubleshooting.
+- **Windows CI is required** for every supported Python (3.10, 3.13, and
+  free-threaded 3.14t), as is the Windows release regression (app, GUI
+  self-test, and installer install/run/uninstall).
+- **Keep the code portable.** Ubuntu CI and one macOS job stay so the core
+  keeps working elsewhere for possible future uses, but macOS and Linux are
+  unsupported for operators. Keep platform-specific code behind small seams
+  (for example the FTDI library names in `transport/ft4222.py`), and use Qt
+  (PySide6) for the GUI.
+
 ## Non-negotiable rules
 
 1. **No work without an approved, assigned issue.** Every change is tracked by
