@@ -34,9 +34,24 @@ function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec
     $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
     if (-not $p.WaitForExit($timeoutSec * 1000)) {
         $p.Kill()
-        if ($logFile -and (Test-Path $logFile)) { Write-Host '--- log (tail) ---'; Get-Content $logFile -Tail 80 }
-        Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'powershell|setup|n1mm' } |
-            ForEach-Object { Write-Host "still running: $($_.ProcessName) $($_.Id)" }
+        $stuck = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'powershell|setup|n1mm' }
+        foreach ($proc in $stuck) {
+            Write-Host "still running: $($_.ProcessName) $($proc.ProcessName) pid=$($proc.Id) window='$($proc.MainWindowTitle)'"
+        }
+        # Name every top-level window, to see any dialog setup is waiting on.
+        Add-Type -AssemblyName UIAutomationClient
+        $root = [System.Windows.Automation.AutomationElement]::RootElement
+        $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+        foreach ($w in $all) {
+            $names = $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) |
+                ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -First 12
+            Write-Host ("window '" + $w.Current.Name + "': " + ($names -join ' | '))
+        }
+        if ($logFile -and (Test-Path $logFile)) {
+            Write-Host "--- log ($((Get-Item $logFile).Length) bytes) ---"
+            Get-Content $logFile -Tail 80
+        } else { Write-Host '--- no log file ---' }
+        $stuck | Where-Object { $_.ProcessName -match 'setup' } | Stop-Process -Force -ErrorAction SilentlyContinue
         throw "$file timed out"
     }
     return $p.ExitCode
