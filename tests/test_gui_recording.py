@@ -38,7 +38,8 @@ def test_records_animated_gif_webp_and_still(tmp_path: Path, qtbot: QtBot) -> No
     assert gif.size[0] == 320
     webp = Image.open(tmp_path / "main-window-live.webp")
     assert webp.is_animated
-    assert Image.open(tmp_path / "main-window-live.png").size == gif.size
+    still = Image.open(tmp_path / "main-window-live.png")
+    assert still.size == gif.size
     assert (tmp_path / "main-window-live-dark.gif").exists()
     assert entry["simulated"] is True
     assert "emulator" in str(entry["caption"])
