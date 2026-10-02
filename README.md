@@ -17,6 +17,10 @@ Other Yaesu models are planned (see [Supported radios](#supported-radios)).
 > source, see the **[website](https://reid-n0rc.github.io/n1mm-scope-bridge/)**
 > and the **[user guide](docs/user/README.md)**.
 
+## Test coverage
+
+[![Codecov coverage tree graph](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/graphs/tree.svg?token=X0SYOVMX1M)](https://app.codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
+
 ## Disclaimer
 
 N1MM Scope Bridge is an independent open-source project. It is not affiliated with, endorsed by, or supported by the N1MM Logger+ project, its developers, or N1MM. It uses N1MM Logger+'s publicly documented external UDP interface. N1MM Logger+ is the work of its own authors. Yaesu and FT-710 are trademarks of Yaesu Musen Co., Ltd.; this project is not affiliated with Yaesu, FTDI, or the wfview project. Other names are trademarks of their respective owners.
