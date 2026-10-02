@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "Stream a radio's panadapter/waterfall (Yaesu FT-710 first) into N1MM Logger+'s Spectrum Display window"
 readme = "README.md"
 license = "GPL-3.0-only"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md"]
 authors = [{ name = "Reid Crowe, N0RC" }]
 requires-python = ">=3.10"
 dependencies = []
+
 keywords = ["ham radio", "amateur radio", "n1mm", "yaesu", "ft-710", "spectrum", "waterfall", "contesting"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -20,6 +21,10 @@ classifiers = [
     "Topic :: Communications :: Ham Radio",
 ]
 
+[project.optional-dependencies]
+# Qt 6 GUI. PySide6 is used under GPL-3.0-only (it is also offered under LGPL-3.0).
+gui = ["PySide6-Essentials>=6.8"]
+
 [project.urls]
 Homepage = "https://github.com/Reid-n0rc/n1mm-scope-bridge"
 Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
@@ -27,8 +32,24 @@ Issues = "https://github.com/Reid-n0rc/n1mm-scope-bridge/issues"
 [project.scripts]
 n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
 
+[project.gui-scripts]
+# Windowed (no console) on Windows. Needs the `gui` extra.
+n1mm-scope-bridge-gui = "n1mm_scope_bridge.gui.app:main"
+
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11"]
+# Bench tooling for the real radio (scripts/dev_cat.py, capture_golden --auto,
+# hardware_smoke --cat-port); not a default group: `uv sync --group hardware`.
+# Never a runtime dependency: the shipped bridge never opens a COM port.
+hardware = ["pyserial>=3.5"]
+# Windows app build (issue #6); not a default group: `uv sync --group packaging`.
+packaging = ["pyinstaller>=6.20"]
+# PySide6 ships abi3 wheels only, which free-threaded CPython cannot load:
+# free-threaded jobs use `uv sync --no-group gui-dev` and the GUI tests skip.
+gui-dev = ["PySide6-Essentials>=6.8", "pytest-qt>=4.4", "Pillow>=11"]  # Pillow: website recordings only
+dev = ["pytest>=8", "pytest-cov>=5", "pytest-timeout>=2.3", "ruff>=0.6", "mypy>=1.11"]
+
+[tool.uv]
+default-groups = ["dev", "gui-dev"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
@@ -42,17 +63,30 @@ target-version = "py310"
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "PT"]
 ignore = ["PLR2004"]
 
+[tool.ruff.lint.pylint]
+# Keyword-only dependency injection (clocks, loaders, callbacks) for testability.
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+# Keyword-only test builders mirror every frame field.
+"tests/**" = ["PLR0913"]
+
 [tool.mypy]
 strict = true
 python_version = "3.10"
 files = ["src", "tests", "scripts"]
-mypy_path = "scripts"
+mypy_path = "scripts:tests"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["scripts"]
+pythonpath = ["scripts", "tests"]
 addopts = "-ra --strict-markers"
+# Threaded code must never hang CI: fail any single test after 60 s.
+timeout = 60
 markers = [
+    "slow: builds the package (runs in CI, a few seconds)",
+    "gui: needs PySide6 (skipped on free-threaded Python)",
+    "native: loads FTDI's real LibFT4222/D2XX DLLs (needs N1MM_BRIDGE_FTDI_DIR; CI Windows)",
     "hardware: needs a real radio and the FTDI LibFT4222 library (opt-in, never runs in CI)",
 ]
 

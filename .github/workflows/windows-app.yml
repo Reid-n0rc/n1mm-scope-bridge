@@ -1,0 +1,50 @@
+# Builds the Windows application with PyInstaller and smoke-tests the built
+# exe (legal notices, emulator frames into a UDP listener). Issue #6.
+#
+# Called by the release workflow (#46) and the installer build (#20) through
+# workflow_call; runs on its own for PRs that can change the app.
+name: Windows app
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths:
+      - src/**
+      - packaging/**
+      - scripts/build_windows_app.py
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/windows-app.yml
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # github.workflow is the caller when reused, so callers never cancel each other.
+  group: windows-app-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows app
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+      - run: uv sync --locked --group packaging
+      - name: Build and smoke-test the app
+        shell: bash
+        run: uv run --group packaging python scripts/build_windows_app.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-app
+          path: dist/windows/*.zip
+          if-no-files-found: error
+          retention-days: 30

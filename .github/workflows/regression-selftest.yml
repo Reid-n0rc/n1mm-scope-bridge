@@ -1,0 +1,24 @@
+# Runs the full release regression on PRs into dev that change the
+# regression itself or packaging, so the release gate is proven on Windows
+# before a release depends on it (issue #16).
+name: Regression self-test
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - scripts/release_regression.py
+      - scripts/regression_core.py
+      - scripts/regression_steps/**
+      - .github/workflows/release-regression.yml
+      - .github/workflows/regression-selftest.yml
+      - packaging/**
+      - pyproject.toml
+      - uv.lock
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    uses: ./.github/workflows/release-regression.yml

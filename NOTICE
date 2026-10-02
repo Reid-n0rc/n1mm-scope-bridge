@@ -1,0 +1,33 @@
+n1mm-scope-bridge
+Copyright (C) 2026 Reid Crowe, N0RC
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, version 3 of the License.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License (LICENSE) for
+more details.
+
+Source code: https://github.com/Reid-n0rc/n1mm-scope-bridge
+
+------------------------------------------------------------------------------
+Portions of this program are derived from wfview
+https://gitlab.com/eliggett/wfview
+
+  wfview is copyright 2017-2026 Elliott H. Liggett (W6EL) and Phil Taylor
+  (M0VSE). All rights reserved. wfview source code is licensed via the GNU
+  GPLv3.
+
+  src/radio/yaesucommander.cpp:
+  Copyright 2017-2024 Elliott H. Liggett W6EL and Phil E. Taylor M0VSE
+
+The derived portions were modified by Reid Crowe, N0RC, beginning
+2026-10-01: ported from C++/Qt to Python. Each derived file states what was
+taken and how it was changed. See THIRD_PARTY.md for the full list.
+
+------------------------------------------------------------------------------
+This program loads FTDI's LibFT4222 / D2XX libraries at run time if the user
+has installed them. They are not part of this program and are never
+distributed with it.

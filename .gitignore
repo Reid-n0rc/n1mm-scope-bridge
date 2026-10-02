@@ -32,3 +32,5 @@ Thumbs.db
 .claude/worktrees/
 .claude/settings.local.json
 CLAUDE.local.md
+regression-report.md
+_site/

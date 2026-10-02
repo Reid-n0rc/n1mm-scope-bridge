@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- include:head -->
+<title>Install | N1MM Scope Bridge</title>
+<meta name="description" content="Install N1MM Scope Bridge on Windows.">
+</head>
+<body>
+<!-- include:header -->
+<main id="main" class="wrap">
+  <h1>Install</h1>
+
+  <h2 id="requirements">What you need</h2>
+  <ul>
+    <li>Windows 10 or 11 (64-bit), the PC that runs N1MM Logger+</li>
+    <li>A supported Yaesu radio (see <a href="index.html#radios">supported radios</a>)</li>
+    <li>N1MM Logger+</li>
+  </ul>
+
+  <h3 id="ft-710">Yaesu FT-710</h3>
+  <ul>
+    <li>Connect the radio to the PC with a USB cable.</li>
+    <li>On the radio, set <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. With it OFF, the scope interface doesn't appear on the PC at all. Then turn the radio off and on, <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), so the PC sees the scope device. (<a href="faq.html#no-scope">More help</a>.)</li>
+    <li>Install FTDI's <strong>LibFT4222</strong> library from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>. The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. It's free, but its license doesn't let us include it with this GPL program, so you install it yourself.</li>
+  </ul>
+  <p>Setup steps for other Yaesu models will be added here as they become supported.</p>
+
+  <!-- if:prerelease -->
+  <h2 id="download">Download</h2>
+  <p>There is no release yet. When there is, an installer will be available here. Until then you can follow progress, or try the development version from source, on <a href="{{source_url}}">GitHub</a>.</p>
+  <!-- endif:prerelease -->
+
+  <!-- if:release -->
+  <h2 id="download">Download</h2>
+  <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
+  <p>The release page lists the installer and SHA-256 checksums. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
+  <!-- endif:release -->
+
+  <h2 id="setup-wizard">The setup wizard</h2>
+  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, offers a desktop shortcut and an option to start with Windows, and asks where you unzipped FTDI's LibFT4222 (you can skip that and set it later in the app).</p>
+  <!-- screenshots:installer -->
+
+  <h2 id="smartscreen">If Windows warns about the installer</h2>
+  <p>The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose <strong>More info</strong>, then <strong>Run anyway</strong>. Each release lists SHA-256 checksums so you can check the download.</p>
+
+  <h2 id="first-launch">First launch</h2>
+  <ol class="steps">
+    <li>Start <strong>N1MM Scope Bridge</strong> from the Start menu (or let setup start it).</li>
+    <li>Choose your radio. If you didn't let setup copy LibFT4222, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
+    <li>Press <strong>Start</strong>. The status changes to <strong>Streaming</strong> and shows your radio's frequency and span.</li>
+    <li>No radio connected yet? Turn on <strong>Use the built-in emulator</strong> to try everything first.</li>
+  </ol>
+
+  <h2 id="next">Next</h2>
+  <p><a href="n1mm.html">Set up N1MM+ to show the bridge's spectrum</a>.</p>
+</main>
+<!-- include:footer -->
+</body>
+</html>

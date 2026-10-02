@@ -162,12 +162,28 @@ expect allow "guard allows input with no command" guard_raw '{"tool_name":"Read"
 expect allow "guard allows unparseable input" guard_raw 'not json'
 
 # Without jq the guard allows and warns on stderr.
-NOJQ="$TMP/nojq-bin"
-mkdir -p "$NOJQ"
-for tool in cat git tr sh; do ln -s "$(command -v "$tool")" "$NOJQ/$tool"; done
-nojq() { printf '{"tool_input":{"command":"git push origin dev"}}' | PATH="$NOJQ" "$NOJQ/sh" "$GUARD"; }
-expect allow "guard allows when jq is missing" nojq
-if nojq 2>&1 | grep -q "jq not found"; then ok "guard warns when jq is missing"; else not_ok "guard warns when jq is missing"; fi
+# Git for Windows' MSYS binaries cannot run from symlinked copies, so there
+# the "no jq" PATH is the MSYS core bin directory (jq is not part of Git).
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+        NOJQ_PATH="/usr/bin"
+        NOJQ_SH="/usr/bin/sh"
+        ;;
+    *)
+        NOJQ_PATH="$TMP/nojq-bin"
+        NOJQ_SH="$NOJQ_PATH/sh"
+        mkdir -p "$NOJQ_PATH"
+        for tool in cat git tr sh; do ln -s "$(command -v "$tool")" "$NOJQ_PATH/$tool"; done
+        ;;
+esac
+nojq() { printf '{"tool_input":{"command":"git push origin dev"}}' | PATH="$NOJQ_PATH" "$NOJQ_SH" "$GUARD"; }
+if PATH="$NOJQ_PATH" command -v jq >/dev/null 2>&1; then
+    ok "skip: jq is present in $NOJQ_PATH, cannot simulate a missing jq"
+    ok "skip: jq is present in $NOJQ_PATH, cannot simulate a missing jq"
+else
+    expect allow "guard allows when jq is missing" nojq
+    if nojq 2>&1 | grep -q "jq not found"; then ok "guard warns when jq is missing"; else not_ok "guard warns when jq is missing"; fi
+fi
 
 # Blocked output explains why on stderr.
 reason=$(printf '%s' '{"tool_input":{"command":"git push origin dev"}}' | ${HOOK_SHELL:-sh} "$GUARD" 2>&1 >/dev/null)

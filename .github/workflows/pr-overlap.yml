@@ -1,0 +1,32 @@
+# Warns when a PR changes files another open PR also changes (issue #43,
+# AGENTS.md -> Parallel work). Warnings only: stacked PRs can overlap on
+# purpose. Logic: scripts/check_overlap.py.
+#
+# pull_request_target runs the base branch's script with a read-only token.
+# No PR code is checked out or executed; only PR metadata is read through gh.
+name: PR overlap
+
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  overlap:
+    name: File overlap with other open PRs
+    runs-on: ubuntu-latest
+    steps:
+      # Base branch only (the pull_request_target default). Never check out the PR head here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check overlap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/check_overlap.py --pr "$PR_NUMBER"

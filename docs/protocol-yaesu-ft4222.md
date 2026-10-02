@@ -8,8 +8,14 @@ by this project on real hardware.
 
 ## USB device
 
-When connected over USB, the FT-710 enumerates an FTDI **FT4222** in addition
-to the CAT and audio devices. wfview opens it with D2XX by description
+When connected over USB, and with the radio menu **OPERATION SETTING → GENERAL
+→ SCU-LAN10** set to **ON** (CAT `EX030126;` reads `EX0301261;`), the FT-710
+enumerates an FTDI **FT4222** (USB ID 0403:601c, "FT4222H") in addition to the
+CAT and audio devices. With SCU-LAN10 OFF (`EX0301260;`) the FT4222 is not
+present at all: verified on a real FT-710 on 2026-10-02, whose USB tree then
+showed only the CP2105 dual UART and the USB audio codec. The SCU-LAN10
+adapter itself is not needed. Source for the requirement: wfview's FT-710
+setup page; menu number from Yaesu's FT-710 CAT manual (EX menu 03-01-26). wfview opens it with D2XX by description
 **`"FT4222 A"`** and sets it up as follows:
 
 | Step | Call | Value |
@@ -41,10 +47,24 @@ macOS loads `libft4222.dylib`, plus `libftd2xx.dylib` if D2XX is not built in.
 
 ### Resynchronisation
 
-A frame is valid only if it ends with `FF 01 EE 01`. If it does not, wfview
-reads 1 byte at a time (giving up after 8192 bytes) until it has seen 16
-consecutive bytes equal to `FF 01 EE 01` repeated four times, then resumes
-4096-byte reads. If that fails, it re-initialises the device.
+A frame is valid only if it ends with `FF 01 EE 01`.
+
+- **wfview** reads 1 byte at a time (up to 8192) until it sees 16 bytes of
+  `FF 01 EE 01` repeated four times, then resumes 4096-byte reads.
+- **This bridge** locks on a single `FF 01 EE 01`, consumes any further
+  repeats (padding), and treats the next 4 bytes as the start of the next
+  frame.
+
+The difference matters. If the radio pads the unused region with the
+pattern, wfview can lock in the middle of the padding and accept frames
+shifted by up to 1 KiB. If the radio does not pad, wfview never finds 16
+pattern bytes. The bridge handles both cases (tested with the emulator's
+`padding="sync"` and `padding="zero"`). After 16 resyncs without a valid frame
+it re-opens the device, and after 3 re-opens it reports
+`No valid scope frames`. **Verified on a real FT-710 (#111):** the bytes between the
+status block and the end are zero, and each frame ends with `FF 01 EE 01` four
+times (16 bytes), which is what wfview's 16-byte resync waits for. Frames arrived
+aligned from the first read.
 
 ### Status block (`data`, offsets relative to byte 2900)
 
@@ -53,16 +73,16 @@ consecutive bytes equal to `FF 01 EE 01` repeated four times, then resumes
 | 17 | 1 | Scope mode. wfview uses the first hex digit of the byte as the mode code (table below) |
 | 22 | 2 | Changes on TX (`00 08` → `80 28`) |
 | 27 | 1 | Preamp (2 bits) and attenuator (2 bits) |
-| 32 | 1 | Scope span index, 0–9 (table below) |
+| 32 | 1 | Low nibble: scope span index, 0–9 (table below), in every mode. High nibble: `0x4` in Cursor mode, `0x8` in Fixed mode, `0x0` in Center (verified #111) |
 | 33 | 1 | Scope speed (upper nibble?), **UNVERIFIED** |
-| 52 | 1 | Scope mode family: `00` center, `01` cursor, `02` fixed, **UNVERIFIED** |
+| 52 | 1 | Scope mode family: `00` center, `01` cursor, `02` fixed (verified #111) |
 | 60 | 1 | VFO-A operating mode (scope code) |
 | 64 | 5 | VFO-A frequency, **packed BCD**, Hz (for example `00 14 07 40 00` = 14.074000 MHz) |
 | 85 | 1 | VFO-B operating mode |
 | 89 | 5 | VFO-B frequency, packed BCD, Hz |
 | 110 | 1 | S-meter |
-| 132 | 4 | VFO-A frequency, big-endian binary |
-| 144 | 4 | Fixed-mode scope start frequency, big-endian, **UNVERIFIED** |
+| 132 | 4 | VFO-A frequency, big-endian binary (verified #111) |
+| 144 | 4 | Scope start frequency, big-endian: the fixed start (for example 7,000,000) in Fixed mode, VFO-A otherwise (verified #111) |
 
 ### Span index (byte 32)
 
@@ -94,7 +114,29 @@ validation confirms this, the bridge:
 
 ### Rate
 
+Measured on a real FT-710 (#111): **11.2 frames per second** (3365 frames in
+300 s). The emulator streams at the same rate (`EMULATOR_FPS`).
+
+
 The radio streams frames continuously. wfview emits one frame every
 `poll` ms (20 ms by default, adjusted to the UI's update interval). The bridge
 drops frames to the N1MM rate (default 4 per second) and can optionally
 average or peak-hold the dropped frames.
+
+
+## Validation on a real FT-710 (#111, 2026-10-02)
+
+- **Enabling the scope output:** menu **OPERATION SETTING → GENERAL → SCU-LAN10 = ON**
+  (CAT `EX0301261;`). After changing it the FT4222 (`0403:601C`, "FT4222") only
+  appeared on USB after a radio power cycle **and** unplugging and replugging the
+  USB cable.
+- **Smoke test:** 5 minutes streaming through the bridge: 3365 frames (11.2/s),
+  1200/1200 N1MM+ packets, 0 dropped or bad frames, 0 resyncs, 30/30 CAT VFO
+  checks matched.
+- **Golden captures** (`tests/fixtures/golden/`, 7.074 MHz DATA-U): all 10
+  Center-mode spans plus Cursor and Fixed decode exactly as CAT reports them.
+  Transmit, power-on start-up, and USB re-plug cases still need an operator.
+- **Noise floor** rises with span (10th percentile about 37 at 1 kHz to 90 at
+  1 MHz); the emulator uses the measured values.
+- **Still UNVERIFIED:** exact Cursor-mode edges (the cursor position isn't
+  decoded; edges stay VFO-centred), transmit flags, and byte 33 (speed).

@@ -6,9 +6,14 @@
 a USB device and sends UDP datagrams, by default to `127.0.0.1:13064`. The
 security-relevant surface is:
 
-- **Network output.** The bridge only *sends* UDP. It must never open a
-  listening socket unless an approved issue adds one, and any such listener
-  must bind to loopback by default.
+- **Network output.** The bridge *sends* UDP to N1MM+. Its only listening
+  socket is the optional **UDP remote control** (#30), which is **off by
+  default**. When enabled it binds to `127.0.0.1` unless the operator sets
+  one specific interface IP *and* an allow-list of client IPs. Binding to all
+  interfaces (`0.0.0.0`, `::`, or empty) is always refused; requests from any other
+  address are ignored; requests are capped at 512 bytes; and no command can
+  transmit or change radio state. A way around these limits is a
+  vulnerability.
 - **Untrusted input parsing.** Frames from the radio, and capture files given
   to `--replay`, are parsed as untrusted bytes. A malformed frame must be
   rejected cleanly, never cause an out-of-bounds read or a crash loop.
@@ -18,9 +23,16 @@ security-relevant surface is:
 - **Radio safety.** The bridge must never transmit or change radio state (see
   AGENTS.md, rule 8).
 
-There are no secrets in this project. If a future feature needs one (for
+The program itself uses no secrets (CI secrets are listed below). If a future feature needs one (for
 example remote LAN radio credentials), it must come from the environment or
 the OS credential store at runtime and never be committed.
+
+## CI secrets
+
+The only CI secret is `CODECOV_TOKEN`, the Codecov upload token. It is stored
+as a GitHub repository secret and is never written to the repository. Pull
+requests from forks don't receive secrets, so they skip the coverage upload;
+that never fails CI.
 
 ## Reporting a vulnerability
 

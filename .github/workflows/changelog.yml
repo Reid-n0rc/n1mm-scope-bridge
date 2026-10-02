@@ -1,0 +1,41 @@
+# Requires a changelog fragment (changelog.d/<issue>.<type>.md) in every PR
+# into dev, unless the PR has the `no-changelog` label (#45). Fragments are
+# separate files, so parallel PRs never conflict on CHANGELOG.md.
+name: Changelog
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+  # Dispatched on a PR branch by the Copilot Autofix conformance workflow (#83).
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to check
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  fragment:
+    name: Changelog fragment present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check fragment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+        run: |
+          # Read files and labels from the PR as it is now, not the event payload.
+          files=$(gh pr view "$PR_NUMBER" --json files --jq '.files[].path')
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
+          label_args=()
+          for l in $LABELS; do label_args+=(--label "$l"); done
+          # shellcheck disable=SC2086
+          python3 scripts/build_changelog.py --check-pr $files "${label_args[@]}"

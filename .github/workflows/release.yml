@@ -1,0 +1,198 @@
+# Release workflow (issue #46). Publishes release candidates (vX.Y.Z-rcN,
+# GitHub pre-releases) and releases (vX.Y.Z) from tags the MAINTAINER pushes
+# on master. Agents never tag or release (AGENTS.md).
+#
+# Every release is gated on the full Release regression for the tagged commit,
+# and ships: the Windows installer, the portable app zip, the wheel, the sdist
+# (GPLv3 section 6 corresponding source), SHA256SUMS, build-provenance
+# attestations, and the regression report. FTDI's LibFT4222 is never included.
+#
+# workflow_dispatch is a dry run: it builds and uploads everything as workflow
+# artifacts for a rehearsal tag name, but never creates a tag, a release, or an
+# attestation.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to rehearse, for example v0.1.0-rc1 (dry run: nothing is published)"
+        required: true
+        default: v0.1.0-rc1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Check tag and version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag, version, and pre-release
+        id: meta
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "push" ]; then tag=$REF_NAME; publish=true; else tag=$INPUT_TAG; publish=false; fi
+          {
+            echo "tag=$tag"
+            echo "publish=$publish"
+            python3 scripts/release_notes.py meta --tag "$tag"
+          } >> "$GITHUB_OUTPUT"
+      - name: Tagged commit must be on master
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Release tags must point at a commit on master."
+            exit 1
+          fi
+      - name: CHANGELOG has this version's section
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: python3 scripts/release_notes.py notes --tag "$TAG" --out "$RUNNER_TEMP/notes.md"
+
+  regression:
+    name: Release regression
+    needs: prepare
+    uses: ./.github/workflows/release-regression.yml
+
+  installer:
+    name: Windows app and installer
+    needs: prepare
+    uses: ./.github/workflows/windows-installer.yml
+
+  dists:
+    name: Wheel and sdist
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv build --out-dir dist/release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-dists
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 30
+
+  assemble:
+    name: Assemble release files
+    needs: [prepare, regression, installer, dists]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-app
+          path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-installer
+          path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-dists
+          path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: regression-windows-latest-3.13
+          path: regression
+      # Optional hook for lane:site (#22): a screenshots.zip artifact, if a
+      # job in this run produces one.
+      - name: Screenshots (optional)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: screenshots
+          path: release
+      - name: Checksums and release notes
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+        run: |
+          set -euo pipefail
+          cp regression/regression-report.md release/
+          if find release -iname '*ft4222*' -o -iname '*ftd2xx*' | grep -q .; then
+            echo "::error::FTDI binaries must never be released."; exit 1
+          fi
+          dry=""; [ "$PUBLISH" = "true" ] || dry="--dry-run"
+          python3 scripts/release_notes.py notes --tag "$TAG" --out notes.md --report release/regression-report.md $dry
+          python3 scripts/release_notes.py sums --out release/SHA256SUMS release/*
+          ls -l release
+          { echo "## Release files for $TAG"; echo; echo '```'; cat release/SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-bundle
+          path: |
+            release/
+            notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub release
+    needs: [prepare, assemble]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      actions: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-bundle
+          path: bundle
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: bundle/release/*
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          title="N1MM Scope Bridge $TAG"
+          pre=""; [ "$PRERELEASE" = "true" ] && pre="--prerelease"
+          gh release create "$TAG" bundle/release/* --repo "$REPO" --verify-tag \
+            --title "$title" --notes-file bundle/notes.md $pre
+      # A release created with GITHUB_TOKEN does not trigger other workflows, so
+      # ask the Pages workflow to rebuild the site from this final release.
+      - name: Rebuild the website (final releases only)
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh workflow run pages.yml --repo "$REPO" --ref master -f tag="$TAG"

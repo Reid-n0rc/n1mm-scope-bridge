@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
 from typing import Any
@@ -6,6 +7,7 @@ from typing import Any
 import pytest
 from check_issue_policy import (
     IssueInfo,
+    current_pr,
     is_release_pr,
     linked_issues,
     parse_issue,
@@ -106,3 +108,39 @@ def test_run_passes_and_fails() -> None:
     out.clear()
     assert run(event, lambda n: None, out.append) == 1
     assert out[0].startswith("::error::")
+
+
+# --- current PR (stale payloads, workflow_dispatch) ------------------------------------
+
+
+def test_current_pr_prefers_fresh_api_copy() -> None:
+    event = {"pull_request": {"number": 7, "body": "old body"}}
+    fresh = {"number": 7, "body": "Closes #1", "base": {"ref": "dev"}, "head": {"ref": "x"}}
+    assert current_pr(event, None, lambda n: fresh) is fresh
+    assert current_pr(event, None, None) == event["pull_request"]
+
+
+def test_current_pr_by_number_for_dispatch() -> None:
+    seen: list[int] = []
+
+    def fetch(n: int) -> dict[str, Any]:
+        seen.append(n)
+        return {"number": n, "body": ""}
+
+    assert current_pr({}, 12, fetch) == {"number": 12, "body": ""}
+    assert seen == [12]
+    assert current_pr({}, None, fetch) is None
+
+
+def test_run_uses_edited_body() -> None:
+    out: list[str] = []
+    event = {"pull_request": {"number": 3, "body": "no link yet"}}
+    fresh = {"number": 3, "body": "Closes #1", "base": {"ref": "dev"}, "head": {"ref": "a"}}
+    assert run(event, lambda n: OK, out.append, fetch_pull=lambda n: fresh) == 0
+    assert out == ["Issue policy OK for #1."]
+
+
+def test_run_without_any_pr_fails() -> None:
+    out: list[str] = []
+    assert run({}, lambda n: OK, out.append) == 1
+    assert "PR_NUMBER" in out[0]
