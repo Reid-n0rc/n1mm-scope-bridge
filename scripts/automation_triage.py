@@ -96,6 +96,21 @@ def is_automated(pr: Mapping[str, Any]) -> bool:
     return str(pr.get("head", {}).get("ref", "")).startswith(AUTOMATED_PREFIXES)
 
 
+CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+\b", re.IGNORECASE)
+
+
+def is_adopted(pr: Mapping[str, Any]) -> bool:
+    """True once the PR links its tracking issue (by a person, an agent, or #83's workflow)."""
+    return bool(CLOSING.search(str(pr.get("body") or "")))
+
+
+def has_label(pr: Mapping[str, Any]) -> bool:
+    return any(
+        (lb.get("name") if isinstance(lb, Mapping) else lb) == LABEL
+        for lb in pr.get("labels") or []
+    )
+
+
 def referenced_alerts(prs: Sequence[Mapping[str, Any]]) -> set[int]:
     """Alert numbers mentioned by any open PR (title or body)."""
     found: set[int] = set()
@@ -119,7 +134,9 @@ def open_alerts(api: Api, warn: Callable[[str], object]) -> list[Mapping[str, An
 def find_pending(api: Api, warn: Callable[[str], object] = print) -> list[Pending]:
     prs = list(api.request("GET", "/pulls?state=open&per_page=100") or [])
     pending = [
-        Pending("pr", pr["number"], pr["title"], pr["html_url"]) for pr in prs if is_automated(pr)
+        Pending("pr", pr["number"], pr["title"], pr["html_url"])
+        for pr in prs
+        if is_automated(pr) and not is_adopted(pr)
     ]
     covered = referenced_alerts(prs)
     for alert in open_alerts(api, warn):
@@ -201,6 +218,16 @@ def update_triage_issue(api: Api, pending: Sequence[Pending]) -> str:
     return f"updated triage issue #{issue['number']} ({state})"
 
 
+def unflag_adopted(api: Api) -> list[int]:
+    """Remove `needs-adoption` from automated PRs that have since been adopted."""
+    done = []
+    for pr in api.request("GET", "/pulls?state=open&per_page=100") or []:
+        if is_automated(pr) and is_adopted(pr) and has_label(pr):
+            api.request("DELETE", f"/issues/{pr['number']}/labels/{LABEL}")
+            done.append(int(pr["number"]))
+    return done
+
+
 def run(api: Api, *, dry_run: bool = False, out: Callable[[str], object] = print) -> int:
     pending = find_pending(api, warn=lambda m: out(f"::warning::{m}"))
     out(f"{len(pending)} item(s) waiting for adoption")
@@ -209,6 +236,8 @@ def run(api: Api, *, dry_run: bool = False, out: Callable[[str], object] = print
     if dry_run:
         out(render_body(pending))
         return 0
+    for number in unflag_adopted(api):
+        out(f"  PR #{number} adopted; removed {LABEL}")
     prs = [p for p in pending if p.kind == "pr"]
     if prs:
         ensure_label(api)

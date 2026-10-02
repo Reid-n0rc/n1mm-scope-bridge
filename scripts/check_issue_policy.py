@@ -7,6 +7,9 @@ carry the `plan-approved` label and have an assignee. Release PRs
 (head `dev` -> base `master`) are exempt.
 
 Runs in CI with GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH set.
+The PR is re-read through the API (by number, from the event or from the
+PR_NUMBER variable of a workflow_dispatch run), so a body edited after the
+event, for example by the Copilot Autofix conformance workflow (#83), counts.
 Standard library only, so the workflow needs no install step.
 """
 
@@ -95,12 +98,41 @@ def fetch_issue(repo: str, number: int, token: str) -> IssueInfo | None:  # prag
         raise RuntimeError(f"GitHub API returned {err.code} for issue #{number}") from err
 
 
+def fetch_pr(repo: str, number: int, token: str) -> dict[str, Any]:  # pragma: no cover
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/pulls/{number}",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data: dict[str, Any] = json.load(resp)
+        return data
+
+
+def current_pr(
+    event: Mapping[str, Any],
+    pr_number: int | None,
+    fetch: Callable[[int], Mapping[str, Any]] | None,
+) -> Mapping[str, Any] | None:
+    """The PR as it is now: fetched by number when possible, else the event payload."""
+    payload = event.get("pull_request")
+    number = pr_number or (payload or {}).get("number")
+    if fetch is not None and number:
+        return fetch(int(number))
+    return payload
+
+
 def run(
     event: Mapping[str, Any],
     fetch: Callable[[int], IssueInfo | None],
     out: Callable[[str], None] = print,
+    *,
+    fetch_pull: Callable[[int], Mapping[str, Any]] | None = None,
+    pr_number: int | None = None,
 ) -> int:
-    pr = event.get("pull_request")
+    pr = current_pr(event, pr_number, fetch_pull)
+    if pr is None:
+        out("::error::No pull request to check (pass PR_NUMBER for workflow_dispatch runs).")
+        return 1
     if is_release_pr(pr):
         out("Release PR (dev -> master): issue policy not applicable.")
         return 0
@@ -120,8 +152,14 @@ def main() -> int:  # pragma: no cover
     repo = os.environ["GITHUB_REPOSITORY"]
     with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as fh:
         event = json.load(fh)
+    pr_number = int(os.environ["PR_NUMBER"]) if os.environ.get("PR_NUMBER") else None
     try:
-        return run(event, lambda n: fetch_issue(repo, n, token))
+        return run(
+            event,
+            lambda n: fetch_issue(repo, n, token),
+            fetch_pull=lambda n: fetch_pr(repo, n, token),
+            pr_number=pr_number,
+        )
     except Exception as exc:
         print(f"::error::{exc}")
         return 1
