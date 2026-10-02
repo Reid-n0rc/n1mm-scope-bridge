@@ -123,14 +123,6 @@ jobs:
         with:
           name: regression-windows-latest-3.13
           path: regression
-      # Optional hook for lane:site (#22): a screenshots.zip artifact, if a
-      # job in this run produces one.
-      - name: Screenshots (optional)
-        continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: screenshots
-          path: release
       - name: Checksums and release notes
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
@@ -138,11 +130,15 @@ jobs:
         run: |
           set -euo pipefail
           cp regression/regression-report.md release/
+          # GUI + installer screenshots from release-regression steps 77/85 (#128);
+          # the website's Pages build downloads this asset.
+          cp regression/dist/regression/screenshots.zip release/
           if find release -iname '*ft4222*' -o -iname '*ftd2xx*' | grep -q .; then
             echo "::error::FTDI binaries must never be released."; exit 1
           fi
           dry=""; [ "$PUBLISH" = "true" ] || dry="--dry-run"
           python3 scripts/release_notes.py notes --tag "$TAG" --out notes.md --report release/regression-report.md $dry
+          python3 scripts/release_notes.py assets --tag "$TAG" release
           python3 scripts/release_notes.py sums --out release/SHA256SUMS release/*
           ls -l release
           { echo "## Release files for $TAG"; echo; echo '```'; cat release/SHA256SUMS; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
