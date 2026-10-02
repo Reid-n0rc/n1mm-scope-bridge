@@ -7,9 +7,19 @@
 # (GPLv3 section 6 corresponding source), SHA256SUMS, build-provenance
 # attestations, and the regression report. FTDI's LibFT4222 is never included.
 #
-# workflow_dispatch is a dry run: it builds and uploads everything as workflow
-# artifacts for a rehearsal tag name, but never creates a tag, a release, or an
-# attestation.
+# The version always comes from the tag (v0.1.2 -> 0.1.2, v0.1.2-rc1 -> 0.1.2rc1)
+# and is stamped into the build, so a tag and pyproject.toml can never disagree.
+# A release created by hand in the GitHub web UI (which also pushes the tag) is
+# filled in with the assets instead of failing.
+#
+# workflow_dispatch:
+#   - publish=false (default): a dry run of the current branch under a rehearsal
+#     tag name. Builds and uploads everything as workflow artifacts; never creates
+#     a tag, a release, or an attestation.
+#   - publish=true: rebuilds an EXISTING tag (which must be on master) and attaches
+#     the assets to its release, creating the release if needed. Use it to repair a
+#     release that has no installer: gh workflow run release.yml --ref master
+#     -f tag=v0.1.2 -f publish=true
 name: Release
 
 on:
@@ -18,9 +28,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to rehearse, for example v0.1.0-rc1 (dry run: nothing is published)"
+        description: "Tag, for example v0.1.2 or v0.1.3-rc1"
         required: true
         default: v0.1.0-rc1
+      publish:
+        description: "Rebuild this existing tag and attach the files to its release (false = dry run)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,8 +50,10 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      base_version: ${{ steps.meta.outputs.base_version }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       publish: ${{ steps.meta.outputs.publish }}
+      source: ${{ steps.meta.outputs.source }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,25 +65,40 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" = "push" ]; then tag=$REF_NAME; publish=true; else tag=$INPUT_TAG; publish=false; fi
+          if [ "$EVENT" = "push" ]; then
+            tag=$REF_NAME; publish=true; source=$GITHUB_SHA
+          elif [ "$INPUT_PUBLISH" = "true" ]; then
+            tag=$INPUT_TAG; publish=true
+            git fetch --force --tags origin
+            if ! source=$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}"); then
+              echo "::error::Tag $tag does not exist. Create the release (and its tag) in the GitHub web UI targeting master, or push the tag, then re-run."
+              exit 1
+            fi
+          else
+            tag=$INPUT_TAG; publish=false; source=$GITHUB_SHA
+          fi
           {
             echo "tag=$tag"
             echo "publish=$publish"
+            echo "source=$source"
             python3 scripts/release_notes.py meta --tag "$tag"
           } >> "$GITHUB_OUTPUT"
       - name: Tagged commit must be on master
-        if: github.event_name == 'push'
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SOURCE: ${{ steps.meta.outputs.source }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin master
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-            echo "::error::Release tag points at ${GITHUB_SHA::7}, which is not on master, so no assets were built or attached. Merge dev into master (the release PR) with a merge commit, then re-run this workflow, or re-tag a commit that is on master."
+          if ! git merge-base --is-ancestor "$SOURCE" origin/master; then
+            echo "::error::Tag $TAG points at ${SOURCE::7}, which is not on master, so no files were built or attached. In the GitHub web UI, create the release with 'Target: master' (or merge dev into master first), then re-run: gh workflow run release.yml --ref master -f tag=$TAG -f publish=true"
             exit 1
           fi
-      - name: CHANGELOG has this version's section
-        if: github.event_name == 'push'
+      - name: CHANGELOG section (a missing one is noted in the release, not fatal)
         env:
           TAG: ${{ steps.meta.outputs.tag }}
         run: python3 scripts/release_notes.py notes --tag "$TAG" --out "$RUNNER_TEMP/notes.md"
@@ -76,11 +107,17 @@ jobs:
     name: Release regression
     needs: prepare
     uses: ./.github/workflows/release-regression.yml
+    with:
+      ref: ${{ needs.prepare.outputs.source }}
+      version: ${{ needs.prepare.outputs.version }}
 
   installer:
     name: Windows app and installer
     needs: prepare
     uses: ./.github/workflows/windows-installer.yml
+    with:
+      ref: ${{ needs.prepare.outputs.source }}
+      version: ${{ needs.prepare.outputs.version }}
 
   dists:
     name: Wheel and sdist
@@ -89,7 +126,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.source }}
           persist-credentials: false
+      - name: Stamp the release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, re
+          v = os.environ["VERSION"]
+          for rel, pat in (("pyproject.toml", r'(?m)^(version\s*=\s*")[^"]+(")'),
+                           ("src/n1mm_scope_bridge/__init__.py", r'(?m)^(__version__\s*=\s*")[^"]+(")'),
+                           ("uv.lock", r'(?m)^(name = "n1mm-scope-bridge"\nversion = ")[^"]+(")')):
+              p = pathlib.Path(rel)
+              t, n = re.subn(pat, r"\g<1>" + v + r"\g<2>", p.read_text(encoding="utf-8"), count=1)
+              if n != 1:
+                  raise SystemExit(f"no version found in {rel}")
+              p.write_text(t, encoding="utf-8")
+          print("stamped", v)
+          PY
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv build --out-dir dist/release
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -3,6 +3,7 @@
 """Release helpers for the tag-triggered release workflow (#46).
 
     python scripts/release_notes.py meta --tag v0.1.0-rc1           # version/prerelease outputs
+    python scripts/release_notes.py stamp --version 0.1.0rc1        # stamp the build's version
     python scripts/release_notes.py notes --tag v0.1.0-rc1 --out notes.md [--report FILE]
     python scripts/release_notes.py sums --out SHA256SUMS FILE...
 
@@ -41,6 +42,15 @@ class TagInfo:
     def prerelease(self) -> bool:
         return self.rc is not None
 
+    @property
+    def package_version(self) -> str:
+        """The PEP 440 version the build is stamped with: 0.1.0, or 0.1.0rc2 for -rc2.
+
+        The tag is the single source of truth for a release's version, so a tag
+        and pyproject.toml can never disagree (the release workflow stamps it).
+        """
+        return f"{self.version}rc{self.rc}" if self.rc is not None else self.version
+
 
 def parse_tag(tag: str) -> TagInfo:
     """``v0.1.0`` or ``v0.1.0-rc1``; anything else is rejected."""
@@ -51,19 +61,39 @@ def parse_tag(tag: str) -> TagInfo:
     return TagInfo(tag.strip(), match["version"], int(rc) if rc else None)
 
 
-def check_project_version(info: TagInfo, pyproject: str) -> None:
-    """The tag must match pyproject.toml's version (agents never bump versions)."""
-    match = re.search(
-        r'^\[project\][^\[]*?^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE | re.DOTALL
-    )
-    if match is None:
-        raise ReleaseError("pyproject.toml has no [project] version")
-    version = match[1]
-    if version != info.version:
-        raise ReleaseError(
-            f"tag {info.tag} does not match pyproject.toml version {version}; "
-            "the release PR sets the version"
+# Where the version lives in a checkout: (path, regex whose group 1 / 2 surround it).
+VERSION_FILES: tuple[tuple[str, str], ...] = (
+    ("pyproject.toml", r'(?m)^(version\s*=\s*")[^"]+(")'),
+    ("src/n1mm_scope_bridge/__init__.py", r'(?m)^(__version__\s*=\s*")[^"]+(")'),
+    ("uv.lock", r'(?m)^(name = "n1mm-scope-bridge"\nversion = ")[^"]+(")'),
+)
+
+
+def stamp_version(root: Path, version: str) -> list[str]:
+    """Write ``version`` into every version location under ``root``; returns the files."""
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:rc[1-9]\d*)?", version):
+        raise ReleaseError(f"refusing to stamp malformed version {version!r}")
+    changed = []
+    for rel, pattern in VERSION_FILES:
+        path = root / rel
+        text = path.read_text(encoding="utf-8")
+        new, count = re.subn(pattern, rf"\g<1>{version}\g<2>", text, count=1)
+        if count != 1:
+            raise ReleaseError(f"no version found in {rel}")
+        path.write_text(new, encoding="utf-8")
+        changed.append(rel)
+    return changed
+
+
+def project_versions(root: Path) -> dict[str, str]:
+    """The version recorded in each version location (they must all agree)."""
+    found = {}
+    for rel, pattern in VERSION_FILES:
+        match = re.search(
+            pattern.replace('[^"]+', '([^"]+)'), (root / rel).read_text(encoding="utf-8")
         )
+        found[rel] = match[2] if match else ""
+    return found
 
 
 def changelog_section(changelog: str, version: str) -> str | None:
@@ -78,6 +108,11 @@ DRY_RUN_PLACEHOLDER = (
     "_Dry run: CHANGELOG.md has no section for this version yet. The release PR "
     "creates it with `python scripts/build_changelog.py --version X.Y.Z`._"
 )
+MISSING_SECTION = (
+    "_CHANGELOG.md has no section for this version. See "
+    "[CHANGELOG.md](https://github.com/Reid-n0rc/n1mm-scope-bridge/blob/master/CHANGELOG.md) "
+    "and the commits since the previous release._"
+)
 
 
 def release_notes(
@@ -85,16 +120,13 @@ def release_notes(
 ) -> str:
     """Release body: the CHANGELOG section for the version, plus the regression report.
 
-    A missing section is an error, except in a dry run, which uses a placeholder.
+    A missing section never blocks a release (the maintainer may tag or create a
+    release in the GitHub web UI without a changelog PR): the notes say so instead.
     """
     body = changelog_section(changelog, info.version)
-    if body is None and dry_run:
-        body = DRY_RUN_PLACEHOLDER
     if body is None:
-        raise ReleaseError(
-            f"CHANGELOG.md has no '## [{info.version}]' section; the release PR runs "
-            f"`python scripts/build_changelog.py --version {info.version}`"
-        )
+        body = DRY_RUN_PLACEHOLDER if dry_run else MISSING_SECTION
+    v = info.package_version
     parts = []
     if info.prerelease:
         parts.append(
@@ -107,9 +139,9 @@ def release_notes(
         "- `n1mm-scope-bridge-setup-*.exe`: **one installer for all Windows PCs** "
         "(recommended). It picks the right version for your PC: 64-bit (x64), "
         "Windows on ARM, or 32-bit (command line only).\n"
-        f"- `{zip_name(info.version, 'x64')}`: portable app, 64-bit Windows (x64)\n"
-        f"- `{zip_name(info.version, 'ARM64')}`: portable app, Windows on ARM (native ARM64)\n"
-        f"- `{zip_name(info.version, 'x86')}`: portable command-line app, 32-bit Windows\n"
+        f"- `{zip_name(v, 'x64')}`: portable app, 64-bit Windows (x64)\n"
+        f"- `{zip_name(v, 'ARM64')}`: portable app, Windows on ARM (native ARM64)\n"
+        f"- `{zip_name(v, 'x86')}`: portable command-line app, 32-bit Windows\n"
         "- `*.whl`: Python wheel; `*.tar.gz`: complete source code (GPLv3 corresponding source)\n"
         f"- `{SCREENSHOTS_ZIP}`: screenshots of this build's GUI and installer\n"
         "- `SHA256SUMS`: checksums for every file\n\n"
@@ -166,6 +198,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     meta = sub.add_parser("meta", help="print version and prerelease as KEY=VALUE lines")
     meta.add_argument("--tag", required=True)
+    stamp = sub.add_parser("stamp", help="write a version into pyproject, __init__ and uv.lock")
+    stamp.add_argument("--version", required=True)
+    stamp.add_argument("--root", type=Path, default=ROOT)
     notes = sub.add_parser("notes", help="write the release body")
     notes.add_argument("--tag", required=True)
     notes.add_argument("--out", type=Path, required=True)
@@ -184,9 +219,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "meta":
             info = parse_tag(args.tag)
-            check_project_version(info, (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-            print(f"version={info.version}")
+            print(f"version={info.package_version}")
+            print(f"base_version={info.version}")
             print(f"prerelease={'true' if info.prerelease else 'false'}")
+        elif args.command == "stamp":
+            files = stamp_version(args.root, args.version)
+            print(f"stamped {args.version} into {', '.join(files)}")
         elif args.command == "notes":
             info = parse_tag(args.tag)
             report = (
@@ -201,10 +239,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "assets":
             info = parse_tag(args.tag)
             names = [p.name for p in args.dir.iterdir() if p.is_file()]
-            missing = missing_assets(info.version, names)
+            missing = missing_assets(info.package_version, names)
             if missing:
                 raise ReleaseError(f"release is missing required files: {', '.join(missing)}")
-            print(f"all {len(required_assets(info.version))} required release files present")
+            print(
+                f"all {len(required_assets(info.package_version))} required release files present"
+            )
         else:
             args.out.write_text(sha256sums(args.files), encoding="utf-8")
     except (ReleaseError, OSError) as exc:

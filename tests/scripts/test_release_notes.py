@@ -45,15 +45,69 @@ def test_parse_tag_rejects(tag: str) -> None:
         rn.parse_tag(tag)
 
 
-def test_check_project_version() -> None:
-    pyproject = '[project]\nname = "x"\nversion = "0.1.0"\n\n[tool.x]\nversion = "9"\n'
-    rn.check_project_version(rn.parse_tag("v0.1.0-rc2"), pyproject)
-    with pytest.raises(
-        rn.ReleaseError, match=re.escape("does not match pyproject.toml version 0.1.0")
-    ):
-        rn.check_project_version(rn.parse_tag("v0.2.0"), pyproject)
-    with pytest.raises(rn.ReleaseError, match="no \\[project\\] version"):
-        rn.check_project_version(rn.parse_tag("v0.1.0"), "[tool.x]\nversion = '1'\n")
+@pytest.mark.parametrize(
+    ("tag", "package"),
+    [("v0.1.2", "0.1.2"), ("v0.1.0-rc2", "0.1.0rc2"), ("v10.2.3-rc11", "10.2.3rc11")],
+)
+def test_package_version_comes_from_the_tag(tag: str, package: str) -> None:
+    assert rn.parse_tag(tag).package_version == package
+
+
+def _fake_checkout(root: Path, version: str = "0.1.0") -> Path:
+    (root / "src" / "n1mm_scope_bridge").mkdir(parents=True)
+    (root / "pyproject.toml").write_text(
+        f'[project]\nname = "n1mm-scope-bridge"\nversion = "{version}"\n\n'
+        '[tool.ruff]\ntarget-version = "py310"\n',
+        encoding="utf-8",
+    )
+    (root / "src" / "n1mm_scope_bridge" / "__init__.py").write_text(
+        f'"""Doc."""\n\n__version__ = "{version}"\n', encoding="utf-8"
+    )
+    (root / "uv.lock").write_text(
+        'version = 1\n\n[[package]]\nname = "other"\nversion = "9.9.9"\n\n'
+        f'[[package]]\nname = "n1mm-scope-bridge"\nversion = "{version}"\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_stamp_version_writes_every_location(tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path)
+    assert rn.stamp_version(root, "0.1.2rc1") == [rel for rel, _ in rn.VERSION_FILES]
+    assert set(rn.project_versions(root).values()) == {"0.1.2rc1"}
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'target-version = "py310"' in pyproject  # only [project] version touched
+    assert 'name = "other"\nversion = "9.9.9"' in (root / "uv.lock").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("bad", ["0.1", "v0.1.2", "0.1.2-rc1", "0.1.2rc0", "", "0.1.2; rm"])
+def test_stamp_version_rejects_malformed(tmp_path: Path, bad: str) -> None:
+    with pytest.raises(rn.ReleaseError, match="malformed"):
+        rn.stamp_version(_fake_checkout(tmp_path), bad)
+
+
+def test_stamp_version_reports_missing_location(tmp_path: Path) -> None:
+    root = _fake_checkout(tmp_path)
+    (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    with pytest.raises(rn.ReleaseError, match=re.escape("no version found in uv.lock")):
+        rn.stamp_version(root, "0.2.0")
+
+
+def test_stamp_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = _fake_checkout(tmp_path)
+    assert rn.main(["stamp", "--version", "0.3.0", "--root", str(root)]) == 0
+    assert "stamped 0.3.0" in capsys.readouterr().out
+    assert rn.main(["stamp", "--version", "nope", "--root", str(root)]) == 1
+
+
+def test_repo_versions_agree() -> None:
+    """pyproject.toml, __version__ and uv.lock must carry the same version.
+
+    A manual bump of only pyproject.toml would otherwise ship an app that
+    reports a different version than its installer and wheel.
+    """
+    versions = rn.project_versions(rn.ROOT)
+    assert len(set(versions.values())) == 1, versions
 
 
 def test_changelog_section() -> None:
@@ -75,9 +129,10 @@ def test_release_notes_final_and_rc() -> None:
     assert "**Result: PASS**" in rc
 
 
-def test_release_notes_require_changelog_section() -> None:
-    with pytest.raises(rn.ReleaseError, match=re.escape("build_changelog.py --version 0.9.0")):
-        rn.release_notes(rn.parse_tag("v0.9.0"), CHANGELOG)
+def test_missing_changelog_section_is_noted_not_fatal() -> None:
+    text = rn.release_notes(rn.parse_tag("v0.9.0"), CHANGELOG)
+    assert rn.MISSING_SECTION in text
+    assert "## Changes in 0.9.0" in text
 
 
 def test_dry_run_tolerates_missing_section(tmp_path: Path) -> None:
@@ -87,8 +142,10 @@ def test_dry_run_tolerates_missing_section(tmp_path: Path) -> None:
     changelog.write_text(CHANGELOG, encoding="utf-8")
     out = tmp_path / "notes.md"
     args = ["notes", "--tag", "v0.9.0", "--out", str(out), "--changelog", str(changelog)]
-    assert rn.main(args) == 1
+    assert rn.main(args) == 0
+    assert rn.MISSING_SECTION in out.read_text(encoding="utf-8")
     assert rn.main([*args, "--dry-run"]) == 0
+    assert rn.DRY_RUN_PLACEHOLDER in out.read_text(encoding="utf-8")
 
 
 def test_sha256sums(tmp_path: Path) -> None:
@@ -164,18 +221,26 @@ def test_main_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     assert "error: tag 'bad'" in capsys.readouterr().err
 
 
-def test_main_meta_uses_repo_pyproject(capsys: pytest.CaptureFixture[str]) -> None:
-    version = re.search(
-        r'^version = "([^"]+)"',
-        (rn.ROOT / "pyproject.toml").read_text(encoding="utf-8"),
-        re.MULTILINE,
-    )
-    assert version is not None
-    assert rn.main(["meta", "--tag", f"v{version[1]}-rc1"]) == 0
+def test_main_meta_derives_version_from_tag(capsys: pytest.CaptureFixture[str]) -> None:
+    # The tag decides the version; pyproject.toml is not consulted (#167).
+    assert rn.main(["meta", "--tag", "v999.0.0-rc1"]) == 0
     out = capsys.readouterr().out
-    assert f"version={version[1]}" in out
+    assert "version=999.0.0rc1" in out
+    assert "base_version=999.0.0" in out
     assert "prerelease=true" in out
-    assert rn.main(["meta", "--tag", "v999.0.0"]) == 1
+    assert rn.main(["meta", "--tag", "v0.1.2"]) == 0
+    out = capsys.readouterr().out
+    assert "version=0.1.2" in out
+    assert "prerelease=false" in out
+    assert rn.main(["meta", "--tag", "0.1.2"]) == 1
+
+
+def test_rc_notes_and_assets_use_the_rc_package_version(tmp_path: Path) -> None:
+    notes = rn.release_notes(rn.parse_tag("v0.1.0-rc2"), CHANGELOG)
+    assert "`n1mm-scope-bridge-0.1.0rc2-win64.zip`" in notes
+    for name in rn.required_assets("0.1.0rc2"):
+        (tmp_path / name).write_bytes(b"x")
+    assert rn.main(["assets", "--tag", "v0.1.0-rc2", str(tmp_path)]) == 0
 
 
 def test_download_names_match_the_built_artifacts() -> None:
@@ -210,10 +275,10 @@ def test_missing_assets() -> None:
 def test_assets_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     for name in rn.required_assets("0.1.0"):
         (tmp_path / name).write_bytes(b"x")
-    assert rn.main(["assets", "--tag", "v0.1.0-rc1", str(tmp_path)]) == 0
+    assert rn.main(["assets", "--tag", "v0.1.0", str(tmp_path)]) == 0
     assert "required release files present" in capsys.readouterr().out
     (tmp_path / "screenshots.zip").unlink()
-    assert rn.main(["assets", "--tag", "v0.1.0-rc1", str(tmp_path)]) == 1
+    assert rn.main(["assets", "--tag", "v0.1.0", str(tmp_path)]) == 1
     assert "missing required files: screenshots.zip" in capsys.readouterr().err
 
 
