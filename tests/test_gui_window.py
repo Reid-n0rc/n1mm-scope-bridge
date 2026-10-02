@@ -386,3 +386,13 @@ def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.
         window.toggle_streaming()
     assert "Stopped streaming" in window.log_view.toPlainText()
     window.quit_app()
+
+
+def test_window_shows_center_prompt_for_cursor_mode(qtbot: QtBot) -> None:
+    window, _ = make_window(qtbot)
+    window.show()
+    window._on_status(ScopeStatus(7_074_000, 10_000, "cursor", "Cursor (Normal)"))
+    assert window.center_panel.isVisible()
+    assert "Scope Center" in window.center_panel.macro_fields
+    window._on_started()
+    assert not window.center_panel.isVisible()

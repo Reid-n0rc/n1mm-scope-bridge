@@ -74,6 +74,28 @@ If the radio's scope can't be opened (`Could not open 'FT4222 A'`), the
 message reminds you that the FT-710 needs **OPERATION SETTING → GENERAL →
 SCU-LAN10** set to **ON**. See [Setting up your Yaesu radio](radio-setup.md).
 
+## Center-mode prompt
+
+N1MM+ frequencies are exact only when the radio's scope is in **Center**
+mode. When it isn't, a prompt appears below the cards:
+
+- It names the current scope mode and asks you to set **Center** on the radio.
+- It offers ready-made **N1MM+ function-key macros**:
+  - **Scope Center** switches the scope to Center;
+  - **Scope restore** puts back the mode the scope was in when streaming
+    started (shown only if that wasn't Center).
+
+  Each macro has a **Copy** button. Paste the line into the N1MM+ function-key
+  editor (one `Label,text` line per key). N1MM+ sends the command on its own
+  CAT port when you press the key. **The bridge never sends CAT and never
+  opens a COM port.** The exact command format (`SS06…`) is still being
+  verified on the FT-710 (#62).
+- **Dismiss** hides the prompt until the scope changes to a different mode.
+- When the scope reaches Center, the prompt shows **✓ Center mode** for a few
+  seconds and then hides.
+
+The same messages, including the macros, are written to the Activity log.
+
 ## Start and Stop
 
 Press **Start**. The pill turns green (**Streaming**), the button becomes
