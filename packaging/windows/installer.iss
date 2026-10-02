@@ -34,6 +34,10 @@
 #ifndef FtdiWheelUrl
   #error FTDI pin defines missing; build with scripts/build_installer.py
 #endif
+#ifndef FtdiDriverUrl
+  #error FTDI driver pin defines missing; build with scripts/build_installer.py
+#endif
+#define FtdiDriverHelpUrl "https://reid-n0rc.github.io/n1mm-scope-bridge/troubleshooting.html"
 
 [Setup]
 AppId={{5B454E52-482B-4DB9-9888-C9C98FCD1306}
@@ -71,12 +75,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "ftdidownload"; Description: "&Download FTDI's LibFT4222 library from PyPI (needed for the Yaesu FT-710 scope)"; GroupDescription: "FTDI library:"
+; FTDI's WHQL USB driver from Microsoft Update Catalog (#152). Offered only when
+; Windows has no FTDI driver yet; unchecked, because it needs administrator
+; rights (only this step elevates). Silent: /MERGETASKS="ftdidriver".
+Name: "ftdidriver"; Description: "Install FTDI &USB driver {#FtdiDriverVersion} from Microsoft (needs administrator)"; GroupDescription: "FTDI USB driver:"; Flags: unchecked; Check: FtdiDriverMissing
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Helper only (extract + signature check); FTDI's DLLs themselves are downloaded.
 Source: "ftdi_install.ps1"; Flags: dontcopy
+; Driver check/verify/install helper (#152); the driver package itself is downloaded.
+Source: "ftdi_driver.ps1"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#GuiExe}"
@@ -235,10 +245,110 @@ begin
     Log('FTDI download: LibFT4222-64.dll and ftd2xx.dll installed and signature-verified');
 end;
 
+var
+  FtdiDriverState: String;
+
+function RunDriverHelper(Mode, Cab, ResultFile: String; Elevated: Boolean; var Message: AnsiString): Integer;
+var
+  Helper, Params: String;
+  Code: Integer;
+  Ok: Boolean;
+begin
+  Helper := ExpandConstant('{commonappdata}\n1mm-scope-bridge-setup\ftdi_driver.ps1');
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Helper + '" -Mode ' + Mode +
+    ' -Result "' + ResultFile + '" -Signer "{#FtdiDriverSigner}" -Inf "{#FtdiDriverInf}"' +
+    ' -Catalog "{#FtdiDriverCatalog}"';
+  if Cab <> '' then
+    Params := Params + ' -Cab "' + Cab + '"';
+  DeleteFile(ResultFile);
+  if Elevated then
+    Ok := ShellExec('runas', ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params,
+      '', SW_HIDE, ewWaitUntilTerminated, Code)
+  else
+    Ok := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Params, '',
+      SW_HIDE, ewWaitUntilTerminated, Code);
+  if not Ok then
+  begin
+    Message := 'ERROR: could not run the driver helper: ' + SysErrorMessage(Code);
+    Result := -1;
+    exit;
+  end;
+  if not LoadStringFromFile(ResultFile, Message) then
+    Message := 'ERROR: no result from the driver helper';
+  Message := Trim(String(Message));
+  Result := Code;
+end;
+
+procedure StageDriverHelper();
+var
+  Dir: String;
+begin
+  // A folder an elevated helper can read even when another account approves
+  // the administrator prompt (the user's own %TEMP% may not be readable).
+  Dir := ExpandConstant('{commonappdata}\n1mm-scope-bridge-setup');
+  ForceDirectories(Dir);
+  ExtractTemporaryFile('ftdi_driver.ps1');
+  FileCopy(ExpandConstant('{tmp}\ftdi_driver.ps1'), Dir + '\ftdi_driver.ps1', False);
+end;
+
+function FtdiDriverMissing(): Boolean;
+var
+  Message: AnsiString;
+begin
+  // Check once (no administrator rights needed) and remember the answer.
+  if FtdiDriverState = '' then
+  begin
+    StageDriverHelper();
+    RunDriverHelper('Check', '', ExpandConstant('{commonappdata}\n1mm-scope-bridge-setup\check.txt'),
+      False, Message);
+    FtdiDriverState := String(Message);
+    Log('FTDI driver check: ' + FtdiDriverState);
+  end;
+  Result := FtdiDriverState <> 'INSTALLED';
+end;
+
+procedure FtdiDriverFailed(Reason: String);
+begin
+  Log('FTDI driver: ' + Reason);
+  if not WizardSilent() then
+    MsgBox('N1MM Scope Bridge is installed, but setup could not install the FTDI USB driver:' + #13#10 +
+      Reason + #13#10#13#10 +
+      'Windows Update usually installs it when you plug in the radio''s USB cable. ' +
+      'See {#FtdiDriverHelpUrl} for other options.', mbError, MB_OK);
+end;
+
+procedure InstallFtdiDriver();
+var
+  Dir, Cab: String;
+  Message: AnsiString;
+  Code: Integer;
+begin
+  Log('FTDI driver: downloading {#FtdiDriverUrl}');
+  try
+    DownloadTemporaryFile('{#FtdiDriverUrl}', '{#FtdiDriverFile}', '{#FtdiDriverSha256}', nil);
+  except
+    FtdiDriverFailed('download failed: ' + GetExceptionMessage());
+    exit;
+  end;
+  StageDriverHelper();
+  Dir := ExpandConstant('{commonappdata}\n1mm-scope-bridge-setup');
+  Cab := Dir + '\{#FtdiDriverFile}';
+  FileCopy(ExpandConstant('{tmp}\{#FtdiDriverFile}'), Cab, False);
+  Log('FTDI driver: SHA-256 verified; asking for administrator rights to install it');
+  Code := RunDriverHelper('Install', Cab, Dir + '\install.txt', True, Message);
+  if (Code = 0) and (String(Message) = 'OK') then
+    Log('FTDI driver {#FtdiDriverVersion} installed')
+  else
+    FtdiDriverFailed(String(Message));
+  DelTree(Dir, True, True, True);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Dir: String;
 begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('ftdidriver') then
+    InstallFtdiDriver();
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('ftdidownload') then
     DownloadFtdi()
   else if (CurStep = ssPostInstall) and not WizardSilent() then

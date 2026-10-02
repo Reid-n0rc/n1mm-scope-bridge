@@ -1,0 +1,140 @@
+# Keeps the installer's optional FTDI USB driver install healthy (issue #152).
+#
+# The installer can install FTDI's WHQL D2XX driver (for the radio's FT4222H
+# scope interface, USB VID_0403 PID_601C) from Microsoft Update Catalog, pinned
+# in packaging/windows/ftdi_driver_pin.json; ftdichip.com blocks scripted
+# downloads with a Cloudflare challenge. On Windows this workflow:
+#   1. downloads the pinned package and verifies size, SHA-256, SHA-1, the
+#      catalog signature and that the INF lists the FT4222H
+#      (scripts/ftdi_driver.py check); it also reports whether ftdichip.com is
+#      scriptable yet;
+#   2. runs packaging/windows/ftdi_driver.ps1 -Mode Install exactly as the
+#      installer's elevated step does (GitHub's Windows runners are
+#      administrators), then -Mode Check must report INSTALLED.
+# Triggers: PRs touching these files, daily, and on demand. Scheduled and
+# on-demand runs open (or update) ONE "FTDI driver download is broken" issue
+# on failure and close it when the check passes again.
+name: FTDI driver check
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths:
+      - packaging/windows/ftdi_driver_pin.json
+      - packaging/windows/ftdi_driver.ps1
+      - packaging/windows/installer.iss
+      - scripts/ftdi_driver.py
+      - .github/workflows/ftdi-driver-check.yml
+  schedule:
+    - cron: "43 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: FTDI driver package (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    outputs:
+      ok: ${{ steps.result.outputs.ok }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+      - name: Verify the pinned driver package
+        id: verify
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-project python scripts/ftdi_driver.py check 2>&1 | tee ftdi-driver-check.txt
+      - name: Install it the way the installer does, then check Windows has it
+        id: install
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pin = Get-Content packaging/windows/ftdi_driver_pin.json -Raw | ConvertFrom-Json
+          $cab = Join-Path $env:RUNNER_TEMP $pin.filename
+          Invoke-WebRequest -Uri $pin.url -OutFile $cab -UseBasicParsing
+          $hash = (Get-FileHash -Algorithm SHA256 $cab).Hash.ToLower()
+          if ($hash -ne $pin.sha256) { throw "SHA-256 $hash does not match the pin" }
+          $before = Join-Path $env:RUNNER_TEMP 'before.txt'
+          $install = Join-Path $env:RUNNER_TEMP 'install.txt'
+          $after = Join-Path $env:RUNNER_TEMP 'after.txt'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/ftdi_driver.ps1 -Mode Check -Result $before
+          "Before: $(Get-Content $before)" | Tee-Object -Append ftdi-driver-check.txt
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/ftdi_driver.ps1 -Mode Install -Cab $cab -Result $install -Signer $pin.signer -Inf $pin.inf -Catalog $pin.catalog -HardwareId $pin.hardware_id
+          "Install: $(Get-Content $install)" | Tee-Object -Append ftdi-driver-check.txt
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/windows/ftdi_driver.ps1 -Mode Check -Result $after
+          "After: $(Get-Content $after)" | Tee-Object -Append ftdi-driver-check.txt
+          if ((Get-Content $install) -ne 'OK') { throw 'driver install failed' }
+          if ((Get-Content $after) -ne 'INSTALLED') { throw 'ftdibus.inf is not in the driver store after install' }
+      - name: Result
+        id: result
+        shell: bash
+        run: |
+          if [ "${{ steps.verify.outcome }}" = "success" ] && [ "${{ steps.install.outcome }}" = "success" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: ftdi-driver-check
+          path: ftdi-driver-check.txt
+          retention-days: 14
+
+  report:
+    name: Open or close the tracking issue
+    needs: check
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: ftdi-driver-check
+      - name: Sync the "FTDI driver download is broken" issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OK: ${{ needs.check.outputs.ok }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -o pipefail
+          title="FTDI driver download is broken"
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          if [ "$OK" = "true" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "The FTDI driver check passes again ($RUN_URL). Closing."
+            fi
+            exit 0
+          fi
+          {
+            echo "The check of the installer's pinned FTDI USB driver package failed: $RUN_URL"
+            echo
+            echo '```'
+            cat ftdi-driver-check.txt 2>/dev/null || echo "(no output captured; see the run log)"
+            echo '```'
+            echo
+            echo "Fix steps:"
+            echo "1. Search Microsoft Update Catalog for VID_0403&PID_601C and pick the newest 'FTDI - USB' driver for Windows 10/11."
+            echo "2. Update url, sha256, sha1, size and version in packaging/windows/ftdi_driver_pin.json."
+            echo "3. Open a PR (lane:packaging); this workflow re-verifies and test-installs it on Windows."
+          } > body.md
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh issue create --title "$title" --label lane:packaging --body-file body.md
+          fi

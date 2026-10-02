@@ -53,6 +53,7 @@ nothing from them.
 | Visiting the website | GitHub Pages | your IP address and request details in server logs | [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement) |
 | Downloading a release, opening issues | GitHub | your IP address; anything you post in an issue is **public** | [GitHub Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement) |
 | Installer's optional FTDI library download | Python Package Index (PyPI), run by the Python Software Foundation | your IP address and the download request | [PyPI privacy notice](https://policies.python.org/pypi.org/Privacy-Notice/) |
+| Installer's optional FTDI USB driver install (only if Windows lacks it and you tick it) | Microsoft Update Catalog download servers | your IP address and the download request | [Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement) |
 | Installing from the Microsoft Store (if published there) | Microsoft | your Microsoft account and install details | [Microsoft Privacy Statement](https://privacy.microsoft.com/privacystatement) |
 
 The website itself sets **no cookies**, uses no local storage, and loads
