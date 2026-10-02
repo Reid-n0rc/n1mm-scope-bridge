@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import build_installer as bi
+import fetch_ftdi
 import pytest
 
 from n1mm_scope_bridge import __version__
@@ -36,6 +37,19 @@ def test_iscc_command() -> None:
     assert "/DAppVersion=1.2.3" in cmd
     assert f"/DSourceDir={Path('app')}" in cmd
     assert cmd[-1].endswith("installer.iss")
+    assert any(
+        c.startswith("/DFtdiWheelSha256=") and len(c) == len("/DFtdiWheelSha256=") + 64 for c in cmd
+    )
+    assert any(c.startswith("/DFtdiWheelUrl=https://") for c in cmd)
+
+
+def test_ftdi_defines_follow_the_pin() -> None:
+    defines = dict(d[2:].split("=", 1) for d in bi.ftdi_defines())
+    pkg, signers = fetch_ftdi.load_pin()
+    assert defines["FtdiWheelUrl"] == pkg.url
+    assert defines["FtdiWheelFile"] == pkg.filename
+    assert defines["FtdiLibSigner"] == signers["LibFT4222-64.dll"]
+    assert defines["FtdiLicenceUrl"].startswith("https://")
 
 
 def test_installer_name() -> None:
@@ -109,7 +123,12 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_installer_script_never_bundles_ftdi() -> None:
     iss = bi.ISS.read_text(encoding="utf-8")
     sources = [line for line in iss.splitlines() if line.startswith("Source:")]
-    assert len(sources) == 1
+    # The app folder (checked FTDI-free by check_app_dir) plus the helper script only:
+    # FTDI's DLLs are downloaded at install time, never packed into the installer (#133).
+    assert len(sources) == 2
     assert sources[0].startswith('Source: "{#SourceDir}\\*"; DestDir: "{app}"')
+    assert sources[1] == 'Source: "ftdi_install.ps1"; Flags: dontcopy'
+    assert ".dll" not in "".join(sources).lower()
+    assert "DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}'" in iss
     assert "LicenseFile=..\\..\\LICENSE" in iss
     assert "PrivilegesRequired=lowest" in iss

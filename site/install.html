@@ -21,7 +21,7 @@
   <ul>
     <li>Connect the radio to the PC with a USB cable.</li>
     <li>On the radio, set <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. With it OFF, the scope interface doesn't appear on the PC at all. Then turn the radio off and on, <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), so the PC sees the scope device. (<a href="faq.html#no-scope">More help</a>.)</li>
-    <li>Install FTDI's <strong>LibFT4222</strong> library from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>. The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. It's free, but its license doesn't let us include it with this GPL program, so you install it yourself.</li>
+    <li>FTDI's <strong>LibFT4222</strong> library: setup downloads it for you (the option is on by default). The FT-710 sends its scope through an FTDI FT4222 chip, and this library reads it. Its license doesn't let us include it inside this GPL program, so setup fetches FTDI's signed files from a pinned source, checks them, and puts them in the program folder. No internet while installing? Untick the option and get LibFT4222 from <a href="https://ftdichip.com/products/ft4222h/">FTDI's website</a>.</li>
   </ul>
   <p>Setup steps for other Yaesu models will be added here as they become supported.</p>
 
@@ -37,7 +37,7 @@
   <!-- endif:release -->
 
   <h2 id="setup-wizard">The setup wizard</h2>
-  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, offers a desktop shortcut and an option to start with Windows, and asks where you unzipped FTDI's LibFT4222 (you can skip that and set it later in the app).</p>
+  <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, downloads FTDI's LibFT4222 library for you (after you accept FTDI's licence terms), and offers a desktop shortcut and an option to start with Windows. If you untick the FTDI download, it asks where you unzipped LibFT4222 instead (you can also set that later in the app).</p>
   <!-- screenshots:installer -->
 
   <h2 id="smartscreen">If Windows warns about the installer</h2>
@@ -46,7 +46,7 @@
   <h2 id="first-launch">First launch</h2>
   <ol class="steps">
     <li>Start <strong>N1MM Scope Bridge</strong> from the Start menu (or let setup start it).</li>
-    <li>Choose your radio. If you didn't let setup copy LibFT4222, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
+    <li>Choose your radio. If you unticked setup's FTDI download, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
     <li>Press <strong>Start</strong>. The status changes to <strong>Streaming</strong> and shows your radio's frequency and span.</li>
     <li>No radio connected yet? Turn on <strong>Use the built-in emulator</strong> to try everything first.</li>
   </ol>

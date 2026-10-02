@@ -97,10 +97,13 @@ You don't need Python or a command prompt.
    release has been published yet; the installer is built and tested in CI.)
 2. Run it. It installs for your Windows account only (no admin prompt), and
    adds Start menu and optional desktop shortcuts.
-3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): FTDI's license doesn't
-   let us include it. Download it from
-   [ftdichip.com](https://ftdichip.com/products/ft4222h/). The installer can
-   copy it into place for you from the folder you unzipped.
+3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): setup downloads it
+   for you. The "Download FTDI's LibFT4222 library" option is on by default:
+   setup fetches FTDI's signed DLLs from a pinned source, checks the checksum
+   and signatures, and puts them in the program folder. (We can't ship FTDI's
+   library inside our GPL installer, so your setup downloads it.) No internet
+   during install? Untick it and download LibFT4222 from
+   [ftdichip.com](https://ftdichip.com/products/ft4222h/) instead.
 4. Start **N1MM Scope Bridge**, press **Start**, and pick its name in N1MM+'s
    Spectrum Display settings. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
 

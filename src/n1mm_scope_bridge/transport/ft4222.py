@@ -237,6 +237,22 @@ def _load_first(names: list[str], lib_dir: str | None, loader: Loader, tried: li
     return None
 
 
+def app_folder_with_ftdi(
+    platform: str = sys.platform,
+    *,
+    frozen: bool | None = None,
+    executable: str = sys.executable,
+) -> str | None:
+    """The packaged app's own folder, if it holds LibFT4222 (installer download, #133)."""
+    if frozen is None:
+        frozen = bool(getattr(sys, "frozen", False))
+    if platform != "win32" or not frozen:
+        return None
+    folder = os.path.dirname(os.path.abspath(executable))
+    names = library_names(platform)[1]
+    return folder if any(os.path.isfile(os.path.join(folder, n)) for n in names) else None
+
+
 def load_api(
     lib_dir: str | None = None,
     *,
@@ -245,7 +261,13 @@ def load_api(
     loader: Loader = _default_loader,
     add_dll_directory: Callable[[str], object] | None = _ADD_DLL_DIRECTORY,
 ) -> CtypesApi:
-    """Load LibFT4222 (and D2XX where it is separate) and return the bound API."""
+    """Load LibFT4222 (and D2XX where it is separate) and return the bound API.
+
+    With no folder given, the packaged Windows app first looks in its own
+    program folder, where the installer puts FTDI's DLLs (#133).
+    """
+    if not lib_dir:
+        lib_dir = app_folder_with_ftdi(platform)
     if lib_dir and not os.path.isdir(lib_dir):
         raise LibraryNotFound(f"FTDI library folder does not exist: {lib_dir}")
     d2xx_names, ft_names = library_names(platform, is_64bit)

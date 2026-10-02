@@ -427,3 +427,34 @@ def test_load_api_reports_missing_function() -> None:
     libs = {"ftd2xx.dll": broken, "LibFT4222-64.dll": ft4222_lib([])}
     with pytest.raises(LibraryNotFound, match="missing a required function"):
         ft.load_api(loader=make_loader(libs, []), platform="win32", is_64bit=True)
+
+
+# --- packaged app: DLLs installed next to the exe (#133) -----------------------------------
+
+
+def test_app_folder_with_ftdi(tmp_path: Path) -> None:
+    exe = tmp_path / "n1mm-scope-bridge.exe"
+    exe.write_bytes(b"")
+    assert ft.app_folder_with_ftdi("win32", frozen=True, executable=str(exe)) is None
+    (tmp_path / "LibFT4222-64.dll").write_bytes(b"")
+    assert ft.app_folder_with_ftdi("win32", frozen=True, executable=str(exe)) == str(tmp_path)
+    assert ft.app_folder_with_ftdi("win32", frozen=False, executable=str(exe)) is None
+    assert ft.app_folder_with_ftdi("darwin", frozen=True, executable=str(exe)) is None
+    assert ft.app_folder_with_ftdi() is None  # tests never run frozen
+
+
+def test_load_api_prefers_frozen_app_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tried: list[str] = []
+    registered: list[str] = []
+    libs = {"ftd2xx.dll": d2xx_lib([]), "LibFT4222-64.dll": ft4222_lib([])}
+    monkeypatch.setattr(ft, "app_folder_with_ftdi", lambda platform: str(tmp_path))
+    ft.load_api(
+        loader=make_loader(libs, tried),
+        platform="win32",
+        is_64bit=True,
+        add_dll_directory=registered.append,
+    )
+    assert registered == [str(tmp_path)]
+    assert tried[0] == os.path.join(str(tmp_path), "ftd2xx.dll")

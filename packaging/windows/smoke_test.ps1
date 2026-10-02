@@ -5,6 +5,9 @@
 # folder, check files, shortcuts and the uninstall entry, run the installed CLI
 # (legal notices + emulator frames into a UDP listener) and the GUI self-test,
 # then uninstall silently and check everything is gone except the settings.
+# The install runs with the FTDI download task (#133): setup must download
+# FTDI's signed LibFT4222/D2XX into the program folder, and probe must then load
+# them and report that no radio is connected.
 #
 #   pwsh packaging/windows/smoke_test.ps1 -Installer dist\windows\n1mm-scope-bridge-setup-0.1.0.exe
 
@@ -36,7 +39,7 @@ function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec
 # --- install ------------------------------------------------------------------------
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
 $code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
-    "/DIR=`"$Dir`"", '/TASKS=desktopicon', "/LOG=`"$log`"")
+    "/DIR=`"$Dir`"", '/TASKS=desktopicon,ftdidownload', "/LOG=`"$log`"")
 Check ($code -eq 0) "silent install exits 0 (got $code)"
 if ($code -ne 0) {
     Write-Host '--- install log ---'
@@ -48,8 +51,19 @@ $gui = Join-Path $Dir "$AppName.exe"
 Check (Test-Path $cli) 'CLI exe installed'
 Check (Test-Path $gui) 'GUI exe installed'
 foreach ($f in 'LICENSE', 'NOTICE', 'THIRD_PARTY.md') { Check (Test-Path (Join-Path $Dir "licenses\$f")) "licenses\$f installed" }
-$ftdi = Get-ChildItem -Path $Dir -Recurse -File | Where-Object { $_.Name -match '(?i)(ft4222|ftd2xx)' -and $_.Extension -eq '.dll' }
-Check ($null -eq $ftdi) 'no FTDI binaries installed'
+# FTDI's DLLs come only from setup's download (never from our installer).
+$expectedSigners = @{ 'LibFT4222-64.dll' = 'Future Technology Devices International'; 'ftd2xx.dll' = 'Microsoft Windows Hardware Compatibility' }
+foreach ($name in $expectedSigners.Keys) {
+    $path = Join-Path $Dir $name
+    Check (Test-Path $path) "$name downloaded into the program folder"
+    if (Test-Path $path) {
+        $sig = Get-AuthenticodeSignature -LiteralPath $path
+        Check ($sig.Status -eq 'Valid' -and $sig.SignerCertificate.Subject -like "*$($expectedSigners[$name])*") "$name signature valid ($($sig.Status), $($sig.SignerCertificate.Subject))"
+    }
+}
+$extra = Get-ChildItem -Path $Dir -Recurse -File | Where-Object { $_.Name -match '(?i)(ft4222|ftd2xx)' -and $_.Extension -eq '.dll' -and $_.DirectoryName -ne (Get-Item $Dir).FullName }
+Check ($null -eq $extra) 'no FTDI binaries anywhere except the downloaded pair'
+if (Test-Path $log) { Check ((Get-Content $log -Raw) -match 'FTDI download: LibFT4222-64.dll and ftd2xx.dll installed') 'install log records the verified FTDI download' }
 Check (Test-Path $StartMenu) 'Start menu shortcut created'
 Check (Test-Path $Desktop) 'desktop shortcut created'
 Check (Test-Path $UninstallKey) 'uninstall entry registered (per user)'
@@ -74,6 +88,13 @@ try {
 } catch [System.Net.Sockets.SocketException] { } finally { $udp.Close() }
 Check ($runCode -eq 0 -and $packets -ge 3) "installed CLI streams emulator frames to UDP (exit $runCode, $packets packets)"
 
+# With FTDI's DLLs installed, probe loads them and finds no radio (CI has none).
+$ErrorActionPreference = 'Continue'  # probe writes its error to stderr and exits 1
+$probe = & $cli probe 2>&1 | Out-String
+$probeCode = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+Check ($probeCode -eq 1 -and $probe -match "Could not open 'FT4222 A'" -and $probe -notmatch "Could not load FTDI") "installed CLI probe loads FTDI's library and reports no radio ($($probe.Trim()))"
+
 $selfTest = Wait-Process-Exit $gui @('--self-test')
 Check ($selfTest -eq 0) "installed GUI --self-test exits 0 (got $selfTest)"
 
@@ -86,6 +107,7 @@ Check ($code -eq 0) "silent uninstall exits 0 (got $code)"
 $deadline = (Get-Date).AddSeconds(60)
 while ((Test-Path $cli) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
 Check (-not (Test-Path $cli)) 'program files removed'
+Check (-not (Test-Path (Join-Path $Dir 'LibFT4222-64.dll'))) 'downloaded FTDI DLLs removed by uninstall'
 Check (-not (Test-Path $StartMenu)) 'Start menu shortcut removed'
 Check (-not (Test-Path $Desktop)) 'desktop shortcut removed'
 Check (-not (Test-Path $UninstallKey)) 'uninstall entry removed'

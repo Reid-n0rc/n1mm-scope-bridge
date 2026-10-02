@@ -67,12 +67,13 @@ $Prop = [System.Windows.Automation.AutomationElement]
 $Pages = [ordered]@{
     'License Agreement'           = @('installer-license', 'Setup wizard showing the GNU General Public License version 3 on the License Agreement page', 'Setup shows the GPL license. Accept it to continue.')
     'Select Destination Location' = @('installer-destination', 'Setup wizard page for choosing the install folder', 'Pick where to install. The default is your own user folder, so no administrator rights are needed.')
-    'Select Additional Tasks'     = @('installer-tasks', 'Setup wizard page with options for a desktop shortcut and starting with Windows', 'Optional desktop shortcut, and an option to start N1MM Scope Bridge when you sign in to Windows.')
+    'Select Additional Tasks'     = @('installer-tasks', 'Setup wizard page with options to download FTDI''s LibFT4222 library, add a desktop shortcut, and start with Windows', 'Setup downloads FTDI''s LibFT4222 library for you (on by default). Also: an optional desktop shortcut, and starting N1MM Scope Bridge when you sign in to Windows.')
     'FTDI LibFT4222 library'      = @('installer-ftdi', 'Setup wizard page asking for the folder containing FTDI''s LibFT4222 library', 'Point setup at your FTDI LibFT4222 download, or leave it empty and set it later in the app.')
     'Ready to Install'            = @('installer-ready', 'Setup wizard summary before installing', 'Check the summary, then choose Install.')
     'Completing the'              = @('installer-finished', 'Setup wizard finished page with an option to start N1MM Scope Bridge', 'Setup is complete. Start N1MM Scope Bridge from here or from the Start menu.')
 }
-$Required = 'installer-license', 'installer-tasks', 'installer-ftdi', 'installer-finished'
+# The FTDI folder page only appears when the FTDI download task is unticked (#133).
+$Required = 'installer-license', 'installer-tasks', 'installer-finished'
 
 function Get-TopWindows {
     return @($UIA::RootElement.FindAll($Tree::Children, [System.Windows.Automation.Condition]::TrueCondition))
@@ -162,6 +163,13 @@ try {
             if ($window) { Write-Host ('wizard names: ' + ((Get-Names $window | Select-Object -First 40) -join ' | ')) }
         }
         if (-not $window) { Start-Sleep -Milliseconds 300; continue }
+        # Leaving the tasks page with the FTDI download ticked asks the user to accept
+        # FTDI's licence terms (#133); accept so setup downloads the library.
+        if (Find-Named $window "Do you accept FTDI's licence terms") {
+            Activate $window '^&?Yes$' 'y'
+            Start-Sleep -Milliseconds 500
+            continue
+        }
         # Leaving the FTDI folder empty asks whether to open FTDI's download page;
         # answer No so CI never launches a browser.
         if (Find-Named $window "^Open FTDI's LibFT4222 download page") {

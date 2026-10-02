@@ -14,6 +14,7 @@ Standard library only; Windows only (Inno Setup is a Windows tool).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import build_windows_app as app
+import fetch_ftdi
 
 ROOT = app.ROOT
 ISS = ROOT / "packaging" / "windows" / "installer.iss"
@@ -68,9 +70,23 @@ def check_app_dir(app_dir: Path) -> None:
         raise InstallerError(f"FTDI binaries must never be bundled: {bad}")
 
 
+def ftdi_defines(pin: Path = fetch_ftdi.PIN) -> list[str]:
+    """/D defines for the installer's FTDI download, from the single pin (#133)."""
+    pkg, signers = fetch_ftdi.load_pin(pin)
+    data = json.loads(pin.read_text(encoding="utf-8"))
+    return [
+        f"/DFtdiWheelUrl={pkg.url}",
+        f"/DFtdiWheelSha256={pkg.sha256}",
+        f"/DFtdiWheelFile={pkg.filename}",
+        f"/DFtdiLibSigner={signers['LibFT4222-64.dll']}",
+        f"/DFtdiD2xxSigner={signers['ftd2xx.dll']}",
+        f"/DFtdiLicenceUrl={data['licence_url']}",
+    ]
+
+
 def iscc_command(iscc: str, version: str, app_dir: Path, out_dir: Path) -> list[str]:
     return [iscc, "/Q", f"/DAppVersion={version}", f"/DSourceDir={app_dir}",
-            f"/DOutputDir={out_dir}", str(ISS)]  # fmt: skip
+            f"/DOutputDir={out_dir}", *ftdi_defines(), str(ISS)]  # fmt: skip
 
 
 def installer_name(version: str) -> str:
