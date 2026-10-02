@@ -40,6 +40,17 @@
   <p>Setup installs into your own user folder, so it doesn't need administrator rights. It shows the GPL license, offers a desktop shortcut and an option to start with Windows, and asks where you unzipped FTDI's LibFT4222 (you can skip that and set it later in the app).</p>
   <!-- screenshots:installer -->
 
+  <h2 id="smartscreen">If Windows warns about the installer</h2>
+  <p>The installer isn't code-signed yet, so Windows SmartScreen may say "Windows protected your PC". Choose <strong>More info</strong>, then <strong>Run anyway</strong>. Each release lists SHA-256 checksums so you can check the download.</p>
+
+  <h2 id="first-launch">First launch</h2>
+  <ol class="steps">
+    <li>Start <strong>N1MM Scope Bridge</strong> from the Start menu (or let setup start it).</li>
+    <li>Choose your radio. If you didn't let setup copy LibFT4222, set <strong>FTDI library folder</strong> to the folder you unzipped.</li>
+    <li>Press <strong>Start</strong>. The status changes to <strong>Streaming</strong> and shows your radio's frequency and span.</li>
+    <li>No radio connected yet? Turn on <strong>Use the built-in emulator</strong> to try everything first.</li>
+  </ol>
+
   <h2 id="next">Next</h2>
   <p><a href="n1mm.html">Set up N1MM+ to show the bridge's spectrum</a>.</p>
 </main>

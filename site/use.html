@@ -16,6 +16,25 @@
   <!-- screenshot:main-window -->
   <p>No radio connected? Turn on <strong>Use the built-in emulator</strong> to try the bridge and set up N1MM+ first.</p>
 
+  <h2 id="controls">The controls</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Radio</td><td>Your radio model.</td></tr>
+      <tr><td>Use the built-in emulator</td><td>Streams a simulated FT-710, so you can try the bridge or set up N1MM+ without the radio.</td></tr>
+      <tr><td>FTDI library folder</td><td>The folder with FTDI's <code>LibFT4222-64.dll</code>. Leave it empty if setup copied the library for you.</td></tr>
+      <tr><td>Source name</td><td>The name you pick in N1MM+'s Spectrum Display settings. It's the radio model unless you change it.</td></tr>
+      <tr><td>N1MM+ PC and Port</td><td><code>127.0.0.1</code> and <code>13064</code> when N1MM+ runs on this PC.</td></tr>
+      <tr><td>Updates</td><td>Updates per second sent to N1MM+ (default 4, at most 10).</td></tr>
+      <tr><td>Display</td><td><strong>Latest</strong>, <strong>Average</strong> (smoother), or <strong>Peak hold</strong> (keeps short signals visible).</td></tr>
+      <tr><td>Scaling</td><td>How the radio's levels map to dB in N1MM+. Leave the default unless the display looks too strong or weak.</td></tr>
+    </tbody>
+  </table></div>
+  <p>A problem with a value is shown right under the field. The radio and N1MM+ settings lock while streaming; press <strong>Stop</strong> to change them.</p>
+
+  <h2 id="status">The status panel</h2>
+  <p>The <strong>Status</strong> section updates several times a second: whether the radio is sending, the VFO, span and scope mode, updates per second sent to N1MM+, dropped or bad frames, and the last error. Outside Center mode it reminds you to set Center for exact frequencies. The <strong>Log</strong> keeps the last 500 messages.</p>
+
   <h2 id="closing">Closing and the system tray</h2>
   <p>The bridge keeps streaming while it runs in the system tray. When you close the window it asks whether to keep running in the tray or exit. Tick <strong>Remember my choice</strong> to stop asking. Minimizing also sends it to the tray. Right-click the tray icon to show the window, start or stop streaming, or exit.</p>
   <!-- screenshot:close-prompt -->

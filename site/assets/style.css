@@ -73,3 +73,8 @@ code { background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 0.25re
 .gallery .screenshot { margin: 0; }
 .hero .screenshot img { box-shadow: 0 8px 24px rgb(0 0 0 / 15%); }
 .badge { display: inline-block; margin-left: .5rem; padding: 0 .5rem; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); font-size: .8rem; }
+
+/* Tables (user-doc pages such as Troubleshooting, #23) */
+.table-wrap { overflow-x: auto; margin: 1rem 0; }
+blockquote { margin: 1rem 0; padding: .25rem 1rem; border-left: 4px solid var(--border); }
+pre { overflow-x: auto; padding: .75rem; border: 1px solid var(--border); border-radius: 6px; }
