@@ -58,6 +58,8 @@ function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec
 }
 
 # --- install ------------------------------------------------------------------------
+# An earlier release candidate could add a start-with-Windows Run value; setup must remove it (#136).
+New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $AppName -Value 'stale-from-rc1' -PropertyType String -Force | Out-Null
 $log = Join-Path ([IO.Path]::GetTempPath()) 'n1mm-sb-install.log'
 $code = Wait-Process-Exit $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
     "/DIR=`"$Dir`"", '/TASKS=desktopicon,ftdidownload', "/LOG=`"$log`"") -timeoutSec 300 -logFile $log
@@ -88,6 +90,9 @@ if (Test-Path $log) { Check ((Get-Content $log -Raw) -match 'FTDI download: LibF
 Check (Test-Path $StartMenu) 'Start menu shortcut created'
 Check (Test-Path $Desktop) 'desktop shortcut created'
 Check (Test-Path $UninstallKey) 'uninstall entry registered (per user)'
+# The program never starts with Windows (#136): no Run entry, even after an upgrade.
+$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+Check ($null -eq (Get-ItemProperty -Path $RunKey -Name $AppName -ErrorAction SilentlyContinue)) 'no start-with-Windows Run entry (stale RC value removed)'
 
 # --- run the installed app ----------------------------------------------------------------
 $version = & $cli --version | Out-String

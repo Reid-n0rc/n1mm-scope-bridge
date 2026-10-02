@@ -152,6 +152,10 @@ class SettingsDialog(QDialog):
         self.emulator.setToolTip("Stream a simulated FT-710 to try the bridge or set up N1MM+")
         self.ftdi_dir = QLineEdit()
         self.ftdi_dir.setPlaceholderText("Search the system path")
+        self.ftdi_dir.setToolTip(
+            "Pick the unzipped FTDI LibFT4222 package folder (for example LibFT4222-v1.4.8) "
+            "or any folder inside it; the right DLLs for this app are found automatically"
+        )
         self.browse = QToolButton()
         self.browse.setText("Browse…")
         self.browse.setAccessibleName("Browse for the FTDI library folder")
