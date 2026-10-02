@@ -4,7 +4,8 @@
 
 Layout (top to bottom): a header (title, status pill, Start/Stop, menu), the
 live spectrum and waterfall preview, a row of cards (frequency, span, scope
-mode, N1MM+, health), a one-line message, and a collapsible Activity log.
+mode, N1MM+, health), the Center-mode prompt (only when the scope is not in
+Center), a one-line message, and a collapsible Activity log.
 Settings live in ``SettingsDialog`` and save automatically. The pipeline runs
 in ``StreamController``; this module only touches widgets on the GUI thread.
 """
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
 from n1mm_scope_bridge import settings as settings_mod
 from n1mm_scope_bridge.emulator import make_emulator
 from n1mm_scope_bridge.gui import icons
+from n1mm_scope_bridge.gui.center_panel import CenterModePanel
 from n1mm_scope_bridge.gui.controller import Source, StreamController, radio_source
 from n1mm_scope_bridge.gui.icon import app_icon
 from n1mm_scope_bridge.gui.settings_dialog import RATE_STEPS_PER_HZ, SettingsDialog
@@ -166,6 +168,10 @@ class MainWindow(QMainWindow):
         column.addLayout(self._build_header())
         column.addWidget(self._build_hero(), 1)
         column.addLayout(self._build_cards())
+        self.center_panel = CenterModePanel(
+            self._radio_model(), log=lambda message: self._log("info", message)
+        )
+        column.addWidget(self.center_panel)
         self.status = QLabel("Not streaming")
         self.status.setObjectName("message")
         self.status.setWordWrap(True)
@@ -517,8 +523,15 @@ class MainWindow(QMainWindow):
         target = f"{self._settings.n1mm_host}:{self._settings.n1mm_port}"
         return f"Streaming to N1MM+ at {target} as {self._settings.effective_name()!r}"
 
+    def _radio_model(self) -> str:
+        try:
+            return get_radio(self._settings.radio).model
+        except KeyError:
+            return self._settings.radio
+
     def _on_started(self) -> None:
         message = self._streaming_message()
+        self.center_panel.reset(self._radio_model())
         self.model.started()
         self.spectrum.clear()
         self._log("info", message)
@@ -542,6 +555,7 @@ class MainWindow(QMainWindow):
                 f"The radio's scope is in {status.mode_name} mode. Set it to Center mode for"
                 " exact frequencies in N1MM+."
             )
+        self.center_panel.observe(status)
         self.model.status = status
         self._refresh_status()
 
