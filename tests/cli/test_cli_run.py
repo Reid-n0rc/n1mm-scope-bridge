@@ -117,3 +117,9 @@ def test_run_exits_1_when_the_radio_stream_fails() -> None:
     code, _, err = cli("run", "--scenario", "usb-unplug", "--duration", "10", "--port", "9")
     assert code == 1
     assert "error: FT4222_SPIMaster_SingleRead failed" in err
+
+
+def test_run_prompts_when_scope_leaves_center() -> None:
+    code, _, err = cli("run", "--scenario", "mode-change", "--duration", "2.5", "--port", "9")
+    assert code == 0
+    assert "FT-710 scope left Center mode (Cursor (Normal))" in err

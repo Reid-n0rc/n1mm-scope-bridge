@@ -81,11 +81,35 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
 7. **Never commit or bundle FTDI libraries** (LibFT4222, ftd2xx), not even in
    release builds. They are proprietary and not GPL-compatible. Users install
    them from FTDI. The `pre-commit` hook blocks them.
-8. **Never transmit, and never key the radio.** This project only reads scope
-   data. Do not add code that sends CAT commands that change radio state
-   unless an approved issue says so explicitly.
+8. **Never transmit, never key the radio, and never open a COM port.** This
+   project only reads scope data through the FT4222 device. N1MM+ needs both
+   FT-710 COM ports (Enhanced for CAT, Standard for PTT/keying), so the bridge
+   never opens either, not even briefly (maintainer decision on #62; enforced by
+   `tests/test_no_com_ports.py`). It sends no CAT commands.
+   **Bench-only exception (development tooling, never shipped):**
+   `scripts/dev_cat.py`, used by `capture_golden.py --auto` and
+   `hardware_smoke.py --cat-port`, may open the radio's CAT (Enhanced) port, but
+   only with N1MM+, flrig and wfview closed. It holds RTS/DTR low, whitelists
+   reads of `FA;`, `SS05;` and `SS06;`, sets only scope span (`SS05`) and scope
+   mode (`SS06`), and always restores them. The package never imports it
+   (enforced by `tests/scripts/test_dev_cat.py`).
 9. **Test everything, and regress before merging.** See the Testing policy.
-10. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
+10. **Never merge with a red check or an open security finding.** Before any
+    merge, including `gh pr merge --admin` (which bypasses the ruleset), run
+    `python scripts/ready_to_merge.py <PR>` and merge only if it prints
+    `READY`. It requires every check on the PR head to be green (CodeQL,
+    Analyze, secret scan, and dependency review included), **zero open
+    CodeQL alerts on the PR**, no open secret-scanning alerts, no merge
+    conflicts, and an approved, assigned linked issue. Resolve every CodeQL
+    alert and security finding first: fix it, or, for a genuine false
+    positive, dismiss it with a written justification
+    (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
+    -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    One narrow exception is printed as a `NOTE`: a failed
+    `github-advanced-security` run (GitHub's optional Copilot AI review, which
+    fails when the Copilot quota runs out) does not block when the real
+    `CodeQL` check passed, because open CodeQL alerts are still checked.
+11. **Sign commits when possible** (SSH or GPG). Signing is encouraged, not
     required.
 
 ## Task sizing (context-window budget)
@@ -147,7 +171,8 @@ does not authorize work.
    check (`.github/workflows/issue-policy.yml`) fails a PR whose linked issue
    lacks `plan-approved` or an assignee. CI must be green.
 6. The maintainer (or an agent the maintainer has explicitly authorized)
-   merges.
+   merges, only after `python scripts/ready_to_merge.py <PR>` prints `READY`
+   (rule 10).
 
 Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware
@@ -195,7 +220,33 @@ Copilot's repository instructions are in
   does the work properly. Do this when its change is wrong or incomplete, for
   example when it rewrites an intentional pattern.
 - A bot never satisfies the checks on its own behalf. No labels, edits, or
-  exemptions are added just to get its PR through.
+  exemptions are added just to get its PR through. **The one exception,
+  approved by the maintainer (#83), is Copilot Autofix:**
+  `.github/workflows/autofix-conform.yml` runs when a same-repo
+  `alert-autofix-*` PR opens or changes. It:
+  - creates or reuses the tracking issue "Code scanning alert #N: <rule>"
+    (`plan-approved`, `process`, `lane:core`, assigned to the maintainer);
+  - links it with `Closes #<n>` and retargets the PR to `dev`;
+  - commits `changelog.d/<n>.security.md` and removes `needs-adoption`;
+  - re-dispatches CI, CodeQL, Changelog, and Issue policy on the PR branch
+    (commits made with the workflow token don't trigger checks on their own).
+
+  It never merges, approves, or runs the PR's code. The checks still have to
+  pass, and merging happens through the normal adoption routine or the
+  maintainer. Dependabot PRs are still adopted by a person or agent.
+
+**Automation triage** (`.github/workflows/automation-triage.yml`, every two
+hours, on demand, and when an automated PR opens) finds what still needs
+adopting:
+- it labels automated PRs `needs-adoption` and posts one explanatory comment
+  on each;
+- it keeps a single **Automated PR triage** issue listing those PRs and any
+  open code-scanning alert that no PR addresses, closing it when nothing is
+  pending.
+
+It only reports, and it drops `needs-adoption` once a PR links its issue.
+Apart from the Copilot Autofix conformance above, the adoption itself is done
+by a person or an agent, following the steps above.
 
 ## Testing policy
 
@@ -311,9 +362,14 @@ has the `no-changelog` label.
    artifact) into the PR, and run
    `python scripts/build_changelog.py --version X.Y.Z` to fold the fragments
    into [CHANGELOG.md](CHANGELOG.md).
-2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The regression
-   runs again on the tag, and the release workflow publishes a GitHub
-   **pre-release**.
+2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The
+   **Release** workflow (`.github/workflows/release.yml`) checks that the tag
+   matches `pyproject.toml` and points at `master`, runs the release
+   regression on the tag, builds the installer, app zip, wheel, and sdist,
+   writes `SHA256SUMS`, attests build provenance, and publishes a GitHub
+   **pre-release** whose notes are the CHANGELOG section plus the regression
+   report. Rehearse first with a dry run (builds everything, publishes
+   nothing): `gh workflow run release.yml --ref dev -f tag=vX.Y.Z-rc1`.
 3. **On-air check.** The maintainer installs the RC on the station PC and
    verifies the waterfall with a real FT-710 and N1MM+. Fixes go through
    `dev` as usual, followed by another RC.

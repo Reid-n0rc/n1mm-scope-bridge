@@ -26,6 +26,13 @@ from n1mm_scope_bridge.bridge import (
     DEFAULT_SCALING,
     BridgeConfig,
 )
+from n1mm_scope_bridge.control import (
+    DEFAULT_CONTROL_BIND,
+    DEFAULT_CONTROL_PORT,
+    WILDCARD_ERROR,
+    interface_address,
+    parse_allow,
+)
 from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT
 from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.transport.ft4222 import DEFAULT_DESCRIPTION
@@ -54,6 +61,13 @@ class Settings:
     start_minimized: bool = False
     on_close: str = "ask"
     """What the window's Close button does: ask, tray (keep streaming), or exit."""
+    control_enabled: bool = False
+    """Optional UDP remote control (docs/user/udp-control.md). Off by default."""
+    control_port: int = DEFAULT_CONTROL_PORT
+    control_bind: str = DEFAULT_CONTROL_BIND
+    """Address the control listener binds to; loopback unless deliberately changed."""
+    control_allow: str = ""
+    """Extra client IPs allowed to send commands (required for a non-loopback bind)."""
 
     def effective_name(self) -> str:
         if self.source_name:
@@ -89,11 +103,38 @@ class Settings:
             problems["on_close"] = f"choose one of: {', '.join(ON_CLOSE_CHOICES)}"
         if self.ftdi_lib_dir and not os.path.isdir(self.ftdi_lib_dir):
             problems["ftdi_lib_dir"] = "folder does not exist"
+        problems.update(self._validate_control())
         if profile is not None and not problems:
             try:
                 self.to_bridge_config()
             except ValueError as err:
                 problems["source_name"] = str(err)
+        return problems
+
+    def _validate_control(self) -> dict[str, str]:
+        problems: dict[str, str] = {}
+        if not 0 < self.control_port < 65536:
+            problems["control_port"] = "control port must be 1-65535 (default 13070)"
+        elif self.control_port == self.n1mm_port:
+            problems["control_port"] = "control port must differ from the N1MM+ spectrum port"
+        try:
+            loopback = interface_address(self.control_bind).is_loopback
+        except ValueError as err:
+            problems["control_bind"] = (
+                WILDCARD_ERROR
+                if str(err) == WILDCARD_ERROR
+                else "control address must be an IP address, for example 127.0.0.1"
+            )
+            loopback = True
+        try:
+            allow = parse_allow(self.control_allow)
+        except ValueError as err:
+            problems["control_allow"] = f"not an IP address: {err}"
+            allow = ()
+        if not loopback and not allow and "control_bind" not in problems:
+            problems["control_allow"] = (
+                "a non-loopback control address needs a list of allowed client IPs"
+            )
         return problems
 
     def to_bridge_config(self) -> BridgeConfig:

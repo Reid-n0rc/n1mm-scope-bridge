@@ -32,6 +32,9 @@ USER_MESSAGES = [
     "was recorded from a",
     "not an n1mm-scope-bridge capture",
     "trailing partial frame",
+    "not an n1mm-scope-bridge raw stream capture",
+    "raw chunk of",
+    "truncated raw",
     "capture has no frames to loop",
     "unsupported capture format",
     "capture model name",
@@ -41,6 +44,11 @@ USER_MESSAGES = [
     "--frames must be at least 1",
     "--name must not be empty",
     "port must be 1-65535",
+    "Could not start remote control on",
+    "No reply from n1mm-scope-bridge at",
+    "control port must",
+    "control address must",
+    "a non-loopback control address needs",
 ]
 USER_ERROR_RAISE = re.compile(
     r"raise (?:UserError|LibraryNotFound|DeviceNotFound|CaptureError)\(\s*f?\"([^\"{]{6,})"

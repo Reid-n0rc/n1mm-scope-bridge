@@ -37,7 +37,11 @@ def test_there_are_python_files() -> None:
 @pytest.mark.parametrize("path", PY_FILES, ids=lambda p: str(p.relative_to(ROOT)))
 def test_every_python_file_has_spdx_headers(path: Path) -> None:
     head = path.read_text(encoding="utf-8").splitlines()[:3]
-    assert head[0] == "# SPDX-License-Identifier: GPL-3.0-only"
+    # GPL-3.0-only, or a compound expression for files with third-party material
+    # (for example "GPL-3.0-only AND ISC AND MIT" for the Lucide icon shapes).
+    assert head[0] == "# SPDX-License-Identifier: GPL-3.0-only" or head[0].startswith(
+        "# SPDX-License-Identifier: GPL-3.0-only AND "
+    )
     assert any(line.startswith("# SPDX-FileCopyrightText: ") for line in head[1:])
 
 

@@ -8,13 +8,23 @@
 # from the event payload file and matched with a regex. The token is read-only.
 #
 # Assigning or approving an issue does not re-trigger this check. Edit the PR,
-# push a commit, or re-run the job after fixing the issue.
+# push a commit, or re-run the job after fixing the issue. The script re-reads
+# the PR through the API, so a re-run sees the current body.
+#
+# workflow_dispatch (with the PR number) is used by the Copilot Autofix
+# conformance workflow (#83): dispatched on the PR branch so the check run
+# attaches to the PR's head commit. The script still comes from `dev`.
 name: Issue policy
 
 on:
   pull_request_target:
     branches: [dev, master]
     types: [opened, edited, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to check
+        required: true
 
 permissions:
   contents: read
@@ -26,14 +36,16 @@ jobs:
     name: Linked issue approved and assigned
     runs-on: ubuntu-latest
     steps:
-      # Base branch only (the pull_request_target default). Never check out the PR head here.
+      # Base branch only. Never check out the PR head here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'dev' || '' }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
       - name: Check linked issue
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr }}
         run: python scripts/check_issue_policy.py

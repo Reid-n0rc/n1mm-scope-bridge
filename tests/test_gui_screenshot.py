@@ -23,7 +23,8 @@ def test_capture_writes_every_scene_with_manifest(qtbot: QtBot, tmp_path: Path) 
     app = QApplication.instance()
     assert isinstance(app, QApplication)
     paths = ss.capture(tmp_path, app, dark=lambda _a: False)
-    assert {p.name for p in paths} == {f"{s.name}.png" for s in ss.SCENES}
+    expected = {f"{s.name}{suffix}.png" for s in ss.SCENES for suffix in ("", "-dark")}
+    assert {p.name for p in paths} == expected
     manifest = json.loads((tmp_path / ss.MANIFEST).read_text(encoding="utf-8"))
     assert list(manifest) == [s.name for s in ss.SCENES]
     main = manifest["main-window"]
@@ -31,7 +32,10 @@ def test_capture_writes_every_scene_with_manifest(qtbot: QtBot, tmp_path: Path) 
     assert (image.width(), image.height()) == (main["width"], main["height"])
     assert (main["width"], main["height"]) == ss.WINDOW_SIZE
     assert all(entry["alt"] and entry["caption"] for entry in manifest.values())
-    assert "dark" not in main
+    assert all(entry["dark"] == f"{name}-dark.png" for name, entry in manifest.items())
+    light = QImage(str(tmp_path / "main-window.png")).pixelColor(4, 4).lightness()
+    dark = QImage(str(tmp_path / "main-window-dark.png")).pixelColor(4, 4).lightness()
+    assert dark < light  # the dark variant really is dark
     assert not (tmp_path / "screenshot-settings.json").exists()
 
 
@@ -50,7 +54,9 @@ def test_demo_window_shows_streaming_state(qtbot: QtBot, tmp_path: Path) -> None
     window = ss.demo_window(tmp_path / "s.json")
     qtbot.addWidget(window)
     assert window.chip.text() == "Streaming"
-    assert "14.074000 MHz" in window.status.text()
+    assert window.status.text().startswith("Streaming to N1MM+")
+    assert window.cards["frequency"].value.text() == "14.074 000 MHz"
+    assert window.spectrum.rows_added == ss.WATERFALL_FRAMES
     assert "Started streaming" in window.log_view.toPlainText()
     assert window.tray is None
     window.quit_app()
@@ -66,5 +72,5 @@ def test_gui_main_screenshot_mode(
     qtbot: QtBot, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert gui_app.main(["--screenshot", str(tmp_path)]) == 0
-    assert "Saved 3 screenshots" in capsys.readouterr().out
+    assert f"Saved {2 * len(ss.SCENES)} screenshots" in capsys.readouterr().out
     assert (tmp_path / ss.MANIFEST).exists()

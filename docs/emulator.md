@@ -53,13 +53,68 @@ know is marked `UNVERIFIED (#36)`:
   pads frames with it. The emulator supports both `padding="sync"` (the
   default) and `padding="zero"`, and the reader handles both.
 - **Frame rate**, start-up alignment, and how the stream behaves after a USB
-  re-plug.
+  re-plug. The golden captures (below) record all of these.
 
-Issue #36 records golden captures from a real FT-710 once (with
-`scripts/capture_golden.py`) and adds a CI conformance test that compares the
-emulator against them on every PR. After that, the emulator is a checked
-stand-in for the radio. Changing the parser or updating the radio firmware
-means recapturing.
+Issue #36 records golden captures from a real FT-710 once and checks the
+emulator against them in CI on every PR
+(`tests/test_emulator_conformance.py`). Until the captures are committed,
+those tests are expected failures marked "awaiting golden capture (#36)".
+After that, the emulator is a checked stand-in for the radio. Changing the
+parser (`radios/yaesu_scope.py`) or updating the radio firmware means
+recapturing; the conformance test fails if the parser changed since the
+captures were taken.
+
+The emulator paces frames against a deadline, so it streams at exactly its
+configured rate (20 frames/s, `EMULATOR_FPS`) however long a frame takes to
+build. That is what the radio's measured rate is compared against.
+
+## Validating against your radio
+
+Do this once per radio firmware version, at the radio, on Windows or macOS.
+It takes about 20 minutes. The tool only **reads** the scope stream. It never
+transmits and never changes radio settings. For the transmit case you key the
+radio yourself into a dummy load.
+
+1. Close everything that uses the radio's USB scope interface: N1MM+, wfview,
+   flrig, and any running `n1mm-scope-bridge`.
+2. Install FTDI's LibFT4222 (<https://ftdichip.com/products/ft4222h/>):
+   - **Windows:** the folder with `LibFT4222-64.dll` and `ftd2xx.dll`
+   - **macOS:** the folder with `libft4222.dylib` (and `libftd2xx.dylib` if
+     FTDI ships it separately)
+3. Rehearse with the emulator (no radio needed):
+
+   ```
+   uv run python scripts/capture_golden.py --dry-run --yes
+   ```
+
+4. Check the radio is visible:
+
+   ```
+   uv run n1mm-scope-bridge probe --ftdi-lib-dir <FTDI folder>
+   ```
+
+5. Record the golden captures and follow the prompts. For each case, set the
+   radio as shown, press Enter, and confirm what the radio displayed (or type
+   a note). Type `s` to skip a case.
+
+   ```
+   uv run python scripts/capture_golden.py --ftdi-lib-dir <FTDI folder>
+   ```
+
+   The cases are: Center mode at all 10 spans, Cursor mode, Fixed mode,
+   transmit into a dummy load, power-on start-up, and USB re-plug. Use
+   `--only <case> ...` to redo some of them.
+6. Run `uv run pytest tests/test_emulator_conformance.py`. Any difference
+   between the radio and the emulator is listed by name, for example
+   `real frames use 'zero' padding, emulator uses 'sync'`.
+7. Commit `tests/fixtures/golden/` (the `.raw` files and `manifest.json`) in a
+   PR for #36. Fix any conformance differences in the emulator in the same PR,
+   or in a linked one. Then remove the `UNVERIFIED (#36)` notes the captures
+   settle.
+
+Raw captures are also handy for bug reports: `n1mm-scope-bridge record
+--raw-stream --frames 50 my-radio.raw` keeps exactly what the radio sent,
+before frames are lined up.
 
 ## Native boundary: FTDI's real libraries
 
@@ -82,3 +137,37 @@ boundary is tested against **FTDI's own DLLs** in Windows CI:
 CI runners have no FT-710 attached, so **streaming data is covered by the
 emulator**, not the real DLLs. It is validated against the real radio once
 through golden captures (#36).
+
+### Unattended validation (bench tooling)
+
+With N1MM+, flrig and wfview closed, the FT-710 on USB, and FTDI's LibFT4222
+in a local folder (never committed):
+
+```
+uv sync --group hardware
+uv run n1mm-scope-bridge probe --ftdi-lib-dir <ftdi folder>
+uv run python scripts/hardware_smoke.py --ftdi-lib-dir <ftdi folder> \
+    --cat-port <CAT/Enhanced port> --minutes 5 --report hardware-smoke.md
+uv run python scripts/capture_golden.py --auto --cat-port <CAT/Enhanced port> \
+    --ftdi-lib-dir <ftdi folder> --firmware <radio firmware>
+uv run pytest tests/test_emulator_conformance.py
+```
+
+- `hardware_smoke.py` streams the real radio through the bridge into a local
+  UDP listener and checks packets, frame rate, errors and resyncs. With
+  `--cat-port` it also compares the VFO-A reading over CAT (read-only `FA;`)
+  with the scope stream.
+- `capture_golden.py --auto` sets the scope span and mode itself over CAT
+  (only those two settings, through the whitelisted `scripts/dev_cat.py`),
+  confirms every case from both the CAT readback and the scope stream, and
+  restores your original span and mode, even after an error or Ctrl-C.
+  Operator-only cases (transmit, power-on, USB re-plug) are skipped; run those
+  later in the interactive mode with `--only tx-dummy-load power-on-startup usb-replug`.
+
+Try both without a radio: `hardware_smoke.py --dry-run --minutes 0.2` and
+`capture_golden.py --auto --dry-run`.
+
+On macOS, FTDI's libraries (`libft4222.dylib` with D2XX built in, and
+`libftd2xx.dylib`) can't be downloaded by script from ftdichip.com, because of
+a browser challenge. For local bench use they can be taken unmodified from the
+`osx/` folder of the `ft4222` source package on PyPI. See THIRD_PARTY.md.

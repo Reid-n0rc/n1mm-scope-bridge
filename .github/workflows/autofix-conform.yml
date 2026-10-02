@@ -1,0 +1,54 @@
+# Makes Copilot Autofix PRs follow the repo's procedures automatically (#83).
+# Maintainer-approved exception for Copilot Autofix only (AGENTS.md, Automated
+# PRs). Logic: scripts/autofix_conform.py.
+#
+# For a same-repo PR whose head starts with `alert-autofix-` it creates or
+# reuses the tracking issue, links it, retargets to dev, commits the changelog
+# fragment, removes `needs-adoption`, re-dispatches the PR checks (edits and
+# commits made with GITHUB_TOKEN don't trigger workflows), and comments. It
+# never merges, approves, or runs code from the PR: pull_request_target checks
+# out the base branch, and the script only calls the GitHub API.
+name: Autofix conform
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Copilot Autofix pull request number
+        required: true
+
+permissions:
+  contents: write # changelog fragment commit via the contents API
+  pull-requests: write # link, retarget, label, comment
+  issues: write # tracking issue
+  actions: write # dispatch the PR checks
+  security-events: read # alert rule for the issue title
+
+concurrency:
+  group: autofix-conform-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  conform:
+    name: Conform Copilot Autofix PR
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (startsWith(github.head_ref, 'alert-autofix-') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      # Base branch only. Never check out or run the PR head.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'dev' || '' }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Conform
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+        run: python scripts/autofix_conform.py "$PR_NUMBER"

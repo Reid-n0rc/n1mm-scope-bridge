@@ -37,6 +37,10 @@ n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
 n1mm-scope-bridge-gui = "n1mm_scope_bridge.gui.app:main"
 
 [dependency-groups]
+# Bench tooling for the real radio (scripts/dev_cat.py, capture_golden --auto,
+# hardware_smoke --cat-port); not a default group: `uv sync --group hardware`.
+# Never a runtime dependency: the shipped bridge never opens a COM port.
+hardware = ["pyserial>=3.5"]
 # Windows app build (issue #6); not a default group: `uv sync --group packaging`.
 packaging = ["pyinstaller>=6.20"]
 # PySide6 ships abi3 wheels only, which free-threaded CPython cannot load:
