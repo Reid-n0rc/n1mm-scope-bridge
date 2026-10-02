@@ -24,9 +24,28 @@ flag_management:
     carryforward: true
 
 comment:
-  layout: "condensed_header, diff, flags, files"
+  layout: "condensed_header, diff, flags, components, files"
   require_changes: false
 
+# Two components so tooling coverage never hides app gaps (#180). The floors
+# that fail CI are in scripts/coverage_gate.py; these statuses report them.
+component_management:
+  individual_components:
+    - component_id: app
+      name: app
+      paths:
+        - "src/n1mm_scope_bridge/**"
+      statuses:
+        - type: patch
+          target: 90%
+    - component_id: scripts
+      name: scripts
+      paths:
+        - "scripts/**"
+      statuses:
+        - type: project
+          target: auto
+          threshold: 1%
+          informational: true
 ignore:
   - "tests/**"
-  - "scripts/**"

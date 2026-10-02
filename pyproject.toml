@@ -91,10 +91,10 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["n1mm_scope_bridge"]
+# App package and tooling; per-area floors are enforced by scripts/coverage_gate.py (#180).
+source = ["n1mm_scope_bridge", "scripts"]
 branch = true
 omit = ["*/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 90
