@@ -40,6 +40,7 @@ LICENSE_FILES = ("LICENSE", "NOTICE", "THIRD_PARTY.md")
 FORBIDDEN = ("*ft4222*.dll", "*ft4222*.so*", "*ft4222*.dylib", "*ftd2xx*")
 QT_DISTRIBUTIONS = ("PySide6-Essentials", "PySide6_Essentials", "shiboken6")
 MIN_PACKETS = 3
+COMMAND_TIMEOUT_S = 900  # PyInstaller can be slow; the app checks finish in seconds
 
 Runner = Callable[[Sequence[str], dict[str, str] | None], tuple[int, str]]
 
@@ -51,9 +52,15 @@ class BuildError(Exception):
 def run_command(
     cmd: Sequence[str], env: dict[str, str] | None = None
 ) -> tuple[int, str]:  # pragma: no cover
-    proc = subprocess.run(
-        list(cmd), cwd=ROOT, env=env, capture_output=True, text=True, check=False, errors="replace"
-    )
+    try:
+        proc = subprocess.run(
+            list(cmd), cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+            errors="replace", timeout=COMMAND_TIMEOUT_S,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired as err:
+        partial = (err.stdout or b"") + (err.stderr or b"")
+        text = partial.decode(errors="replace") if isinstance(partial, bytes) else str(partial)
+        return 124, f"timed out after {COMMAND_TIMEOUT_S} s\n{text}"
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -154,6 +161,18 @@ def exe_path(app_dir: Path, name: str = APP_NAME, windows: bool = sys.platform =
     return app_dir / (f"{name}.exe" if windows else name)
 
 
+def gui_self_test(gui: Path, runner: Runner = run_command) -> None:
+    """The built windowed GUI streams the emulator through its real window.
+
+    QT_DEBUG_PLUGINS makes Qt explain a missing platform plugin instead of
+    failing silently (in a frozen app that shows a modal error box).
+    """
+    env = {**os.environ, "QT_DEBUG_PLUGINS": "1"}
+    code, out = runner((str(gui), "--self-test"), env)
+    if code != 0:
+        raise BuildError(f"{gui.name} --self-test failed ({code}):\n{out[-4000:]}")
+
+
 def smoke_test(cli: Path, runner: Runner = run_command) -> None:
     """The built CLI shows its legal notices and streams emulator frames to UDP."""
     code, out = runner((str(cli), "--version"), None)
@@ -218,6 +237,8 @@ def build(
         raise BuildError(f"{GUI_EXE} was not built")
     if smoke:
         smoke_test(exe_path(app_dir), runner)
+        if gui:
+            gui_self_test(exe_path(app_dir, GUI_EXE), runner)
     return make_zip(app_dir, out / zip_name(version))
 
 
