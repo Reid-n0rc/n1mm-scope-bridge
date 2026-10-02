@@ -20,6 +20,8 @@ import datetime as dt
 import itertools
 import json
 import platform
+import shutil
+import subprocess
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,9 +49,17 @@ from n1mm_scope_bridge.transport.ft4222 import Ft4222Api, Ft4222Reader, load_api
 from n1mm_scope_bridge.transport.replay import CaptureReader
 
 NAME = "main-window-live"
-DEFAULT_WIDTH = 640
-GIF_COLOURS = 32  # keeps the GIF under the repo's 1 MiB file limit
-MAX_GIF_BYTES = 1024 * 1024  # .githooks/pre-commit file-size limit
+DEFAULT_WIDTH = 800
+GIF_WIDTH = 640
+# GIF fallback sizes (width, colours), tried in order until it fits MAX_FILE_BYTES.
+GIF_LADDER = ((GIF_WIDTH, 32), (560, 32), (480, 24), (400, 16), (320, 16))
+GIF_MAX_FPS = 5.0
+GIF_MAX_SECONDS = 6.0
+MAX_FILE_BYTES = 1024 * 1024  # .githooks/pre-commit file-size limit
+FORMATS = ("mp4", "webm", "gif")
+# ffmpeg quality ladders, tried in order until a file fits MAX_FILE_BYTES.
+MP4_CRF = (26, 30, 34, 38)
+WEBM_CRF = (36, 42, 48, 54)
 LIVE_CAPTION = "Live recording: the preview shows exactly what N1MM+ receives."
 
 
@@ -185,43 +195,145 @@ def _grab_frames(
     return images, source
 
 
-def write_animation(images: list[Image.Image], base: Path, fps: float) -> dict[str, int]:
-    """Write ``base``.gif (shared palette, optimized), .webp and a static .png."""
+def find_ffmpeg() -> str | None:
+    """ffmpeg on PATH, else the binary from the optional imageio-ffmpeg package."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg  # type: ignore[import-not-found]  # noqa: PLC0415 - optional
+
+        return str(imageio_ffmpeg.get_ffmpeg_exe())
+    except (ImportError, RuntimeError):
+        return None
+
+
+Runner = Callable[..., "subprocess.CompletedProcess[bytes]"]
+
+
+def _encode(
+    ffmpeg: str, images: list[Image.Image], out: Path, fps: float, codec: list[str], run: Runner
+) -> None:
+    width, height = images[0].size
+    cmd = [
+        ffmpeg, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{width}x{height}", "-r", f"{fps:g}", "-i", "-",
+        "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", "-an",
+        *codec, str(out),
+    ]  # fmt: skip
+    data = b"".join(im.convert("RGB").tobytes() for im in images)
+    result = run(cmd, input=data, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg failed for {out.name}: {result.stderr.decode(errors='replace')}"
+        )
+
+
+def write_video(
+    images: list[Image.Image],
+    base: Path,
+    fps: float,
+    fmt: str,
+    *,
+    ffmpeg: str,
+    run: Runner = subprocess.run,
+) -> int:
+    """Encode ``base``.mp4 (H.264) or .webm (VP9), lowering quality until it fits 1 MiB."""
     if not images:
         raise ValueError("no frames to write")
-    duration = round(1000 / fps)
-    palette = images[-1].quantize(colors=GIF_COLOURS, method=Image.Quantize.MEDIANCUT)
-    frames = [im.quantize(palette=palette, dither=Image.Dither.NONE) for im in images]
+    out = base.with_suffix(f".{fmt}")
+    ladder = MP4_CRF if fmt == "mp4" else WEBM_CRF
+    for crf in ladder:
+        if fmt == "mp4":
+            codec = ["-c:v", "libx264", "-preset", "slow", "-crf", str(crf),
+                     "-movflags", "+faststart"]  # fmt: skip
+        else:
+            codec = ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", str(crf), "-row-mt", "1"]
+        _encode(ffmpeg, images, out, fps, codec, run)
+        if out.stat().st_size <= MAX_FILE_BYTES:
+            return out.stat().st_size
+    raise ValueError(f"{out.name} is over {MAX_FILE_BYTES} bytes even at the lowest quality")
+
+
+def write_gif(images: list[Image.Image], base: Path, fps: float) -> int:
+    """A lighter GIF fallback (at most GIF_MAX_FPS and GIF_MAX_SECONDS), shrunk until it
+    fits MAX_FILE_BYTES."""
+    if not images:
+        raise ValueError("no frames to write")
+    step = max(1, round(fps / GIF_MAX_FPS))
+    gif_fps = fps / step
+    picked = images[::step][: max(2, round(GIF_MAX_SECONDS * gif_fps))]
     gif = base.with_suffix(".gif")
-    frames[0].save(
-        gif, save_all=True, append_images=frames[1:], duration=duration, loop=0, optimize=True,
-        disposal=1,
-    )  # fmt: skip
-    webp = base.with_suffix(".webp")
-    images[0].save(
-        webp, save_all=True, append_images=images[1:], duration=duration, loop=0, quality=80,
-        method=6,
-    )  # fmt: skip
+    for width, colours in GIF_LADDER:
+        frames = picked
+        if frames[0].width > width:
+            height = round(frames[0].height * width / frames[0].width)
+            frames = [im.resize((width, height), Image.Resampling.LANCZOS) for im in frames]
+        palette = frames[-1].quantize(colors=colours, method=Image.Quantize.MEDIANCUT)
+        quantized = [im.quantize(palette=palette, dither=Image.Dither.NONE) for im in frames]
+        quantized[0].save(
+            gif, save_all=True, append_images=quantized[1:], duration=round(1000 / gif_fps),
+            loop=0, optimize=True, disposal=1,
+        )  # fmt: skip
+        if gif.stat().st_size <= MAX_FILE_BYTES:
+            return gif.stat().st_size
+    raise ValueError(f"{gif.name} is over {MAX_FILE_BYTES} bytes even at the smallest size")
+
+
+def write_animation(
+    images: list[Image.Image],
+    base: Path,
+    fps: float,
+    formats: tuple[str, ...] = FORMATS,
+    *,
+    ffmpeg: str | None = None,
+    run: Runner = subprocess.run,
+) -> dict[str, int]:
+    """Write the requested formats plus a static ``base``.png; return their sizes."""
+    if not images:
+        raise ValueError("no frames to write")
+    unknown = set(formats) - set(FORMATS)
+    if unknown:
+        raise ValueError(f"unknown format(s): {', '.join(sorted(unknown))}")
+    sizes: dict[str, int] = {}
+    videos = [f for f in formats if f in ("mp4", "webm")]
+    if videos:
+        exe = ffmpeg or find_ffmpeg()
+        if exe is None:
+            raise ValueError("MP4/WebM need ffmpeg on PATH (or pip install imageio-ffmpeg)")
+        for fmt in videos:
+            sizes[fmt] = write_video(images, base, fps, fmt, ffmpeg=exe, run=run)
+    if "gif" in formats:
+        sizes["gif"] = write_gif(images, base, fps)
     png = base.with_suffix(".png")
     images[-1].save(png, optimize=True)
-    return {p.suffix[1:]: p.stat().st_size for p in (gif, webp, png)}
+    sizes["png"] = png.stat().st_size
+    return sizes
 
 
-def record(
+def record(  # noqa: PLR0913 - keyword-only recording options
     out_dir: Path,
     app: QApplication,
     feed: Feed | None = None,
     *,
-    seconds: float = 6.0,
-    fps: float = 4.0,
+    seconds: float = 15.0,
+    fps: float | None = None,
+    formats: tuple[str, ...] = FORMATS,
     settle: int = HISTORY_ROWS,
     width: int = DEFAULT_WIDTH,
     dark: bool = True,
+    ffmpeg: str | None = None,
+    run: Runner = subprocess.run,
 ) -> dict[str, object]:
-    """Record the streaming window (light, and dark if asked); return the manifest entry."""
+    """Record the streaming window (light, and dark if asked); return the manifest entry.
+
+    ``fps`` defaults to the source's own frame rate, so every radio frame is a
+    video frame and the waterfall scrolls smoothly.
+    """
+    feed = feed or emulator_feed()
+    fps = feed.source_fps if fps is None else fps
     if seconds <= 0 or fps <= 0:
         raise ValueError("--seconds and --fps must be greater than 0")
-    feed = feed or emulator_feed()
     out_dir.mkdir(parents=True, exist_ok=True)
     steps = max(2, round(seconds * fps))
     per_step = max(1, round(feed.source_fps / fps))  # real-time waterfall speed
@@ -232,7 +344,9 @@ def record(
             app, feed, settle=settle, steps=steps, per_step=per_step, width=width,
             settings_path=settings_path,
         )  # fmt: skip
-        sizes["light"] = write_animation(images, out_dir / NAME, fps)
+        sizes["light"] = write_animation(
+            images, out_dir / NAME, fps, formats, ffmpeg=ffmpeg, run=run
+        )
         size = images[0].size
         if dark:
             original = app.palette()
@@ -243,36 +357,37 @@ def record(
                     app, feed, settle=settle, steps=steps, per_step=per_step, width=width,
                     settings_path=settings_path,
                 )  # fmt: skip
-                sizes["dark"] = write_animation(dark_images, out_dir / f"{NAME}-dark", fps)
+                sizes["dark"] = write_animation(
+                    dark_images, out_dir / f"{NAME}-dark", fps, formats, ffmpeg=ffmpeg, run=run
+                )
             finally:
                 app.setPalette(original)
                 refresh_stylesheet(app)
     finally:
         feed.stop()
         settings_path.unlink(missing_ok=True)
+    still = f"{NAME}.png"
     entry: dict[str, object] = {
-        "file": f"{NAME}.gif",
-        "webp": f"{NAME}.webp",
-        "still": f"{NAME}.png",
+        "file": f"{NAME}.gif" if "gif" in formats else still,
+        "still": still,
         "width": size[0],
         "height": size[1],
         "frames": steps,
-        "fps": fps,
+        "fps": round(fps, 2),
         "alt": f"{streaming_alt(source.status)} {source.note}",
         "caption": f"{LIVE_CAPTION} {source.note}",
         "animated": True,
         **({"simulated": True} if source.simulated else {"real_radio": True}),
-        **(
-            {
-                "dark": f"{NAME}-dark.gif",
-                "dark_webp": f"{NAME}-dark.webp",
-                "dark_still": f"{NAME}-dark.png",
-            }
-            if "dark" in sizes
-            else {}
-        ),
+        **{fmt: f"{NAME}.{fmt}" for fmt in formats if fmt in ("mp4", "webm")},
         "bytes": sizes,
     }
+    if "dark" in sizes:
+        entry["dark_still"] = f"{NAME}-dark.png"
+        if "gif" in formats:
+            entry["dark"] = f"{NAME}-dark.gif"
+        for fmt in ("mp4", "webm"):
+            if fmt in formats:
+                entry[f"dark_{fmt}"] = f"{NAME}-dark.{fmt}"
     manifest_path = out_dir / MANIFEST
     manifest = (
         json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}

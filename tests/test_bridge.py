@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from n1mm_scope_bridge.bridge import (
     SpectrumCombiner,
     build_pipeline,
 )
+from n1mm_scope_bridge.demo import DemoStream
 from n1mm_scope_bridge.n1mm import N1mmSender
 from n1mm_scope_bridge.radios import yaesu_scope as ys
 from n1mm_scope_bridge.radios.base import ParsedFrame, ScopeStatus
@@ -213,3 +215,57 @@ def test_span_unavailable_warns_and_counts_bad_frames() -> None:
     assert pipe.stats().bad_frames == 3
     assert len(warnings) == 1
     assert "Center mode" in warnings[0]
+
+
+# --- live preview at the radio's rate (#126) ------------------------------------------
+
+
+def test_preview_follows_the_radio_rate_not_the_n1mm_rate() -> None:
+    """The live display gets every parsed frame (up to preview_hz); N1MM+ still gets rate_hz."""
+    source = DemoStream(fps=40)
+    previews: list[ParsedFrame] = []
+    sender = FakeSender()
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=4),
+        source,
+        sender,
+        close_source=source.stop,
+        on_preview=previews.append,
+        preview_hz=100,
+        warn=lambda _m: None,
+    )
+    pipe.start()
+    time.sleep(1.0)
+    pipe.stop()
+    pipe.join(timeout=5)
+    stats = pipe.stats()
+    assert len(previews) >= 0.8 * stats.frames_read  # nearly every frame
+    assert len(previews) > 3 * len(sender.payloads)  # much faster than N1MM+ updates
+    assert len(sender.payloads) <= 6
+
+
+def test_preview_is_capped_at_preview_hz() -> None:
+    now = [0.0]
+    previews: list[ParsedFrame] = []
+    frames = [make_ft4222_frame()] * 30
+
+    def clock() -> float:
+        now[0] += 0.01  # 100 frames/s worth of clock per call
+        return now[0]
+
+    pipe = build_pipeline(
+        BridgeConfig(FT710, "FT-710", rate_hz=10),
+        frames,
+        FakeSender(),
+        on_preview=previews.append,
+        preview_hz=10,
+        clock=clock,
+    )
+    pipe.start()
+    pipe.join(timeout=5)
+    assert 1 <= len(previews) < len(frames)
+
+
+def test_preview_hz_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="preview_hz"):
+        build_pipeline(BridgeConfig(FT710, "FT-710"), [], FakeSender(), preview_hz=0)

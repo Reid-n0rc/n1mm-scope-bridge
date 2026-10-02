@@ -31,6 +31,7 @@ Combine = Literal["latest", "average", "peak"]
 COMBINE_MODES: tuple[str, ...] = get_args(Combine)
 DEFAULT_SCALING = 0.3125  # UNVERIFIED (#5): ~80 dB over 256 steps
 DEFAULT_RATE_HZ = 4.0
+DEFAULT_PREVIEW_HZ = 15.0  # live display cap; the FT-710 sends about 11 frames/s
 
 
 class SpectrumCombiner:
@@ -131,7 +132,7 @@ CENTER_MODE_WARNING = (
 )
 
 
-def build_pipeline(
+def build_pipeline(  # noqa: PLR0913 - keyword-only callbacks and tuning
     config: BridgeConfig,
     source: Iterable[bytes],
     sender: PacketSender,
@@ -139,10 +140,21 @@ def build_pipeline(
     close_source: Callable[[], object] | None = None,
     on_status: Callable[[ScopeStatus], object] | None = None,
     on_frame: Callable[[ParsedFrame], object] | None = None,
+    on_preview: Callable[[ParsedFrame], object] | None = None,
+    preview_hz: float = DEFAULT_PREVIEW_HZ,
     warn: Callable[[str], object] = print,
     clock: Callable[[], float] = time.monotonic,
 ) -> Pipeline[ParsedFrame]:
-    """Build (but do not start) the reader -> process -> sender pipeline."""
+    """Build (but do not start) the reader -> process -> sender pipeline.
+
+    ``on_frame`` receives each combined frame sent to N1MM+ (``rate_hz``).
+    ``on_preview`` receives parsed radio frames at the radio's own rate, capped
+    at ``preview_hz``, so a live display stays smooth without changing what
+    N1MM+ gets. It runs on the process thread and must only hand the frame off
+    (for example emit a queued Qt signal).
+    """
+    if preview_hz <= 0:
+        raise ValueError(f"preview_hz must be greater than 0, got {preview_hz}")
     limiter = RateLimiter(1.0, clock)
 
     def emit(item: ParsedFrame) -> None:
@@ -160,13 +172,18 @@ def build_pipeline(
     decoder = FrameDecoder(config.profile)
     span_limiter = RateLimiter(5.0, clock)
 
+    preview_limiter = RateLimiter(1.0 / preview_hz, clock)
+
     def process(raw: bytes) -> ParsedFrame:
         try:
-            return decoder(raw)
+            item = decoder(raw)
         except SpanUnavailable as exc:  # counted as a bad frame; tell the operator why
             if span_limiter.allow():
                 warn(str(exc))
             raise
+        if on_preview is not None and preview_limiter.allow():
+            on_preview(item)
+        return item
 
     return Pipeline(
         config.profile.key,

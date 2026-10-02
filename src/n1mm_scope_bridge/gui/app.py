@@ -57,16 +57,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--record",
         type=Path,
         metavar="DIR",
-        help="record an animated GIF/WebP of the streaming window into DIR, then exit",
+        help="record a video (MP4/WebM) and GIF of the streaming window into DIR, then exit",
     )
     parser.add_argument(
         "--replay", type=Path, help="with --record --source replay: capture recorded from a radio"
     )
     parser.add_argument(
-        "--seconds", type=float, default=6.0, help="with --record: length of the recording"
+        "--seconds", type=float, default=15.0, help="with --record: length of the recording"
     )
     parser.add_argument(
-        "--fps", type=float, default=4.0, help="with --record: animation frames per second"
+        "--fps",
+        type=float,
+        default=None,
+        help="with --record: frames per second (default: the source's own rate, about 11)",
+    )
+    parser.add_argument(
+        "--format",
+        action="append",
+        choices=("mp4", "webm", "gif"),
+        help="with --record: output format; repeat for several (default: mp4, webm and gif)",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
@@ -128,7 +137,10 @@ def _record(args: argparse.Namespace, app: QApplication) -> int:
             if args.replay is None:
                 raise ValueError("--source replay needs --replay CAPTURE")
             feed = recording.replay_feed(args.replay)
-        entry = recording.record(args.record, app, feed, seconds=args.seconds, fps=args.fps)
+        formats = tuple(dict.fromkeys(args.format)) if args.format else recording.FORMATS
+        entry = recording.record(
+            args.record, app, feed, seconds=args.seconds, fps=args.fps, formats=formats
+        )
     except (ValueError, OSError, RuntimeError) as err:
         print(f"error: {err}", file=sys.stderr)
         return 1

@@ -505,3 +505,66 @@ def test_committed_live_recording_is_real_and_small() -> None:
     for key in bs.FILE_KEYS:
         if key in entry:
             assert (real / str(entry[key])).stat().st_size < 1024 * 1024  # pre-commit limit
+
+
+def write_live_video(directory: Path, **override: object) -> Path:
+    """A live recording with MP4/WebM videos, a GIF fallback and stills (#126)."""
+    write_live(directory)
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    entry = manifest["main-window-live"]
+    for key in ("mp4", "webm", "dark_mp4", "dark_webm"):
+        name = f"main-window-live{'-dark' if key.startswith('dark') else ''}.{key.split('_')[-1]}"
+        entry[key] = name
+        (directory / name).write_bytes(b"x")
+    entry.update(override)
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return directory
+
+
+def test_live_recording_renders_as_looping_video(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", LIVE_PAGE), write_live_video(tmp_path / "s"))
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert '<video class="motion motion-light" autoplay muted loop playsinline' in text
+    assert '<video class="motion motion-dark" autoplay muted loop playsinline' in text
+    # WebM first (smaller), then MP4, then the GIF for browsers without video.
+    light = text[text.index("motion-light") :]
+    assert (
+        light.index("video/webm") < light.index("video/mp4") < light.index("main-window-live.gif")
+    )
+    assert 'poster="assets/screenshots/main-window-live.png"' in text
+    assert 'aria-label="The window streaming a real FT-710"' in text
+    # Reduced motion: a still picture, hidden by default and shown by CSS.
+    assert '<picture class="motion-still">' in text
+    assert bs.REAL_LABEL in text
+    for name in ("main-window-live.mp4", "main-window-live.webm", "main-window-live-dark.mp4"):
+        assert (out / bs.SHOTS_DIR / name).exists()
+    css = (bs.SITE / "assets" / "style.css").read_text(encoding="utf-8")
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert ".screenshot video.motion { display: none; }" in css
+
+
+def test_light_only_video_is_not_hidden_in_dark_mode(tmp_path: Path) -> None:
+    shots = write_live_video(tmp_path / "s")
+    manifest = json.loads((shots / "manifest.json").read_text(encoding="utf-8"))
+    for key in ("dark_mp4", "dark_webm"):
+        del manifest["main-window-live"][key]
+    (shots / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", LIVE_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert '<video class="motion" autoplay' in text
+    assert "motion-dark" not in text
+
+
+def test_live_video_must_state_its_source(tmp_path: Path) -> None:
+    shots = write_live_video(tmp_path / "s", real_radio=False)
+    with pytest.raises(bs.SiteError, match="does not state its source"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", LIVE_PAGE), shots)
+
+
+def test_live_video_file_must_exist(tmp_path: Path) -> None:
+    shots = write_live_video(tmp_path / "s")
+    (shots / "main-window-live.mp4").unlink()
+    with pytest.raises(bs.SiteError, match="is missing"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", LIVE_PAGE), shots)

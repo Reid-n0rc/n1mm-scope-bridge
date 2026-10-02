@@ -68,6 +68,18 @@ code { background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 0.25re
 /* Screenshots (#68): explicit width/height from the manifest keep layout stable. */
 .screenshot { margin: 1.5rem 0; }
 .screenshot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; }
+.screenshot video { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; }
+.hero .screenshot video { box-shadow: 0 8px 24px rgb(0 0 0 / 15%); }
+/* Live recordings: the colour-scheme variant plays; reduced motion gets a still. */
+.motion-dark, .motion-still { display: none; }
+@media (prefers-color-scheme: dark) {
+  .motion-light { display: none; }
+  .motion-dark { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screenshot video.motion { display: none; }
+  .motion-still { display: block; }
+}
 .screenshot figcaption { margin-top: .5rem; color: var(--muted); font-size: .95rem; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 1rem; }
 .gallery .screenshot { margin: 0; }

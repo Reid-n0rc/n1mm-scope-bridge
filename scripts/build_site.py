@@ -66,7 +66,11 @@ REAL_LABEL = "Real radio: Yaesu FT-710"
 # Screenshots showing spectrum data must say where the data came from.
 STREAMING_SCENES = ("main-window", "main-window-live")
 # Every file an entry can name (copied into the site and checked to exist).
-FILE_KEYS = ("file", "dark", "webp", "dark_webp", "still", "dark_still")
+FILE_KEYS = (
+    "file", "dark", "webp", "dark_webp", "still", "dark_still",
+    "mp4", "webm", "dark_mp4", "dark_webm",
+)  # fmt: skip
+VIDEO_TYPES = (("webm", "video/webm"), ("mp4", "video/mp4"))
 
 
 class SiteError(Exception):
@@ -149,6 +153,35 @@ def _sources(entry: dict[str, object]) -> str:
     )
 
 
+def _videos(entry: dict[str, object], alt: str, size: str) -> str:
+    """<video> elements (light, and dark if recorded) with a GIF fallback inside.
+
+    CSS shows the variant matching the colour scheme and hides all video for
+    viewers who prefer reduced motion (they get the still picture instead).
+    """
+    out = []
+    has_dark = any(f"dark_{kind}" in entry for kind, _ in VIDEO_TYPES)
+    for prefix, poster_key, gif_key, cls in (
+        ("", "still", "file", "motion motion-light" if has_dark else "motion"),
+        ("dark_", "dark_still", "dark", "motion motion-dark"),
+    ):
+        sources = "".join(
+            f'<source src="{SHOTS_DIR}/{entry[prefix + kind]}" type="{mime}">'
+            for kind, mime in VIDEO_TYPES
+            if prefix + kind in entry
+        )
+        if not sources:
+            continue
+        poster = f"{SHOTS_DIR}/{entry.get(poster_key, entry['still'])}"
+        gif = f"{SHOTS_DIR}/{entry.get(gif_key, entry['file'])}"
+        out.append(
+            f'<video class="{cls}" autoplay muted loop playsinline preload="auto" '
+            f'poster="{poster}" {size} aria-label="{alt}">{sources}'
+            f'<img src="{gif}" alt="{alt}" {size}></video>'
+        )
+    return "".join(out)
+
+
 def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
     """Accessible <figure> for one screenshot or recording (explicit size, variants)."""
     src = f"{SHOTS_DIR}/{entry['file']}"
@@ -157,11 +190,27 @@ def figure(scene: str, entry: dict[str, object], *, preview: bool) -> str:
         label += f' <span class="badge">{SIMULATED_LABEL}</span>'
     elif entry.get("real_radio"):
         label += f' <span class="badge">{REAL_LABEL}</span>'
+    alt = html.escape(str(entry["alt"]))
+    size = f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}"'
+    caption = f"<figcaption>{html.escape(str(entry['caption']))}{label}</figcaption>"
+    if any(kind in entry for kind, _ in VIDEO_TYPES):
+        still_dark = (
+            f'<source srcset="{SHOTS_DIR}/{entry["dark_still"]}" '
+            'media="(prefers-color-scheme: dark)">'
+            if "dark_still" in entry
+            else ""
+        )
+        still = (
+            f'<picture class="motion-still">{still_dark}'
+            f'<img src="{SHOTS_DIR}/{entry["still"]}" alt="{alt}" {size} loading="lazy"></picture>'
+        )
+        return (
+            f'<figure class="screenshot" id="shot-{scene}">{_videos(entry, alt, size)}{still}'
+            f"{caption}</figure>"
+        )
     return (
         f'<figure class="screenshot" id="shot-{scene}"><picture>{_sources(entry)}'
-        f'<img src="{src}" alt="{html.escape(str(entry["alt"]))}" '
-        f'width="{int(str(entry["width"]))}" height="{int(str(entry["height"]))}" loading="lazy">'
-        f"</picture><figcaption>{html.escape(str(entry['caption']))}{label}</figcaption></figure>"
+        f'<img src="{src}" alt="{alt}" {size} loading="lazy"></picture>{caption}</figure>'
     )
 
 
