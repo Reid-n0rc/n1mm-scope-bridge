@@ -141,6 +141,9 @@ function Activate($window, [string]$pattern, [string]$keys) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$FakeFtdi = Join-Path ([IO.Path]::GetTempPath()) 'LibFT4222-placeholder'
+New-Item -ItemType Directory -Force -Path $FakeFtdi | Out-Null
+New-Item -ItemType File -Force -Path (Join-Path $FakeFtdi ('LibFT4222' + '-64.dll')) | Out-Null
 $InstallDir = Join-Path ([IO.Path]::GetTempPath()) ('n1mm-shots-' + [guid]::NewGuid().ToString('N'))
 $proc = Start-Process -FilePath $Installer -ArgumentList '/CURRENTUSER', "/DIR=`"$InstallDir`"", '/NORESTART' -PassThru
 
@@ -201,6 +204,16 @@ try {
                 }
                 Activate $window '^&?Finish' '%f'
             }
+            'FTDI LibFT4222 library' {
+                # Point the page at a placeholder folder so setup doesn't stop to ask
+                # about FTDI's download page. The empty file exists only on this
+                # machine for this run; the silent uninstall below removes the copy.
+                $edit = $window.FindFirst($Tree::Descendants, (New-Object System.Windows.Automation.PropertyCondition($Prop::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+                if (-not $edit) { throw 'No folder box on the FTDI page' }
+                $edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($FakeFtdi)
+                Start-Sleep -Milliseconds 300
+                Activate $window '^&?Next' '%n'
+            }
             default { Activate $window '^&?Next' '%n' }
         }
         if ($page -eq 'Completing the') { break }
@@ -214,6 +227,7 @@ finally {
         Start-Process $uninstaller.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
     }
     if (-not $proc.HasExited) { $proc | Stop-Process -Force }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $FakeFtdi
 }
 
 # UTF-8 without a BOM (Windows PowerShell 5.1's -Encoding utf8 adds one).
