@@ -15,6 +15,7 @@ Template syntax:
   <!-- if:prerelease --> ... <!-- endif:prerelease -->  only without --tag
   {{name}}                                   a value from the build context
   <!-- screenshot:NAME -->                   a GUI screenshot from --screenshots DIR
+  <!-- screenshots:PREFIX -->                every screenshot named PREFIX-*, or a note
                                              (manifest.json written by
                                              `n1mm-scope-bridge gui --screenshot DIR`)
 """
@@ -42,6 +43,11 @@ INCLUDE = re.compile(r"<!-- include:([a-z0-9_-]+) -->")
 BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re.S)
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
+# All screenshots whose scene starts with PREFIX-, in manifest (capture) order,
+# or a note when the build has none (for example installer pages, which are
+# captured on Windows by the release regression and arrive via screenshots.zip).
+SCREENSHOT_GROUP = re.compile(r"<!-- screenshots:([a-z0-9]+) -->")
+GROUP_FALLBACK = '<p class="note">Screenshots of these steps are added from each release build.</p>'
 SHOTS_DIR = "assets/screenshots"
 PREVIEW_LABEL = "Development preview"
 
@@ -131,6 +137,19 @@ def render(
         return figure(m.group(1), shots[m.group(1)], preview="version" not in ctx)
 
     text = SCREENSHOT.sub(screenshot, text)
+
+    def group(m: re.Match[str]) -> str:
+        scenes = [k for k in (shots or {}) if k.startswith(m.group(1) + "-")]
+        if not scenes or shots is None:
+            return GROUP_FALLBACK
+        preview = "version" not in ctx
+        return (
+            '<div class="gallery">'
+            + "".join(figure(k, shots[k], preview=preview) for k in scenes)
+            + "</div>"
+        )
+
+    text = SCREENSHOT_GROUP.sub(group, text)
     released = "version" in ctx
 
     def block(m: re.Match[str]) -> str:

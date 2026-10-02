@@ -69,5 +69,7 @@ code { background: var(--surface); padding: 0.1rem 0.3rem; border-radius: 0.25re
 .screenshot { margin: 1.5rem 0; }
 .screenshot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; }
 .screenshot figcaption { margin-top: .5rem; color: var(--muted); font-size: .95rem; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 1rem; }
+.gallery .screenshot { margin: 0; }
 .hero .screenshot img { box-shadow: 0 8px 24px rgb(0 0 0 / 15%); }
 .badge { display: inline-block; margin-left: .5rem; padding: 0 .5rem; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); font-size: .8rem; }

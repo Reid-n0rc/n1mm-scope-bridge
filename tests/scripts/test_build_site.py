@@ -287,3 +287,56 @@ def test_real_site_with_screenshots(tmp_path: Path) -> None:
     assert use.count("<figure") == 3
     assert any(p.name == "use.html" for p in pages)
     assert bs.main(["--out", str(tmp_path / "m"), "--screenshots", str(shots)]) == 0
+
+
+# --- screenshot groups (installer pages, #22) ----------------------------------------------
+
+
+GROUP_PAGE = {"index.html": "<h1>x</h1><!-- screenshots:installer -->"}
+
+
+def write_group(directory: Path, scenes: list[str]) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    manifest = {}
+    for scene in scenes:
+        (directory / f"{scene}.png").write_bytes(b"png")
+        manifest[scene] = {
+            "file": f"{scene}.png",
+            "width": 5,
+            "height": 4,
+            "alt": scene,
+            "caption": scene,
+        }
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return directory
+
+
+def test_group_renders_matching_scenes_in_capture_order(tmp_path: Path) -> None:
+    shots = write_group(tmp_path / "s", ["main-window", "installer-license", "installer-tasks"])
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", GROUP_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert '<div class="gallery">' in text
+    assert text.index("shot-installer-license") < text.index("shot-installer-tasks")
+    assert "shot-main-window" not in text
+    assert bs.PREVIEW_LABEL in text
+
+
+@pytest.mark.parametrize("with_shots", [True, False])
+def test_group_without_matches_shows_the_note(tmp_path: Path, with_shots: bool) -> None:
+    shots = write_group(tmp_path / "s", ["main-window"]) if with_shots else None
+    out = tmp_path / "out"
+    bs.build(out, RELEASE, write_site(tmp_path / "src", GROUP_PAGE), shots)
+    text = (out / "index.html").read_text(encoding="utf-8")
+    assert bs.GROUP_FALLBACK in text
+    assert "<figure" not in text
+
+
+def test_real_install_page_shows_installer_gallery(tmp_path: Path) -> None:
+    shots = write_group(
+        tmp_path / "s",
+        ["main-window", "close-prompt", "ftdi-error", "installer-license", "installer-ftdi"],
+    )
+    bs.build(tmp_path / "out", DEV, screenshots=shots)
+    install = (tmp_path / "out" / "install.html").read_text(encoding="utf-8")
+    assert install.count("<figure") == 2
