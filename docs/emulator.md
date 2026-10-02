@@ -82,3 +82,5 @@ boundary is tested against **FTDI's own DLLs** in Windows CI:
 CI runners have no FT-710 attached, so **streaming data is covered by the
 emulator**, not the real DLLs. It is validated against the real radio once
 through golden captures (#36).
+
+<!-- e2e test of autofix conformance (#83); this PR is closed without merging -->
