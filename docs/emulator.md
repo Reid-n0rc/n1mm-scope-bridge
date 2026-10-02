@@ -137,3 +137,37 @@ boundary is tested against **FTDI's own DLLs** in Windows CI:
 CI runners have no FT-710 attached, so **streaming data is covered by the
 emulator**, not the real DLLs. It is validated against the real radio once
 through golden captures (#36).
+
+### Unattended validation (bench tooling)
+
+With N1MM+, flrig and wfview closed, the FT-710 on USB, and FTDI's LibFT4222
+in a local folder (never committed):
+
+```
+uv sync --group hardware
+uv run n1mm-scope-bridge probe --ftdi-lib-dir <ftdi folder>
+uv run python scripts/hardware_smoke.py --ftdi-lib-dir <ftdi folder> \
+    --cat-port <CAT/Enhanced port> --minutes 5 --report hardware-smoke.md
+uv run python scripts/capture_golden.py --auto --cat-port <CAT/Enhanced port> \
+    --ftdi-lib-dir <ftdi folder> --firmware <radio firmware>
+uv run pytest tests/test_emulator_conformance.py
+```
+
+- `hardware_smoke.py` streams the real radio through the bridge into a local
+  UDP listener and checks packets, frame rate, errors and resyncs. With
+  `--cat-port` it also compares the VFO-A reading over CAT (read-only `FA;`)
+  with the scope stream.
+- `capture_golden.py --auto` sets the scope span and mode itself over CAT
+  (only those two settings, through the whitelisted `scripts/dev_cat.py`),
+  confirms every case from both the CAT readback and the scope stream, and
+  restores your original span and mode, even after an error or Ctrl-C.
+  Operator-only cases (transmit, power-on, USB re-plug) are skipped; run those
+  later in the interactive mode with `--only tx-dummy-load power-on-startup usb-replug`.
+
+Try both without a radio: `hardware_smoke.py --dry-run --minutes 0.2` and
+`capture_golden.py --auto --dry-run`.
+
+On macOS, FTDI's libraries (`libft4222.dylib` with D2XX built in, and
+`libftd2xx.dylib`) can't be downloaded by script from ftdichip.com, because of
+a browser challenge. For local bench use they can be taken unmodified from the
+`osx/` folder of the `ft4222` source package on PyPI. See THIRD_PARTY.md.
