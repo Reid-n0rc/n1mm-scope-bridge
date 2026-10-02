@@ -150,21 +150,44 @@ These rules apply to docs, the GUI, the website, and CLI help.
 ## GUI (Qt / PySide6)
 
 - **Look:** native and modern. Use the `windows11` style on Windows and
-  `Fusion` elsewhere. Follow the system light/dark setting. Never hard-code
-  colours: use palette roles (`QPalette`) or one small application stylesheet
-  in `gui/` that only uses palette references.
-- **Layout:** `QFormLayout` for settings (labels on the left, ending without a
-  colon in Windows 11 style), with grouping by `QGroupBox` titles in sentence
-  case. Spacing comes from Qt defaults. No fixed pixel sizes except minimum
-  window sizes. High-DPI is automatic, so never scale by hand.
+  `Fusion` elsewhere. Follow the system light/dark setting and the user's
+  accent colour.
+- **Design system** (`gui/style.py`): one stylesheet built at run time from
+  the current `QPalette` (`Theme.from_palette`), rebuilt when the colour
+  scheme changes. Surfaces, text, borders, and the accent come from the
+  palette. The only fixed colours are the Fluent (Windows 11) **status
+  tokens**, success/warning/danger for light and dark, and the waterfall
+  colour map in `gui/spectrum.py` (data, not chrome). Never put another
+  colour in a widget. Text must meet WCAG AA (4.5:1), and
+  `tests/test_gui_design.py` checks the tokens.
+- **Layout:** dashboard first. A header (title and subtitle, status pill,
+  primary Start/Stop, gear, ⋯ menu); the spectrum and waterfall preview; a row
+  of **cards** (`gui/widgets.Card`: title, value, detail, chip); a message
+  line; and a collapsible Activity log. Spacing is an 8 px grid: 16 px window
+  margins, 12 px between sections and cards. Cards have a 1 px border and an
+  8 px radius; buttons and chips a 6 px and 11 px radius.
+- **Typography:** title 20 px semibold; card values 18 px semibold;
+  frequencies in the system fixed-width font, grouped like a radio display
+  (`14.074 000 MHz`); card titles, details, and hints in the secondary text
+  colour.
+- **Settings** live in a dialog with a page sidebar (`gui/settings_dialog.py`),
+  never on the main screen. `QFormLayout` per page, labels without colons,
+  sentence-case page titles and a one-line hint. Changes save automatically.
+  Pages that affect the stream are read-only while streaming, with a warning
+  banner saying why.
+- **Icons:** Lucide line icons (`gui/icons.py`), tinted from the palette so
+  they work in both themes, plus the app icon drawn from the palette. Every
+  interactive control has an accessible name and a tooltip when its label is
+  terse.
 - **Behaviour:** the window opens on start. Close asks (keep in tray or exit)
   unless the choice was remembered. Minimize goes to the tray and keeps
   streaming (#19). Long operations never block the GUI thread.
-- **Feedback:** a status chip (Stopped / Streaming / Error), inline validation
-  under the field, and dialogs only for errors that stop streaming.
-- Icons come from one set (the app icon plus Qt standard icons). Every
-  interactive control has an accessible name and a tooltip when its label is
-  terse.
+- **Feedback:** the status pill (Stopped / Streaming / Error), chips on cards
+  for state that needs attention, inline validation under the field, and
+  dialogs only for errors that stop streaming.
+- **Screenshots:** check every change in light and dark with
+  `n1mm-scope-bridge gui --screenshot DIR` and look at the PNGs for alignment,
+  truncation, and contrast before opening the PR.
 
 ## Website
 
