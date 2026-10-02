@@ -38,9 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--source",
-        choices=("emulator", "radio"),
+        choices=("emulator", "radio", "replay"),
         default="emulator",
-        help="with --screenshot: data from the built-in emulator (default) or the radio",
+        help="with --screenshot/--record: the built-in emulator (default), the radio, "
+        "or (--record only) a capture given with --replay",
     )
     parser.add_argument(
         "--ftdi-lib-dir", help="with --source radio: folder containing LibFT4222 and D2XX"
@@ -51,6 +52,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=20.0,
         metavar="SECONDS",
         help="with --source radio: stream this long first so the waterfall fills (default 20)",
+    )
+    parser.add_argument(
+        "--record",
+        type=Path,
+        metavar="DIR",
+        help="record an animated GIF/WebP of the streaming window into DIR, then exit",
+    )
+    parser.add_argument(
+        "--replay", type=Path, help="with --record --source replay: capture recorded from a radio"
+    )
+    parser.add_argument(
+        "--seconds", type=float, default=6.0, help="with --record: length of the recording"
+    )
+    parser.add_argument(
+        "--fps", type=float, default=4.0, help="with --record: animation frames per second"
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
@@ -97,9 +113,34 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
     return True, f"self-test: OK ({packets} packets, style {app.property('bridgeStyle')})"
 
 
+def _record(args: argparse.Namespace, app: QApplication) -> int:
+    """``--record DIR``: animated recording of the streaming window (website, #124)."""
+    try:
+        from n1mm_scope_bridge.gui import recording  # noqa: PLC0415 - needs Pillow (dev only)
+    except ImportError:
+        print("error: --record needs Pillow: uv sync (it is in the gui-dev group)", file=sys.stderr)
+        return 1
+    try:
+        feed = None
+        if args.source == "radio":
+            feed = recording.radio_feed(args.ftdi_lib_dir)
+        elif args.source == "replay":
+            if args.replay is None:
+                raise ValueError("--source replay needs --replay CAPTURE")
+            feed = recording.replay_feed(args.replay)
+        entry = recording.record(args.record, app, feed, seconds=args.seconds, fps=args.fps)
+    except (ValueError, OSError, RuntimeError) as err:
+        print(f"error: {err}", file=sys.stderr)
+        return 1
+    print(f"Saved {entry['file']} ({entry['frames']} frames) to {args.record}: {entry['bytes']}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     app = application()
+    if args.record is not None:
+        return _record(args, app)
     if args.screenshot is not None:
         from n1mm_scope_bridge.gui import screenshot  # noqa: PLC0415 - only for this mode
 

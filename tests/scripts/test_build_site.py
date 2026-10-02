@@ -426,3 +426,82 @@ def test_markdown_marker_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     src2 = write_site(tmp_path / "src2", {"index.html": "<!-- markdown:docs/user/bad.md -->"})
     with pytest.raises(bs.SiteError, match=r"bad\.md: unsupported"):
         bs.build(tmp_path / "out2", DEV, src2)
+
+
+# --- animated recordings (#124) ----------------------------------------------------------
+
+
+LIVE_PAGE = {"index.html": "<h1>x</h1><!-- screenshot:main-window-live -->"}
+
+
+def write_live(directory: Path, **override: object) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    names = {
+        "file": "main-window-live.gif",
+        "webp": "main-window-live.webp",
+        "still": "main-window-live.png",
+        "dark": "main-window-live-dark.gif",
+        "dark_webp": "main-window-live-dark.webp",
+        "dark_still": "main-window-live-dark.png",
+    }
+    entry: dict[str, object] = {
+        **names,
+        "width": 640,
+        "height": 427,
+        "alt": "The window streaming a real FT-710",
+        "caption": "Live recording from a real Yaesu FT-710.",
+        "animated": True,
+        "real_radio": True,
+    }
+    entry.update(override)
+    for key, name in names.items():
+        if key in entry:
+            (directory / name).write_bytes(b"x")
+    (directory / "manifest.json").write_text(
+        json.dumps({"main-window-live": entry}), encoding="utf-8"
+    )
+    return directory
+
+
+def test_animated_recording_has_reduced_motion_and_webp_sources(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    bs.build(out, DEV, write_site(tmp_path / "src", LIVE_PAGE), write_live(tmp_path / "shots"))
+    text = (out / "index.html").read_text(encoding="utf-8")
+    reduce = (
+        'srcset="assets/screenshots/main-window-live.png" media="(prefers-reduced-motion: reduce)"'
+    )
+    assert reduce in text
+    assert "(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" in text
+    assert 'srcset="assets/screenshots/main-window-live.webp" type="image/webp"' in text
+    assert '<img src="assets/screenshots/main-window-live.gif"' in text
+    # Reduced-motion stills come before any animated source, so they win.
+    assert text.index("prefers-reduced-motion") < text.index("image/webp")
+    assert bs.REAL_LABEL in text
+    for name in ("main-window-live.gif", "main-window-live.webp", "main-window-live-dark.png"):
+        assert (out / bs.SHOTS_DIR / name).exists()
+
+
+def test_animated_recording_needs_a_still(tmp_path: Path) -> None:
+    shots = write_live(tmp_path / "shots")
+    manifest = json.loads((shots / "manifest.json").read_text(encoding="utf-8"))
+    del manifest["main-window-live"]["still"]
+    (shots / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(bs.SiteError, match="reduced motion"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", LIVE_PAGE), shots)
+
+
+def test_animated_recording_must_state_its_source(tmp_path: Path) -> None:
+    shots = write_live(tmp_path / "shots", real_radio=False)
+    with pytest.raises(bs.SiteError, match="does not state its source"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", LIVE_PAGE), shots)
+
+
+def test_committed_live_recording_is_real_and_small() -> None:
+    real = bs.SITE / bs.REAL_DIR
+    entry = bs.load_screenshots(real)["main-window-live"]
+    assert entry["real_radio"] is True
+    assert entry["animated"] is True
+    assert "real Yaesu FT-710" in str(entry["caption"])
+    for key in bs.FILE_KEYS:
+        if key in entry:
+            assert (real / str(entry[key])).stat().st_size < 1024 * 1024  # pre-commit limit
