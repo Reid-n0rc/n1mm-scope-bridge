@@ -23,7 +23,7 @@
 | `demo.py` | Deterministic synthetic FT-710 frames (demo mode, screenshots, test fixture) | No |
 | `pipeline.py` | Threaded reader → process → sender stages, drop-oldest queue, per-radio pipelines (`MultiPipeline`) | No (injected) |
 | `bridge.py` | Wires a radio's transport, parser, combiner (latest/average/peak) and N1MM sender into a `Pipeline` | No (injected) |
-| `cli.py` | `run`, `record`, `list-radios`, and `probe` commands | Wires I/O |
+| `cli/` | Command-line entry point; one module per command in `cli/commands/`, discovered automatically (add a command by adding a module) | Wires I/O |
 
 ## Concurrency (multi-core)
 

@@ -64,17 +64,21 @@ def documented_options(parser: argparse.ArgumentParser) -> list[str]:
     return opts + positional
 
 
-def test_every_command_has_a_section() -> None:
-    doc = read("cli.md")
-    for name in commands():
-        assert f"## `{name}`" in doc, f"cli.md has no section for `{name}`"
+def command_page(name: str) -> str:
+    return (USER / "cli" / f"{name}.md").read_text(encoding="utf-8")
+
+
+def test_every_command_has_its_own_page() -> None:
+    pages = {p.stem for p in (USER / "cli").glob("*.md")}
+    assert pages == set(commands()), "docs/user/cli/ must have exactly one page per command"
 
 
 @pytest.mark.parametrize("command", sorted(commands()))
 def test_every_option_is_documented(command: str) -> None:
-    doc = read("cli.md")
+    doc = command_page(command)
+    assert doc.startswith(f"# `{command}`"), f"cli/{command}.md must start with its heading"
     for option in documented_options(commands()[command]):
-        assert f"`{option}" in doc, f"cli.md does not document {command} {option}"
+        assert f"`{option}" in doc, f"cli/{command}.md does not document {option}"
 
 
 def test_global_options_documented() -> None:
@@ -113,7 +117,7 @@ def test_every_user_error_raise_is_listed() -> None:
 
 
 def test_doc_links_resolve() -> None:
-    for page in USER.glob("*.md"):
+    for page in USER.rglob("*.md"):
         for target in re.findall(r"\]\(([^)#:]+\.md)\)", page.read_text(encoding="utf-8")):
             assert (page.parent / target).resolve().exists(), f"{page.name} -> {target}"
 
@@ -121,5 +125,5 @@ def test_doc_links_resolve() -> None:
 def test_checker_catches_an_undocumented_option() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--brand-new-option")
-    missing = [o for o in documented_options(parser) if f"`{o}" not in read("cli.md")]
+    missing = [o for o in documented_options(parser) if f"`{o}" not in command_page("run")]
     assert missing == ["--brand-new-option"]

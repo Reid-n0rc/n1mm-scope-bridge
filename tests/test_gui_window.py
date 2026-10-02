@@ -20,7 +20,6 @@ from n1mm_scope_bridge.gui import main_window as mw
 from n1mm_scope_bridge.gui.controller import StreamController
 from n1mm_scope_bridge.gui.main_window import MainWindow
 from n1mm_scope_bridge.gui.style import STYLESHEET, apply_style, choose_style
-from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios.base import ScopeStatus
 from n1mm_scope_bridge.settings import Settings
 from n1mm_scope_bridge.transport.ft4222 import FTDI_DOWNLOAD_URL, Ft4222Reader, LibraryNotFound
@@ -152,10 +151,12 @@ def test_start_stop_with_emulator(qtbot: QtBot, listener: socket.socket) -> None
         window.start_stop.click()
     assert window.chip.text() == "Streaming"
     assert window.start_stop.text() == "Stop"
-    assert all(not box.isEnabled() for box in window.findChildren(QGroupBox))
+    boxes = {box.objectName(): box.isEnabled() for box in window.findChildren(QGroupBox)}
+    assert all(boxes[name] for name in mw.ALWAYS_ENABLED)  # status, log, closing stay usable
+    assert not any(enabled for name, enabled in boxes.items() if name not in mw.ALWAYS_ENABLED)
     assert b"<Spectrum>" in listener.recvfrom(65535)[0]
     qtbot.waitUntil(lambda: window.status.text().startswith("VFO 14.074000 MHz"), timeout=3000)
-    qtbot.waitUntil(lambda: window.counters.text().startswith("Sent"), timeout=3000)
+    qtbot.waitUntil(lambda: "total" in window.status_rows["Sent to N1MM+"].text(), timeout=3000)
     assert rec.saved  # settings saved on Start
     with qtbot.waitSignal(window.controller.stopped, timeout=6000):
         window.start_stop.click()
@@ -184,7 +185,6 @@ def test_missing_ftdi_library_offers_download(qtbot: QtBot) -> None:
 def test_status_and_stats_text() -> None:
     status = ScopeStatus(14_074_000, 20_000, "center", "Center (Normal)")
     assert mw.status_text(status) == "VFO 14.074000 MHz · span 20 kHz · Center (Normal)"
-    assert mw.stats_text(PipelineStats(10, 1, 2, 4)) == "Sent 4 · dropped 1 · bad 2"
 
 
 def test_non_center_mode_hint(qtbot: QtBot) -> None:
@@ -267,3 +267,27 @@ def test_self_test_reports_missing_packets(
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert not ok
     assert "received 0 N1MM packets" in message
+
+
+def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.socket) -> None:
+    settings = Settings(emulator=True, n1mm_port=listener.getsockname()[1], rate_hz=10.0)
+    window = MainWindow(settings, save=lambda s, p: None, tray_available=lambda: True)
+    qtbot.addWidget(window)
+    with qtbot.waitSignal(window.controller.started, timeout=3000):
+        window.toggle_streaming()
+    qtbot.waitUntil(lambda: window.status_rows["VFO"].text() == "14.074000 MHz", timeout=3000)
+    qtbot.waitUntil(
+        lambda: "per second" in window.status_rows["Sent to N1MM+"].text(), timeout=3000
+    )
+    assert window.tray is not None
+    assert window.tray.icon.toolTip().startswith("N1MM Scope Bridge: Streaming FT-710 to N1MM+")
+    assert "Streaming to N1MM+" in window.log_view.toPlainText()
+    window.controller.warning.emit("scope is in Cursor mode")
+    qtbot.waitUntil(lambda: "warning: scope is in Cursor mode" in window.log_view.toPlainText())
+    text = window.copy_diagnostics()
+    assert QApplication.clipboard().text() == text
+    assert "Diagnostics copied" in window.log_view.toPlainText()
+    with qtbot.waitSignal(window.controller.stopped, timeout=6000):
+        window.toggle_streaming()
+    assert "Stopped streaming" in window.log_view.toPlainText()
+    window.quit_app()

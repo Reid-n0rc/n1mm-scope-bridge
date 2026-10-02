@@ -35,16 +35,27 @@ A problem with a value is shown right under the field, for example
 ## Start and Stop
 
 Press **Start**. The status chip at the top right changes to **Streaming**,
-the settings lock until you press **Stop**, and the lines under the settings
-show what the radio's scope is showing:
+and the radio and N1MM+ settings lock until you press **Stop**. The Status,
+Log, and Startup and closing sections stay usable.
 
-```
-VFO 14.074000 MHz · span 20 kHz · Center (Normal)
-Sent 120 · dropped 0 · bad 0
-```
+**Status** shows, updated several times a second:
 
-If the scope isn't in Center mode, the status line says so: set the radio's
-scope to **Center** for exact frequencies in N1MM+.
+| Row | Meaning |
+|---|---|
+| Radio | *Not streaming*, *Waiting for the radio*, or *Receiving scope data* |
+| VFO, Span | What the radio's scope is showing |
+| Scope mode | For example *Center (Normal)*. Outside Center mode it adds *set Center for exact frequencies* |
+| Sent to N1MM+ | Updates per second and the total sent |
+| Dropped / bad frames | Frames skipped because the program was busy / frames that failed checks |
+| Last error | The most recent problem, until the next Start |
+
+The tray icon's tooltip shows the same summary, for example
+*Streaming FT-710 to N1MM+, 4.0 per second*.
+
+**Log** keeps the last 500 messages (starts, stops, warnings, and errors).
+**Copy diagnostics** copies the version, your settings, the status, and the
+last 50 log lines to the clipboard, ready to paste into a bug report. Your
+Windows account name is replaced with `~` in any folder path.
 
 If streaming stops because of a problem, the chip shows **Error** and a
 message explains what to do (see [troubleshooting](troubleshooting.md)). When
@@ -53,12 +64,39 @@ button.
 
 **N1MM+ setup guide** opens the [N1MM+ setup instructions](../n1mm-setup.md).
 
-## Closing and the system tray
+**Startup and closing**
 
-> **Coming next (#19).** Close will ask whether to keep streaming in the
-> system tray or exit, with a **Remember my choice** option (setting
-> `on_close`), and Minimize will hide the window to the tray and keep
-> streaming. Until then, closing the window stops streaming and exits.
+| Control | Setting | What it does |
+|---|---|---|
+| Start streaming when the program opens | `start_streaming_on_launch` | Presses Start for you at launch |
+| Start hidden in the system tray | `start_minimized` | Opens straight to the tray icon, without the window |
+| Close button | `on_close` | **Ask me**, **Keep running in tray**, or **Exit** |
+
+These stay editable while streaming.
+
+## Closing, minimizing, and the system tray
+
+The bridge keeps a **system tray icon** (near the clock) while it runs. Its
+tooltip shows **Streaming** or **Stopped**. Right-click it for:
+
+- **Show window**: brings the window back (or double-click the icon)
+- **Start streaming** / **Stop streaming**
+- **Exit**: stops streaming and closes the program
+
+**Minimize** hides the window to the tray. **Streaming continues**, so
+N1MM+ keeps its spectrum. The first time each session, a notification says
+the program is still running in the tray.
+
+**Close (X)** asks:
+
+> Keep streaming in the system tray, or exit N1MM Scope Bridge?
+> **[Keep running in tray] [Exit] [Cancel]** and ☐ **Remember my choice**
+
+Ticking **Remember my choice** saves your answer as the **Close button**
+setting, so you aren't asked again. Change it any time in **Startup and
+closing**. **Exit** stops streaming, so N1MM+'s spectrum stops.
+
+On a system with no tray (rare), Close exits and Minimize minimizes normally.
 
 ## Command-line options
 

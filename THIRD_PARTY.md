@@ -55,6 +55,15 @@ comment, the issue, or the doc instead.
   and every release ships the source next to any binary (§6). `LICENSE`,
   `NOTICE`, and this file are included in the sdist and wheel.
 
+### FTDI LibFT4222 / D2XX in CI (downloaded, not distributed)
+
+- CI on Windows downloads FTDI's `LibFT4222-v1.4.8.zip` and the CDM driver
+  package from ftdichip.com (`scripts/fetch_ftdi.py`, SHA-256 pinned, cached)
+  to test the real native boundary (#37). The DLLs exist only on the CI
+  runner under FTDI's licence ("may be used only in conjunction with products
+  based on FTDI parts"; redistributable only with licence information
+  unmodified). They are never committed, cached in artifacts, or bundled.
+
 ### FTDI LibFT4222 / D2XX (runtime dependency, not included)
 
 - Source: <https://ftdichip.com/products/ft4222h/>
@@ -74,13 +83,15 @@ comment, the issue, or the doc instead.
   the Qt license texts and this notice. No Qt code is copied into this
   repository.
 
-### Mock FTDI library (test infrastructure, not distributed)
+### PyInstaller bootloader (Windows build)
 
-- `tests/native/mock_ft4222.c` is written for this project (GPL-3.0-only). It
-  exports functions with the same names and C signatures as FTDI's D2XX and
-  LibFT4222 so tests can exercise the real ctypes boundary. It contains no FTDI
-  code and is never shipped; build outputs are git-ignored and blocked by the
-  pre-commit hook.
+- Source: <https://pyinstaller.org> (PyPI `pyinstaller`, `packaging` dependency group)
+- License: GPL-2.0-or-later with the PyInstaller bootloader exception, which
+  allows the bootloader to be distributed with programs under any license.
+- Use: `scripts/build_windows_app.py` / `packaging/windows/n1mm_scope_bridge.spec`
+  build the one-folder Windows app (#6). The bootloader is embedded in the
+  executables. The app ships `LICENSE`, `NOTICE`, and this file in
+  `licenses/` (plus the Qt license texts once the GUI is bundled).
 
 ### pytest-qt (development only, not distributed)
 

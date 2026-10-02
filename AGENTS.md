@@ -194,6 +194,11 @@ hold (#43):
   names mirrored (`foo.py` → `tests/test_foo.py`).
 - Every file starts with `# SPDX-License-Identifier: GPL-3.0-only` and a
   `# SPDX-FileCopyrightText:` line.
+- **CLI commands:** one module per command in
+  `src/n1mm_scope_bridge/cli/commands/` (the contract is in that package's
+  `__init__.py`), with tests in `tests/cli/test_cli_<name>.py` and a page in
+  `docs/user/cli/<name>.md`. Shared helpers go in `cli/common.py`. Commands
+  are discovered automatically, so never register one in a shared list.
 - Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
   I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
   small protocols, so tests can substitute fakes.
@@ -228,7 +233,8 @@ control command, or an error message. The user docs live in `docs/user/`,
 and the website (#21–#23) is rendered from them.
 
 `tests/test_docs.py` fails CI when:
-- a command, option, or setting is missing from `cli.md` or `settings.md`;
+- a command lacks its page `docs/user/cli/<command>.md`, an option is missing
+  from its command's page, or a setting is missing from `settings.md`;
 - a user-facing error message is missing from `troubleshooting.md`;
 - a link is broken.
 
@@ -249,15 +255,29 @@ uv run --no-project python scripts/release_regression.py --skip-windows-only
 It covers: a locked clean environment, lint, format, strict mypy, every test
 including slow and licensing tests with coverage, hook tests, sdist and wheel
 build plus content checks (licenses, source, no FTDI binaries), a wheel
-install smoke test, and (as each feature lands) end-to-end replay, the
-Windows app, the GUI self-test, the installer install/run/uninstall, and the
-website build. **Every new user-facing feature adds its regression step in
-the same PR.** A Windows run with no skipped Windows steps is required.
+install smoke test, end-to-end replay, every emulator scenario, and (as each
+feature lands) the Windows app, the GUI self-test, the installer
+install/run/uninstall, and the website build. A Windows run with no skipped
+Windows steps is required.
+
+**Every new user-facing feature adds its regression step in the same PR, as
+its own file** in `scripts/regression_steps/NN_name.py` (see the README
+there). The runner discovers step files in filename order, so nobody edits
+`release_regression.py` to add a check. Each lane owns its placeholder file
+(`70_windows_app.py`, `75_gui_self_test.py`, `80_installer.py`,
+`90_website.py`).
+
+**Every PR into `dev` adds a changelog fragment**,
+`changelog.d/<issue>.<type>.md` (see `changelog.d/README.md`), instead of
+editing `CHANGELOG.md`. The **Changelog** check enforces this unless the PR
+has the `no-changelog` label.
 
 1. **Release candidate.** Open a PR from `dev` to `master` titled
    `Release vX.Y.Z`. The maintainer chooses the version. The Release
    regression must be green on Windows. Paste its report (job summary or
-   artifact) into the PR, and update [CHANGELOG.md](CHANGELOG.md).
+   artifact) into the PR, and run
+   `python scripts/build_changelog.py --version X.Y.Z` to fold the fragments
+   into [CHANGELOG.md](CHANGELOG.md).
 2. The maintainer merges, then tags `vX.Y.Z-rc1` on `master`. The regression
    runs again on the tag, and the release workflow publishes a GitHub
    **pre-release**.

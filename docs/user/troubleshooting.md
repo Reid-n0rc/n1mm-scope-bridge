@@ -1,5 +1,8 @@
 # Troubleshooting
 
+When asking for help, press **Copy diagnostics** in the window's Log section
+and paste the result into your report.
+
 Run `n1mm-scope-bridge probe` first. It checks the FTDI library and the radio
 connection in one step. Every error the program can show is listed below.
 

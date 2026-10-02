@@ -37,6 +37,8 @@ n1mm-scope-bridge = "n1mm_scope_bridge.cli:main"
 n1mm-scope-bridge-gui = "n1mm_scope_bridge.gui.app:main"
 
 [dependency-groups]
+# Windows app build (issue #6); not a default group: `uv sync --group packaging`.
+packaging = ["pyinstaller>=6.20"]
 # PySide6 ships abi3 wheels only, which free-threaded CPython cannot load:
 # free-threaded jobs use `uv sync --no-group gui-dev` and the GUI tests skip.
 gui-dev = ["PySide6-Essentials>=6.8", "pytest-qt>=4.4"]
