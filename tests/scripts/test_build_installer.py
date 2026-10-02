@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -262,3 +263,9 @@ def test_main_default_uses_the_local_build(
     iscc.write_bytes(b"x")
     assert bi.main(["--iscc", str(iscc)], runner=fake_iscc()) == 0
     assert f"payloads: {payload}" in capsys.readouterr().out
+
+
+def test_no_code_line_starts_with_a_character_constant() -> None:
+    """ISPP reads a line starting with "#13#10" as an unknown preprocessor directive."""
+    lines = bi.ISS.read_text(encoding="utf-8").splitlines()
+    assert not [line for line in lines if re.match(r"\s*#\d", line)]

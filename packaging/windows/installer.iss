@@ -241,8 +241,8 @@ begin
   X86Page := CreateOutputMsgPage(wpWelcome,
     'Command-line version', 'This PC runs 32-bit Windows.',
     'The {#AppName} window (GUI) needs 64-bit Windows, so this PC gets the command-line ' +
-    'version. It does the same job: it streams your Yaesu radio''s scope to N1MM+.' +
-    #13#10#13#10 + 'After installing, use the Start menu shortcut "{#AppName} (command ' +
+    'version. It does the same job: it streams your Yaesu radio''s scope to N1MM+.' + #13#10#13#10 +
+    'After installing, use the Start menu shortcut "{#AppName} (command ' +
     'line)". It runs the bridge with your saved settings; see the user guide for the ' +
     'options (n1mm-scope-bridge run --help).');
 
