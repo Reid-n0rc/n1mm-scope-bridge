@@ -160,3 +160,38 @@ def test_pin_is_the_single_source_of_truth() -> None:
     assert len(pkg.sha256) == 64
     assert {name for _, name in pkg.files} == {"LibFT4222-64.dll", "ftd2xx.dll"}
     assert "Future Technology Devices International" in signers["LibFT4222-64.dll"]
+
+
+# --- per-architecture pins (#149) -------------------------------------------------------
+
+
+def test_pin_arches_lists_amd64_first_then_others() -> None:
+    arches = ff.pin_arches()
+    assert arches[0] == "amd64"
+    assert "i386" in arches
+
+
+def test_i386_pin_targets_the_32_bit_dlls() -> None:
+    pkg, signers = ff.load_pin(arch="i386")
+    assert pkg.url.startswith("https://files.pythonhosted.org/")
+    assert pkg.filename.endswith("-win32.whl")
+    assert len(pkg.sha256) == 64
+    assert {name for _, name in pkg.files} == {"LibFT4222.dll", "ftd2xx.dll"} == set(signers)
+
+
+def test_unknown_arch_is_rejected() -> None:
+    with pytest.raises(ff.FetchError, match="no FTDI pin for architecture 'arm64'"):
+        ff.load_pin(arch="arm64")
+
+
+def test_fetch_uses_the_arch_pin(tmp_path: Path) -> None:
+    pkg, _ = ff.load_pin(arch="i386")
+    seen: list[str] = []
+
+    def download(url: str, dest: Path) -> None:
+        seen.append(url)
+        dest.write_bytes(b"not the real wheel")
+
+    with pytest.raises(ff.FetchError, match="does not match pinned"):
+        ff.fetch(tmp_path, arch="i386", download=download, signature_check=None, out=lambda _: None)
+    assert seen == [pkg.url]
