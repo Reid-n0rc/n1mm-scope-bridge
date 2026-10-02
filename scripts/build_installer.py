@@ -120,8 +120,14 @@ def installer_name(version: str) -> str:
 
 
 def build(
-    apps: dict[str, Path], iscc: str, runner: Runner = run_command, *, require_all: bool = False
+    apps: dict[str, Path],
+    iscc: str,
+    runner: Runner = run_command,
+    *,
+    require_all: bool = False,
+    out_dir: Path | None = None,
 ) -> Path:
+    """Build the installer into ``out_dir`` (default: the first app folder's parent)."""
     if not apps:
         raise InstallerError("no app folders given")
     unknown = sorted(set(apps) - {name for name, _ in PAYLOADS})
@@ -134,9 +140,10 @@ def build(
     for name, app_dir in apps.items():
         check_app_dir(app_dir, REQUIRED_CLI_ONLY if name == "x86" else REQUIRED)
     version = app.read_version()
-    out_dir = next(iter(apps.values())).parent
-    if "x64" in apps:
-        out_dir = apps["x64"].parent
+    if out_dir is None:
+        out_dir = apps["x64"].parent if "x64" in apps else next(iter(apps.values())).parent
+    out_dir = out_dir.absolute()  # ISCC resolves relative paths against the .iss folder
+    out_dir.mkdir(parents=True, exist_ok=True)
     code, log = runner(iscc_command(iscc, version, apps, out_dir))
     if code != 0:
         raise InstallerError(f"ISCC failed ({code}):\n{log[-4000:]}")
@@ -165,7 +172,9 @@ def main(argv: Sequence[str] | None = None, *, runner: Runner = run_command) -> 
     if args.app_x86:
         apps["x86"] = args.app_x86
     try:
-        installer = build(apps, find_iscc(args.iscc), runner, require_all=args.require_all)
+        installer = build(
+            apps, find_iscc(args.iscc), runner, require_all=args.require_all, out_dir=app.OUT
+        )
     except InstallerError as err:
         print(f"error: {err}", file=sys.stderr)
         return 1

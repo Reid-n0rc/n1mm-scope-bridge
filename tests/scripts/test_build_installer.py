@@ -21,6 +21,14 @@ def make_app(tmp_path: Path, extra: Sequence[str] = (), drop: str = "") -> Path:
     return app_dir
 
 
+@pytest.fixture(autouse=True)
+def _installer_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """main() builds into build_windows_app.OUT; keep tests out of the real dist/."""
+    out = tmp_path / "installer-out"
+    monkeypatch.setattr("build_windows_app.OUT", out)
+    return out
+
+
 def fake_iscc(produce: bool = True, code: int = 0) -> bi.Runner:
     def run(cmd: Sequence[str]) -> tuple[int, str]:
         out_dir = Path(next(a for a in cmd if a.startswith("/DOutputDir=")).split("=", 1)[1])
@@ -118,6 +126,7 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     iscc = tmp_path / "ISCC.exe"
     iscc.write_bytes(b"x")
     assert bi.main(["--app-dir", str(app_dir), "--iscc", str(iscc)], runner=fake_iscc()) == 0
+    assert (tmp_path / "installer-out" / bi.installer_name(__version__)).is_file()
     assert "built" in capsys.readouterr().out
     assert (
         bi.main(["--app-dir", str(tmp_path / "nope"), "--iscc", str(iscc)], runner=fake_iscc()) == 1
