@@ -3,6 +3,8 @@
 > The bridge is pre-alpha. These steps describe the intended setup, and they
 > will be confirmed during hardware validation.
 
+0. On the FT-710, set the menu **OPERATION SETTING → GENERAL → SCU-LAN10**
+   to **ON** (no adapter needed). This makes the radio send its scope over USB.
 1. Keep N1MM+ connected to the FT-710 for CAT as usual (Config → Configure
    Ports…). The bridge does not use the CAT COM port.
 2. Start **N1MM Scope Bridge** first (Start menu, or the desktop shortcut)
