@@ -44,6 +44,7 @@ class StreamController(QObject):
     stopped = Signal(str)  # "" when stopped normally, otherwise the error message
     status = Signal(object)  # ScopeStatus, from the sender thread (queued to the GUI)
     stats = Signal(object)  # PipelineStats, every POLL_MS while running
+    warning = Signal(str)  # rate-limited bridge warnings (for the log)
 
     def __init__(
         self,
@@ -82,7 +83,7 @@ class StreamController(QObject):
                 self._sender,
                 close_source=close,
                 on_status=self.status.emit,
-                warn=lambda _msg: None,  # surfaced through status.edges_verified instead
+                warn=self.warning.emit,
             )
             self._pipe.start()
         except Exception as exc:

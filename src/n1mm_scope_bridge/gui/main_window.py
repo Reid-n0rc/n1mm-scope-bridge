@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QSystemTrayIcon,
@@ -38,6 +39,7 @@ from n1mm_scope_bridge import settings as settings_mod
 from n1mm_scope_bridge.emulator import make_emulator
 from n1mm_scope_bridge.gui.controller import Source, StreamController, radio_source
 from n1mm_scope_bridge.gui.icon import app_icon
+from n1mm_scope_bridge.gui.status import LOG_LINES, LogBuffer, StatusModel, diagnostics
 from n1mm_scope_bridge.gui.tray import Asker, TrayController, ask_close, decide_close
 from n1mm_scope_bridge.pipeline import PipelineStats
 from n1mm_scope_bridge.radios import RADIOS
@@ -49,6 +51,7 @@ APP_TITLE = "N1MM Scope Bridge"
 SETUP_GUIDE_URL = "https://github.com/Reid-n0rc/n1mm-scope-bridge/blob/dev/docs/n1mm-setup.md"
 SAVE_DELAY_MS = 400
 COMBINE_LABELS = (("latest", "Latest"), ("average", "Average (smoother)"), ("peak", "Peak hold"))
+ALWAYS_ENABLED = {"behaviourBox", "statusBox", "logBox"}  # usable while streaming
 ON_CLOSE_LABELS = (("ask", "Ask me"), ("tray", "Keep running in tray"), ("exit", "Exit"))
 EMULATOR_FPS = 20.0
 
@@ -71,10 +74,6 @@ def status_text(status: ScopeStatus) -> str:
         f"VFO {status.vfo_hz / 1e6:.6f} MHz · span {status.span_hz / 1e3:g} kHz · "
         f"{status.mode_name}"
     )
-
-
-def stats_text(stats: PipelineStats) -> str:
-    return f"Sent {stats.emitted} · dropped {stats.frames_dropped} · bad {stats.bad_frames}"
 
 
 class MainWindow(QMainWindow):
@@ -105,12 +104,15 @@ class MainWindow(QMainWindow):
         self._save_timer.setInterval(SAVE_DELAY_MS)
         self._save_timer.timeout.connect(self.save_settings)
         self._errors: dict[str, QLabel] = {}
+        self.model = StatusModel()
+        self.log = LogBuffer()
         self._build()
         self._load(settings)
         self.controller.started.connect(self._on_started)
         self.controller.stopped.connect(self._on_stopped)
         self.controller.status.connect(self._on_status)
         self.controller.stats.connect(self._on_stats)
+        self.controller.warning.connect(lambda message: self._log("warning", message))
         self.tray: TrayController | None = None
         if tray_available():
             self.tray = TrayController(self.windowIcon(), self)
@@ -129,11 +131,8 @@ class MainWindow(QMainWindow):
         column.addWidget(self._build_radio_box())
         column.addWidget(self._build_n1mm_box())
         column.addWidget(self._build_behaviour_box())
-        self.status = QLabel("Not streaming")
-        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.counters = QLabel("")
-        column.addWidget(self.status)
-        column.addWidget(self.counters)
+        column.addWidget(self._build_status_box())
+        column.addWidget(self._build_log_box(), 1)
         column.addLayout(self._build_buttons())
         self.setCentralWidget(root)
         self._connect_changes()
@@ -219,6 +218,60 @@ class MainWindow(QMainWindow):
         form.addRow("", self.start_hidden)
         self._row(form, "Close button", self.on_close, "on_close")
         return box
+
+    def _build_status_box(self) -> QGroupBox:
+        box = QGroupBox("Status")
+        box.setObjectName("statusBox")
+        form = QFormLayout(box)
+        self.status = QLabel("Not streaming")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        form.addRow(self.status)
+        self.status_rows: dict[str, QLabel] = {}
+        for label, value in self.model.rows():
+            field = QLabel(value)
+            field.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            field.setAccessibleName(label)
+            form.addRow(label, field)
+            self.status_rows[label] = field
+        return box
+
+    def _build_log_box(self) -> QGroupBox:
+        box = QGroupBox("Log")
+        box.setObjectName("logBox")
+        layout = QVBoxLayout(box)
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumBlockCount(LOG_LINES)
+        self.log_view.setAccessibleName("Log")
+        self.log_view.setMinimumHeight(80)
+        copy = QPushButton("Copy diagnostics")
+        copy.setToolTip("Copy version, settings, status, and recent log lines for a bug report")
+        copy.clicked.connect(self.copy_diagnostics)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(copy)
+        layout.addWidget(self.log_view)
+        layout.addLayout(row)
+        return box
+
+    def _refresh_status(self) -> None:
+        for label, value in self.model.rows():
+            self.status_rows[label].setText(value)
+        if self.tray is not None:
+            self.tray.set_status(
+                self.model.summary(self._settings.effective_name()), streaming=self.model.streaming
+            )
+
+    def _log(self, level: str, message: str) -> None:
+        self.log_view.appendPlainText(self.log.add(level, message))
+
+    def copy_diagnostics(self) -> str:
+        text = diagnostics(self._settings, self.model, self.log)
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self._log("info", "Diagnostics copied to the clipboard")
+        return text
 
     def _build_buttons(self) -> QHBoxLayout:
         buttons = QHBoxLayout()
@@ -338,23 +391,26 @@ class MainWindow(QMainWindow):
         running = state == "streaming"
         self.start_stop.setText("Stop" if running else "Start")
         for box in self.findChildren(QGroupBox):
-            if box.objectName() != "behaviourBox":
+            if box.objectName() not in ALWAYS_ENABLED:
                 box.setEnabled(not running)
         if message:
             self.status.setText(message)
-        if self.tray is not None:
-            self.tray.set_status(labels[state], streaming=running)
+        self._refresh_status()
 
     def _on_started(self) -> None:
         target = f"{self._settings.n1mm_host}:{self._settings.n1mm_port}"
-        self._set_state(
-            "streaming", f"Streaming to N1MM+ at {target} as {self._settings.effective_name()!r}"
-        )
+        message = f"Streaming to N1MM+ at {target} as {self._settings.effective_name()!r}"
+        self.model.started()
+        self._log("info", message)
+        self._set_state("streaming", message)
 
     def _on_stopped(self, error: str) -> None:
+        self.model.stopped(error)
         if not error:
+            self._log("info", "Stopped streaming")
             self._set_state("stopped", "Not streaming")
             return
+        self._log("error", error)
         self._set_state("error", error)
         self.show_error(error)
 
@@ -363,9 +419,12 @@ class MainWindow(QMainWindow):
         if not status.edges_verified:
             text += " — set the radio's scope to Center mode for exact frequencies"
         self.status.setText(text)
+        self.model.status = status
+        self._refresh_status()
 
     def _on_stats(self, stats: PipelineStats) -> None:
-        self.counters.setText(stats_text(stats))
+        self.model.update_stats(stats)
+        self._refresh_status()
 
     def show_error(self, message: str) -> QMessageBox:
         box = QMessageBox(QMessageBox.Icon.Warning, APP_TITLE, message, parent=self)
