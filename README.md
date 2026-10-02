@@ -86,6 +86,9 @@ a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 
 ## Install (Windows)
 
+First set up the radio: on the FT-710, turn on **OPERATION SETTING → GENERAL →
+SCU-LAN10** (no adapter needed). See [Setting up your Yaesu radio](docs/user/radio-setup.md).
+
 N1MM Scope Bridge runs on **Windows 10/11 (64-bit)**, next to N1MM Logger+.
 You don't need Python or a command prompt.
 

@@ -75,6 +75,9 @@ It takes about 20 minutes. The tool only **reads** the scope stream. It never
 transmits and never changes radio settings. For the transmit case you key the
 radio yourself into a dummy load.
 
+0. On the FT-710, set **OPERATION SETTING → GENERAL → SCU-LAN10** to **ON**
+   (see [Setting up your Yaesu radio](user/radio-setup.md)). Without it the
+   FT4222 scope interface doesn't exist on USB and nothing can be captured.
 1. Close everything that uses the radio's USB scope interface: N1MM+, wfview,
    flrig, and any running `n1mm-scope-bridge`.
 2. Install FTDI's LibFT4222 (<https://ftdichip.com/products/ft4222h/>):

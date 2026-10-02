@@ -61,6 +61,10 @@ message explains what to do (see [troubleshooting](troubleshooting.md)). When
 FTDI's library is missing, the message has an **Open FTDI download page**
 button.
 
+If the radio's scope can't be opened (`Could not open 'FT4222 A'`), the
+message reminds you that the FT-710 needs **OPERATION SETTING → GENERAL →
+SCU-LAN10** set to **ON**. See [Setting up your Yaesu radio](radio-setup.md).
+
 ## Start and Stop
 
 Press **Start**. The pill turns green (**Streaming**), the button becomes

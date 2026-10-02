@@ -136,3 +136,13 @@ def test_checker_catches_an_undocumented_option() -> None:
     parser.add_argument("--brand-new-option")
     missing = [o for o in documented_options(parser) if f"`{o}" not in command_page("run")]
     assert missing == ["--brand-new-option"]
+
+
+def test_radio_setup_page_documents_scu_lan10() -> None:
+    """The FT-710 scope output depends on a radio menu setting; keep it documented."""
+    page = read("radio-setup.md")
+    assert "OPERATION SETTING → GENERAL → SCU-LAN10" in page
+    assert "**ON**" in page
+    assert "radio-setup.md" in read("README.md")
+    for linked in (ROOT / "README.md", ROOT / "docs" / "n1mm-setup.md"):
+        assert "radio-setup.md" in linked.read_text(encoding="utf-8"), linked.name
