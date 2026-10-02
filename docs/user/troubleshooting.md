@@ -24,6 +24,9 @@ connection in one step. Every error the program can show is listed below.
 | `unsupported capture format`, `capture model name … must be`, `frame size must be in` | The capture's header is from a newer version or is damaged | Record it again with this version |
 | `capture frame is … bytes, expected …` | Internal check while recording; the radio returned a frame of the wrong size | Open an issue with the command you ran |
 | `replay fps must be >= 0` | `--fps` is negative | Use a positive number, for example 20 |
+| `Could not start remote control on` | Another program (or a second bridge) already uses the remote-control port | Close the other program or choose another `control_port` / `--control-port` |
+| `No reply from n1mm-scope-bridge at` | `ctl` found no running bridge with remote control enabled at that address | Start the bridge with remote control on (`run --control-port 13070` or the GUI setting) and check `--host`/`--port` |
+| `control port must`, `control address must`, `a non-loopback control address needs` | Invalid remote-control settings | Correct the named setting; see [UDP remote control](udp-control.md) |
 | `--frames must be at least 1` | `record --frames 0` | Use 1 or more |
 | `--name must not be empty` | `--name ""` | Give a name, or leave `--name` out to use the radio model |
 | `n1mm_port: port must be 1-65535` (and other `setting: problem` messages) | An invalid setting or option | Correct the named setting; see [settings](settings.md) |

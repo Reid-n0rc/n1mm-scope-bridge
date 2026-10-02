@@ -5,21 +5,14 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TextIO
 
-from n1mm_scope_bridge.bridge import COMBINE_MODES, DEFAULT_RATE_HZ, DEFAULT_SCALING, build_pipeline
-from n1mm_scope_bridge.cli.common import (
-    Context,
-    LatestStatus,
-    UserError,
-    format_status,
-    open_radio,
-    radio_args,
-    supervise,
-)
-from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT, N1mmSender
+from n1mm_scope_bridge.bridge import COMBINE_MODES, DEFAULT_RATE_HZ, DEFAULT_SCALING
+from n1mm_scope_bridge.cli.common import Context, UserError, open_radio, radio_args
+from n1mm_scope_bridge.cli.session import Source, StreamSession
+from n1mm_scope_bridge.control import ControlServer, parse_allow
+from n1mm_scope_bridge.n1mm import DEFAULT_HOST, DEFAULT_PORT
 from n1mm_scope_bridge.radios import get_radio
 from n1mm_scope_bridge.settings import Settings, settings_path
 from n1mm_scope_bridge.settings import load as load_settings
@@ -54,6 +47,11 @@ def register(sub: Any) -> argparse.ArgumentParser:
     p.add_argument("--scaling", type=float, help=f"dB per level (default {DEFAULT_SCALING})")
     p.add_argument("--combine", choices=COMBINE_MODES, help="latest (default), average, or peak")
     p.add_argument("--duration", type=float, help="stop after this many seconds")
+    p.add_argument(
+        "--control-port",
+        type=int,
+        help="enable UDP remote control on this port (off by default; loopback only)",
+    )
     return p
 
 
@@ -74,6 +72,8 @@ def resolve_settings(args: argparse.Namespace, err: TextIO) -> Settings:
         "rate_hz": args.rate,
         "scaling": args.scaling,
         "combine": args.combine,
+        "control_port": args.control_port,
+        "control_enabled": True if args.control_port is not None else None,
     }
     settings = base.replace(**{k: v for k, v in overrides.items() if v is not None})
     if args.name == "":
@@ -90,37 +90,45 @@ def run(args: argparse.Namespace, ctx: Context) -> int:
     args.radio, args.device = settings.radio, settings.device
     args.ftdi_lib_dir = settings.ftdi_lib_dir or None
     profile = get_radio(settings.radio)
-    source: Iterable[bytes]
     if args.replay is not None:
         replay = CaptureReader(args.replay, fps=args.fps, loop=args.loop)
         if replay.model != profile.model:
             raise UserError(
                 f"{args.replay} was recorded from a {replay.model}, not a {profile.model}"
             )
-        source, close = replay, replay.stop
-    else:
+
+    def make_source() -> Source:
+        if args.replay is not None:
+            reader = CaptureReader(args.replay, fps=args.fps, loop=args.loop)
+            return reader, reader.stop
         radio = open_radio(args, ctx.api_loader)
-        source, close = radio, radio.stop
-    config = settings.to_bridge_config()
-    latest = LatestStatus()
+        return radio, radio.stop
+
+    session = StreamSession(settings, make_source, err, keep_alive=settings.control_enabled)
+    server = None
+    if settings.control_enabled:
+        try:
+            server = ControlServer(
+                session,
+                port=settings.control_port,
+                bind=settings.control_bind,
+                allow=parse_allow(settings.control_allow),
+            ).start()
+        except OSError as exc:
+            raise UserError(
+                f"Could not start remote control on {settings.control_bind}:"
+                f"{settings.control_port} ({exc.strerror or exc}). Is the port in use?"
+            ) from None
+        print(f"Remote control listening on {server.address[0]}:{server.address[1]}", file=err)
     host, port = settings.n1mm_host, settings.n1mm_port
-    with N1mmSender(host, port) as sender:
-        pipe = build_pipeline(
-            config,
-            source,
-            sender,
-            close_source=close,
-            on_status=latest.update,
-            warn=lambda m: print(f"warning: {m}", file=err),
-        )
+    try:
+        session.start()
         print(
-            f"Streaming {profile.model} to N1MM+ at {host}:{port} as {config.name!r}",
+            f"Streaming {profile.model} to N1MM+ at {host}:{port} as {settings.effective_name()!r}",
             file=err,
         )
-        pipe.start()
-        supervise(
-            pipe,
-            duration=args.duration,
-            report=lambda: print(format_status(latest.value, pipe), file=err),
-        )
+        session.wait(args.duration)
+    finally:
+        if server is not None:
+            server.stop()
     return 0

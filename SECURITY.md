@@ -6,9 +6,13 @@
 a USB device and sends UDP datagrams, by default to `127.0.0.1:13064`. The
 security-relevant surface is:
 
-- **Network output.** The bridge only *sends* UDP. It must never open a
-  listening socket unless an approved issue adds one, and any such listener
-  must bind to loopback by default.
+- **Network output.** The bridge *sends* UDP to N1MM+. Its only listening
+  socket is the optional **UDP remote control** (#30), which is **off by
+  default**. When enabled it binds to `127.0.0.1` unless the operator sets
+  another address *and* an allow-list of client IPs; requests from any other
+  address are ignored; requests are capped at 512 bytes; and no command can
+  transmit or change radio state. A way around these limits is a
+  vulnerability.
 - **Untrusted input parsing.** Frames from the radio, and capture files given
   to `--replay`, are parsed as untrusted bytes. A malformed frame must be
   rejected cleanly, never cause an out-of-bounds read or a crash loop.
