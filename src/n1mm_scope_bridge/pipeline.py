@@ -210,7 +210,17 @@ class Pipeline(Generic[R]):
         def run() -> None:
             try:
                 fn()
-            except BaseException as exc:  # recorded, then re-raised by join()
+            except Exception as exc:  # recorded, then re-raised by join()
+                with self._error_lock:
+                    if self._error is None:
+                        self._error = exc
+                self.stop()
+            except KeyboardInterrupt as exc:  # recorded, then re-raised by join()
+                with self._error_lock:
+                    if self._error is None:
+                        self._error = exc
+                self.stop()
+            except SystemExit as exc:  # recorded, then re-raised by join()
                 with self._error_lock:
                     if self._error is None:
                         self._error = exc
