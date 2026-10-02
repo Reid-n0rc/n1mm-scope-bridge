@@ -32,8 +32,10 @@
 
   <!-- if:release -->
   <h2 id="download">Download</h2>
-  <p><a class="button" href="{{release_url}}">Download {{version}} for Windows</a></p>
-  <p>The release page has the installer and its SHA-256 checksum. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
+  <p><a class="button" href="{{download_url}}">Download {{version}} for Windows</a></p>
+  <p>File: <code>{{installer_name}}</code>, released {{release_date}}. SHA-256 checksum, to check the download:</p>
+  <p><code class="checksum">{{installer_checksum}}</code></p>
+  <p>The <a href="{{release_url}}">release page</a> has the release notes. Step-by-step instructions for this version are in the <a href="{{docs_url}}">user guide for {{version}}</a>.</p>
   <!-- endif:release -->
 
   <h2 id="which-pc">One installer for all Windows PCs</h2>

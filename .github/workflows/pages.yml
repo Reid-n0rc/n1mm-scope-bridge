@@ -7,6 +7,14 @@
 # - once a release exists, dev pushes do not change the public site;
 # - pre-releases (vX.Y.Z-rcN) never change it;
 # - workflow_dispatch can rebuild for a given tag (or the latest release).
+# The download button links straight to the release's installer asset, taken
+# from the release's asset list; a release with no installer yet (one made in
+# the web UI, before release.yml attaches it) is skipped, and release.yml
+# dispatches this workflow on master once it has published the installer.
+#
+# Environment rule: the github-pages environment's deployment branches must
+# allow `dev` (in-development site), `master` (release.yml's dispatch) and
+# `v*` tags (release events). A ref it doesn't allow makes the deploy fail.
 name: Pages
 
 on:
@@ -70,8 +78,15 @@ jobs:
                 publish=false; echo "A release exists; dev changes publish with the next release."
               fi
             fi
-            if [ -n "$tag" ] && [ "$publish" = "true" ]; then
-              date=$(gh api "repos/$REPO/releases/tags/$tag" --jq '.published_at[:10]')
+          fi
+          if [ -n "$tag" ] && [ "$publish" = "true" ]; then
+            gh api "repos/$REPO/releases/tags/$tag" > "$RUNNER_TEMP/release.json"
+            [ -n "$date" ] || date=$(jq -r '.published_at[:10]' "$RUNNER_TEMP/release.json")
+            installer="n1mm-scope-bridge-setup-${tag#v}.exe"
+            if ! jq -e --arg n "$installer" 'any(.assets[]; .name == $n and .state == "uploaded")' \
+                "$RUNNER_TEMP/release.json" >/dev/null; then
+              publish=false
+              echo "$tag has no $installer yet; release.yml rebuilds the site once it publishes it."
             fi
           fi
           {
@@ -85,6 +100,26 @@ jobs:
         with:
           ref: ${{ steps.mode.outputs.tag || github.sha }}
           persist-credentials: false
+      # Tags from before the direct download link (#170) have a site builder that
+      # can't take the release's asset list; build those with this commit's
+      # builder and templates (the user docs still come from the tag).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.mode.outputs.publish == 'true' && steps.mode.outputs.tag != ''
+        with:
+          path: _builder
+          sparse-checkout: |
+            scripts
+            site
+          persist-credentials: false
+      - name: Site builder for older tags
+        if: steps.mode.outputs.publish == 'true' && steps.mode.outputs.tag != ''
+        run: |
+          if ! grep -q -- '--release-assets' scripts/build_site.py; then
+            echo "This tag's build_site.py predates --release-assets; using $GITHUB_SHA's builder."
+            cp _builder/scripts/build_site.py _builder/scripts/site_markdown.py scripts/
+            rm -rf site && cp -R _builder/site site
+          fi
+          rm -rf _builder
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         if: steps.mode.outputs.publish == 'true'
       # Screenshots (#68): the release workflow's "screenshots-<tag>" run artifact
@@ -124,7 +159,7 @@ jobs:
           DATE: ${{ steps.mode.outputs.date }}
         run: |
           if [ -n "$TAG" ]; then
-            uv run --no-project --python 3.13 python scripts/build_site.py --out _site --screenshots _shots --tag "$TAG" --release-date "$DATE"
+            uv run --no-project --python 3.13 python scripts/build_site.py --out _site --screenshots _shots --tag "$TAG" --release-date "$DATE" --release-assets "$RUNNER_TEMP/release.json"
           else
             uv run --no-project --python 3.13 python scripts/build_site.py --out _site --screenshots _shots
           fi

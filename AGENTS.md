@@ -400,5 +400,11 @@ has the `no-changelog` label.
    `dev` as usual, followed by another RC.
 4. **Release.** The maintainer tags `vX.Y.Z` on the same commit as the
    accepted RC. The regression runs on the tag, and the release and website
-   publish.
+   publish. The website's download button links straight to the release's
+   installer (`releases/download/<tag>/n1mm-scope-bridge-setup-<version>.exe`)
+   and shows its SHA-256; `scripts/build_site.py` fails if the release has no
+   such asset. `release.yml` rebuilds the site by dispatching `pages.yml` on
+   `master`, so the **`github-pages` environment's deployment branches must
+   allow `dev`, `master`, and `v*` tags** (Settings → Environments); a ref it
+   doesn't allow makes the Pages deploy fail.
 5. Agents never tag, release, or bump versions.
