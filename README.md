@@ -95,12 +95,26 @@ a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 First set up the radio: on the FT-710, turn on **OPERATION SETTING → GENERAL →
 SCU-LAN10** (no adapter needed). See [Setting up your Yaesu radio](docs/user/radio-setup.md).
 
-N1MM Scope Bridge runs on **Windows 10/11 (64-bit)**, next to N1MM Logger+.
+N1MM Scope Bridge runs on **Windows 10/11**, next to N1MM Logger+.
 You don't need Python or a command prompt.
 
 1. Download `n1mm-scope-bridge-setup-<version>.exe` from
    [Releases](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases). (No
    release has been published yet; the installer is built and tested in CI.)
+   It is **one installer for all Windows PCs**: it picks the right version
+   for your PC.
+   - **64-bit Windows (Intel/AMD):** the full app.
+   - **Windows on ARM** (Snapdragon laptops, Windows 11 in Parallels on an
+     Apple silicon Mac): the x64 app by default, which Windows runs through
+     its built-in emulation and for which setup downloads FTDI's library.
+     Setup also offers a native ARM64 version; for that one you add FTDI's
+     ARM64 DLLs yourself (see [radio setup](docs/user/radio-setup.md)).
+   - **32-bit Windows:** the command-line version (the window needs 64-bit
+     Windows), started from the Start menu shortcut **N1MM Scope Bridge
+     (command line)**.
+
+   Portable zips are also attached for each processor: `-win64` (x64),
+   `-winarm64` (ARM64) and `-win32` (32-bit, command line only).
 2. Run it. It installs for your Windows account only (no admin prompt), and
    adds Start menu and optional desktop shortcuts.
 3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): setup downloads it

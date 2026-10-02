@@ -88,6 +88,10 @@ comment, the issue, or the doc instead.
   verified by Inno Setup); the helper also checks both Authenticode
   signatures (FTDI for LibFT4222, Microsoft WHQL for ftd2xx) before copying.
   The pin is monitored daily (`.github/workflows/ftdi-download-check.yml`).
+  Since #149 the installer holds x64, ARM64 and 32-bit apps: the x64 app gets
+  the 64-bit (`amd64`) DLLs and the 32-bit app the `i386` pair
+  (`LibFT4222.dll`, `ftd2xx.dll`) from the same pinned wheel family; there is
+  no verifiable ARM64 source, so the native ARM64 app is never given a download.
   Users can untick the task and install the library from FTDI themselves. Bundling it would mean distributing GPL code
   (including wfview's) combined with a GPL-incompatible library, which we
   don't do without written permission from the wfview copyright holders.

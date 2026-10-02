@@ -32,10 +32,13 @@ def fake_iscc(produce: bool = True, code: int = 0) -> bi.Runner:
 
 
 def test_iscc_command() -> None:
-    cmd = bi.iscc_command("ISCC.exe", "1.2.3", Path("app"), Path("out"))
+    cmd = bi.iscc_command("ISCC.exe", "1.2.3", {"x64": Path("app")}, Path("out"))
     assert cmd[:2] == ["ISCC.exe", "/Q"]
     assert "/DAppVersion=1.2.3" in cmd
-    assert f"/DSourceDir={Path('app')}" in cmd
+    assert f"/DSourceX64={Path('app')}" in cmd
+    assert not any(
+        c.startswith(("/DSourceArm64=", "/DSourceX86=", "/DFtdiWheelUrl86=")) for c in cmd
+    )
     assert cmd[-1].endswith("installer.iss")
     assert any(
         c.startswith("/DFtdiWheelSha256=") and len(c) == len("/DFtdiWheelSha256=") + 64 for c in cmd
@@ -58,7 +61,7 @@ def test_installer_name() -> None:
 
 def test_build_success(tmp_path: Path) -> None:
     runner = fake_iscc()
-    installer = bi.build(make_app(tmp_path), "ISCC.exe", runner)
+    installer = bi.build({"x64": make_app(tmp_path)}, "ISCC.exe", runner)
     assert installer.name == bi.installer_name(__version__)
     assert f"/DAppVersion={__version__}" in runner.cmd  # type: ignore[attr-defined]
 
@@ -73,19 +76,19 @@ def test_build_success(tmp_path: Path) -> None:
 )
 def test_build_checks_app_folder(tmp_path: Path, kwargs: dict[str, object], message: str) -> None:
     with pytest.raises(bi.InstallerError, match=message):
-        bi.build(make_app(tmp_path, **kwargs), "ISCC.exe", fake_iscc())  # type: ignore[arg-type]
+        bi.build({"x64": make_app(tmp_path, **kwargs)}, "ISCC.exe", fake_iscc())  # type: ignore[arg-type]
 
 
 def test_build_requires_app_folder(tmp_path: Path) -> None:
     with pytest.raises(bi.InstallerError, match=r"run scripts/build_windows_app\.py first"):
-        bi.build(tmp_path / "nope", "ISCC.exe", fake_iscc())
+        bi.build({"x64": tmp_path / "nope"}, "ISCC.exe", fake_iscc())
 
 
 def test_build_reports_iscc_failures(tmp_path: Path) -> None:
     with pytest.raises(bi.InstallerError, match=r"ISCC failed \(2\)"):
-        bi.build(make_app(tmp_path / "a"), "ISCC.exe", fake_iscc(code=2))
+        bi.build({"x64": make_app(tmp_path / "a")}, "ISCC.exe", fake_iscc(code=2))
     with pytest.raises(bi.InstallerError, match="did not produce"):
-        bi.build(make_app(tmp_path / "b"), "ISCC.exe", fake_iscc(produce=False))
+        bi.build({"x64": make_app(tmp_path / "b")}, "ISCC.exe", fake_iscc(produce=False))
 
 
 def test_find_iscc_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,16 +126,37 @@ def test_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_installer_script_never_bundles_ftdi() -> None:
     iss = bi.ISS.read_text(encoding="utf-8")
     sources = [line for line in iss.splitlines() if line.startswith("Source:")]
-    # The app folder (checked FTDI-free by check_app_dir) plus the helper script only:
-    # FTDI's DLLs are downloaded at install time, never packed into the installer (#133).
-    assert len(sources) == 2
-    assert sources[0].startswith('Source: "{#SourceDir}\\*"; DestDir: "{app}"')
-    assert sources[1] == 'Source: "ftdi_install.ps1"; Flags: dontcopy'
+    # The app folders (checked FTDI-free by check_app_dir), the 32-bit start script, and
+    # the helper script only: FTDI's DLLs are downloaded at install time (#133).
+    assert len(sources) == 5
+    for define, payload in (("SourceX64", "x64"), ("SourceArm64", "arm64"), ("SourceX86", "x86")):
+        expected = (
+            f'Source: "{{#{define}}}\\*"; DestDir: "{{app}}"; Check: IsPayload(\'{payload}\')'
+        )
+        assert any(line.startswith(expected) for line in sources), expected
+    assert 'Source: "cli-start.cmd"; DestDir: "{app}"; Check: IsPayload(\'x86\')' in sources[3]
+    assert sources[4] == 'Source: "ftdi_install.ps1"; Flags: dontcopy'
     assert ".dll" not in "".join(sources).lower()
-    download = "DownloadTemporaryFile('{#FtdiWheelUrl}', '{#FtdiWheelFile}', '{#FtdiWheelSha256}'"
-    assert download in iss
+    assert "DownloadTemporaryFile(Url, WheelFile, Sha256, nil)" in iss
+    assert "Url := '{#FtdiWheelUrl}'" in iss
+    assert "Url := '{#FtdiWheelUrl86}'" in iss
     assert "LicenseFile=..\\..\\LICENSE" in iss
     assert "PrivilegesRequired=lowest" in iss
+
+
+def test_installer_script_supports_every_windows_pc() -> None:
+    iss = bi.ISS.read_text(encoding="utf-8")
+    assert "ArchitecturesAllowed=x86compatible" in iss
+    assert "ArchitecturesInstallIn64BitMode=x64compatible" in iss
+    assert "Compression=lzma2/max" in iss
+    assert "SolidCompression=yes" in iss
+    assert "{param:PAYLOAD|}" in iss
+    # The GUI and its shortcuts only where the payload has one (not 32-bit).
+    assert 'Filename: "{app}\\{#GuiExe}"; Check: HasGui' in iss
+    assert "UninstallDisplayIcon={app}\\{#CliExe}" in iss
+    assert (bi.ISS.parent / "cli-start.cmd").read_text(encoding="utf-8").count(
+        "run --settings"
+    ) == 1
 
 
 def test_no_blocking_dialogs_in_silent_installs() -> None:
@@ -165,3 +189,76 @@ def test_ftdi_prompt_names_pypi_and_links_privacy_notice() -> None:
     assert "your IP address" in iss
     assert '#define PrivacyUrl "https://reid-n0rc.github.io/n1mm-scope-bridge/privacy.html"' in iss
     assert "{#PrivacyUrl}" in iss
+
+
+# --- one installer, three payloads (#149) -------------------------------------------------
+
+
+def make_cli_app(tmp_path: Path) -> Path:
+    return make_app(tmp_path, drop="N1MM Scope Bridge.exe")
+
+
+def test_iscc_command_with_every_payload() -> None:
+    apps = {"x64": Path("a64"), "arm64": Path("aarm"), "x86": Path("a86")}
+    cmd = bi.iscc_command("ISCC.exe", "1.2.3", apps, Path("out"))
+    assert f"/DSourceX64={Path('a64')}" in cmd
+    assert f"/DSourceArm64={Path('aarm')}" in cmd
+    assert f"/DSourceX86={Path('a86')}" in cmd
+    defines = dict(c[2:].split("=", 1) for c in cmd if c.startswith("/DFtdi"))
+    assert defines["FtdiWheelFile86"].endswith("-win32.whl")
+    assert len(defines["FtdiWheelSha25686"]) == 64
+    assert defines["FtdiLibSigner86"] == "Future Technology Devices International"
+
+
+def test_x86_payload_needs_no_gui_exe(tmp_path: Path) -> None:
+    apps = {"x64": make_app(tmp_path / "x64"), "x86": make_cli_app(tmp_path / "x86")}
+    runner = fake_iscc()
+    bi.build(apps, "ISCC.exe", runner)
+    assert any(c.startswith("/DSourceX86=") for c in runner.cmd)  # type: ignore[attr-defined]
+
+
+def test_x64_payload_still_needs_the_gui(tmp_path: Path) -> None:
+    with pytest.raises(bi.InstallerError, match=r"missing: N1MM Scope Bridge\.exe"):
+        bi.build({"x64": make_cli_app(tmp_path)}, "ISCC.exe", fake_iscc())
+
+
+def test_require_all_payloads_for_releases(tmp_path: Path) -> None:
+    with pytest.raises(bi.InstallerError, match=r"missing: \['arm64', 'x86'\]"):
+        bi.build({"x64": make_app(tmp_path)}, "ISCC.exe", fake_iscc(), require_all=True)
+
+
+@pytest.mark.parametrize(
+    ("apps", "message"), [({}, "no app folders"), ({"mips": Path("m")}, "unknown")]
+)
+def test_bad_payload_sets(apps: dict[str, Path], message: str) -> None:
+    with pytest.raises(bi.InstallerError, match=message):
+        bi.build(apps, "ISCC.exe", fake_iscc())
+
+
+def test_main_with_every_payload(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    iscc = tmp_path / "ISCC.exe"
+    iscc.write_bytes(b"x")
+    args = ["--app-dir", str(make_app(tmp_path / "x64")),
+            "--app-arm64", str(make_app(tmp_path / "arm")),
+            "--app-x86", str(make_cli_app(tmp_path / "x86")),
+            "--require-all", "--iscc", str(iscc)]  # fmt: skip
+    assert bi.main(args, runner=fake_iscc()) == 0
+    assert "payloads: x64, arm64, x86" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("arch", "payload"), [("x64", "x64"), ("ARM64", "arm64"), ("x86", "x86")])
+def test_main_default_uses_the_local_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    arch: str, payload: str,
+) -> None:  # fmt: skip
+    app_dir = (
+        make_app(tmp_path / "dist" / "windows")
+        if arch != "x86"
+        else make_cli_app(tmp_path / "dist" / "windows")
+    )
+    monkeypatch.setattr(bi, "APP_DIR", app_dir)
+    monkeypatch.setattr("build_windows_app.build_arch", lambda platform_tag=None: arch)
+    iscc = tmp_path / "ISCC.exe"
+    iscc.write_bytes(b"x")
+    assert bi.main(["--iscc", str(iscc)], runner=fake_iscc()) == 0
+    assert f"payloads: {payload}" in capsys.readouterr().out

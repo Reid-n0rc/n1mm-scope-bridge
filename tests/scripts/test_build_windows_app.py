@@ -240,7 +240,7 @@ def test_main_success(
     code = bw.main(["--allow-non-windows", "--no-smoke"],
                    runner=fake_pyinstaller(["n1mm-scope-bridge.exe"]))  # fmt: skip
     assert code == 0
-    assert "GUI exe: not yet" in capsys.readouterr().out
+    assert "(GUI exe: no)" in capsys.readouterr().out
 
 
 def test_gui_self_test_passes_and_enables_qt_plugin_debugging() -> None:
@@ -280,3 +280,43 @@ def test_build_with_gui_runs_gui_self_test(tmp_path: Path) -> None:
     bw.build(gui=True, out=tmp_path / "d", work=tmp_path / "w", smoke=True, runner=runner,
              qt_files=list)  # fmt: skip
     assert len(gui_runs) == 1
+
+
+# --- architectures (#149) ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tag", "arch"),
+    [("win-amd64", "x64"), ("win-arm64", "ARM64"), ("win32", "x86"), ("linux-x86_64", "x64")],
+)
+def test_build_arch(tag: str, arch: str) -> None:
+    assert bw.build_arch(tag) == arch
+
+
+@pytest.mark.parametrize(
+    ("arch", "suffix"), [("x64", "win64"), ("ARM64", "winarm64"), ("x86", "win32")]
+)
+def test_zip_name_per_arch(arch: str, suffix: str) -> None:
+    assert bw.zip_name("0.1.0", arch) == f"n1mm-scope-bridge-0.1.0-{suffix}.zip"
+    assert bw.zip_name("0.1.0") == "n1mm-scope-bridge-0.1.0-win64.zip"
+
+
+def test_x86_builds_the_command_line_app_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    monkeypatch.setattr(bw, "OUT", tmp_path / "dist")
+    monkeypatch.setattr(bw, "WORK", tmp_path / "w")
+    monkeypatch.setattr(bw, "build_arch", lambda platform_tag=None: "x86")
+    code = bw.main(["--allow-non-windows", "--no-smoke"],
+                   runner=fake_pyinstaller(["n1mm-scope-bridge.exe"]))  # fmt: skip
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "-win32.zip for x86 (GUI exe: no)" in out
+
+
+def test_x86_refuses_an_explicit_gui_build(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(bw, "build_arch", lambda platform_tag=None: "x86")
+    assert bw.main(["--allow-non-windows", "--gui", "on"]) == 2
+    assert "needs 64-bit Windows" in capsys.readouterr().err

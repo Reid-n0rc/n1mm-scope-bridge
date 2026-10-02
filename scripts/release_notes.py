@@ -104,12 +104,17 @@ def release_notes(
     parts += [f"## Changes in {info.version}", body]
     parts.append(
         "## Downloads\n\n"
-        "- `n1mm-scope-bridge-setup-*.exe`: Windows installer (recommended)\n"
-        f"- `{zip_name(info.version)}`: portable Windows app\n"
+        "- `n1mm-scope-bridge-setup-*.exe`: **one installer for all Windows PCs** "
+        "(recommended). It picks the right version for your PC: 64-bit (x64), "
+        "Windows on ARM, or 32-bit (command line only).\n"
+        f"- `{zip_name(info.version, 'x64')}`: portable app, 64-bit Windows (x64)\n"
+        f"- `{zip_name(info.version, 'ARM64')}`: portable app, Windows on ARM (native ARM64)\n"
+        f"- `{zip_name(info.version, 'x86')}`: portable command-line app, 32-bit Windows\n"
         "- `*.whl`: Python wheel; `*.tar.gz`: complete source code (GPLv3 corresponding source)\n"
         f"- `{SCREENSHOTS_ZIP}`: screenshots of this build's GUI and installer\n"
         "- `SHA256SUMS`: checksums for every file\n\n"
-        "FTDI's LibFT4222 is not included; the installer links to FTDI's download page."
+        "FTDI's LibFT4222 is not included in any file. The installer can download FTDI's "
+        "signed DLLs for you (64-bit and 32-bit); Windows on ARM can use the 64-bit version."
     )
     if report:
         parts.append(
@@ -128,7 +133,7 @@ def required_assets(version: str) -> list[str]:
     """Every file a release must carry (SHA256SUMS is added after these)."""
     return [
         f"n1mm-scope-bridge-setup-{version}.exe",
-        zip_name(version),
+        *(zip_name(version, arch) for arch in ("x64", "ARM64", "x86")),
         f"n1mm_scope_bridge-{version}-py3-none-any.whl",
         f"n1mm_scope_bridge-{version}.tar.gz",
         REGRESSION_REPORT,
