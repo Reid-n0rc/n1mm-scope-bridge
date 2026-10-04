@@ -3,7 +3,7 @@
 ;
 ; Inno Setup script for the N1MM Scope Bridge Windows installer (issues #20, #149).
 ; ONE installer for all Windows PCs. Build with scripts/build_installer.py, which passes:
-;   /DAppVersion=<x.y.z>  /DOutputDir=<dir>
+;   /DAppVersion=<x.y.z[rcN]>  /DAppNumericVersion=<x.y.z>  /DOutputDir=<dir>
 ;   /DSourceX64=<x64 one-folder app>       (64-bit Windows; also Windows on ARM, emulated)
 ;   /DSourceArm64=<native ARM64 app>        (optional in development builds)
 ;   /DSourceX86=<32-bit command-line app>   (optional in development builds; no GUI)
@@ -29,6 +29,11 @@
 
 #ifndef AppVersion
   #error AppVersion must be defined (/DAppVersion=x.y.z)
+#endif
+; Windows' version resource takes numbers only, so an rc build (0.1.0rc3) gives
+; its base version here; AppVersion keeps the full one.
+#ifndef AppNumericVersion
+  #define AppNumericVersion AppVersion
 #endif
 #ifndef SourceX64
   #ifndef SourceArm64
@@ -63,7 +68,7 @@ AppPublisher=Reid Crowe, N0RC
 AppPublisherURL=https://github.com/Reid-n0rc/n1mm-scope-bridge
 AppSupportURL=https://github.com/Reid-n0rc/n1mm-scope-bridge/issues
 AppUpdatesURL=https://github.com/Reid-n0rc/n1mm-scope-bridge/releases
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#AppNumericVersion}
 VersionInfoCopyright=Copyright (C) 2026 Reid Crowe, N0RC. GPL-3.0-only.
 ; Per-user install by default (no admin needed); the dialog offers all users.
 PrivilegesRequired=lowest

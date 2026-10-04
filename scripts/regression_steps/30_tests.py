@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
-"""The whole test suite, including slow and licensing tests, with coverage."""
+"""The whole test suite, including slow and licensing tests, with per-area coverage floors."""
 
 from __future__ import annotations
 
@@ -18,4 +18,9 @@ def steps(ctx: StepContext) -> list[Step]:
         "-p",
         "no:cacheprovider",
     )
-    return [Step("Unit, slow, and licensing tests with coverage", (*command, *nogui))]
+    gate = ("uv", "run", "python", "scripts/coverage_gate.py")
+    gate_config = ("--config", ".coveragerc-nogui") if ctx.skip_gui else ()
+    return [
+        Step("Unit, slow, and licensing tests with coverage", (*command, *nogui)),
+        Step("Coverage floors (app 90%, scripts ratchet)", (*gate, *gate_config)),
+    ]

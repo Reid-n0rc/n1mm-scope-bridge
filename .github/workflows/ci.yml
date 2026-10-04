@@ -92,9 +92,24 @@ jobs:
         run: python scripts/fetch_ftdi.py --dest "$RUNNER_TEMP/ftdi" --arch "${{ matrix.ftdi_arch || 'amd64' }}"
       # No GUI (PySide6) on free-threaded Python (abi3 wheels only) or 32-bit x86 (no Qt 6).
       - run: uv sync --locked ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }}
-      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
+      # junit.xml feeds Codecov Test Analytics (#171); legacy family = readable test names.
+      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
+      # Per-area floors (app 90%, scripts ratchet), replacing coverage's single fail_under (#180).
+      - name: Coverage gate
+        run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} python scripts/coverage_gate.py ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--config .coveragerc-nogui' || '' }}
+      # An empty CODECOV_TOKEN made every upload fail silently for a day (#171).
+      # Warn loudly, but never fail CI. Fork PRs get no secrets, so skip them.
+      - name: Check Codecov token
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ -z "$CODECOV_TOKEN" ]; then
+            echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
+          fi
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
@@ -102,6 +117,18 @@ jobs:
           # Repository secret only; fork PRs have no secrets and skip the upload.
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
+          disable_search: true
+          flags: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.label || matrix.python }}
+          fail_ci_if_error: false
+      # Upload even when tests fail, so Codecov sees the failures.
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: junit.xml
+          disable_search: true
           flags: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.label || matrix.python }}
           fail_ci_if_error: false
 

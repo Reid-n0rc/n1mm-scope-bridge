@@ -238,6 +238,7 @@ jobs:
         with:
           subject-path: bundle/release/*
       - name: Publish the installer
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -254,6 +255,7 @@ jobs:
             | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
           latest=false
           if [ "$PRERELEASE" = "false" ] && [ "$TAG" = "$newest" ]; then latest=true; fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
           # A release may already exist for the tag (for example one made in the
           # GitHub web UI, which also pushes the tag and starts this workflow).
           # Fill it in instead of failing, and leave it holding the installer only.
@@ -280,9 +282,11 @@ jobs:
           fi
           gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'
       # A release created with GITHUB_TOKEN does not trigger other workflows, so
-      # ask the Pages workflow to rebuild the site from this final release.
-      - name: Rebuild the website (final releases only)
-        if: needs.prepare.outputs.prerelease == 'false'
+      # ask the Pages workflow to rebuild the site. Only for the Latest release:
+      # the site describes the newest final version, so republishing an older
+      # release must not move it back.
+      - name: Rebuild the website (Latest release only)
+        if: steps.release.outputs.latest == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

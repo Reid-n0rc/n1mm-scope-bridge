@@ -1,6 +1,8 @@
 # Codecov configuration (issue #39). The hard gate stays pytest's
 # fail_under = 90 in pyproject.toml; Codecov adds per-PR reporting.
-# CI uploads with the CODECOV_TOKEN repository secret (issue #47). The token
+# CI uploads coverage (coverage.xml) and, for Test Analytics, JUnit test
+# results (junit.xml, report_type: test_results; issue #171) with the
+# CODECOV_TOKEN repository secret (issue #47). The token
 # is never stored in this repository; fork PRs have no secrets and skip the
 # upload, which never fails CI (fail_ci_if_error: false).
 codecov:
@@ -22,9 +24,28 @@ flag_management:
     carryforward: true
 
 comment:
-  layout: "condensed_header, diff, flags, files"
+  layout: "condensed_header, diff, flags, components, files"
   require_changes: false
 
+# Two components so tooling coverage never hides app gaps (#180). The floors
+# that fail CI are in scripts/coverage_gate.py; these statuses report them.
+component_management:
+  individual_components:
+    - component_id: app
+      name: app
+      paths:
+        - "src/n1mm_scope_bridge/**"
+      statuses:
+        - type: patch
+          target: 90%
+    - component_id: scripts
+      name: scripts
+      paths:
+        - "scripts/**"
+      statuses:
+        - type: project
+          target: auto
+          threshold: 1%
+          informational: true
 ignore:
   - "tests/**"
-  - "scripts/**"
