@@ -47,5 +47,14 @@ component_management:
           target: auto
           threshold: 1%
           informational: true
+    - component_id: powershell
+      name: powershell
+      paths:
+        - "packaging/windows/*.ps1"
+      statuses:
+        - type: project
+          target: auto
+          threshold: 1%
+          informational: true
 ignore:
   - "tests/**"
