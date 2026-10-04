@@ -22,7 +22,8 @@ AREAS: dict[str, str] = {
     "app": "*/n1mm_scope_bridge/*",
     "scripts": "*/scripts/*",
 }
-FLOORS: dict[str, float] = {"app": 90.0, "scripts": 95.0}
+# scripts: lowest CI job was 98.69% when the gate landed (#180); ratchet only upward.
+FLOORS: dict[str, float] = {"app": 90.0, "scripts": 98.0}
 
 Report = Callable[[str], float | None]
 
