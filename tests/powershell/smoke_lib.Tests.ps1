@@ -37,6 +37,62 @@ Describe 'Check' {
         Check (1 -eq 2) 'also broken' 6>$null
         $failures | Should -Be @('broken', 'also broken')
     }
+
+    It 'records every result when the caller keeps a $checks list' {
+        $checks = [System.Collections.Generic.List[object]]::new()
+        Check $true 'fine' 6>$null
+        Check $false 'broken' 6>$null
+        $checks.Name | Should -Be @('fine', 'broken')
+        $checks.Ok | Should -Be @($true, $false)
+    }
+}
+
+Describe 'Write-SmokeJUnit' {
+    BeforeAll {
+        function Read-Report([string]$path) { [xml](Get-Content -LiteralPath $path -Raw) }
+        $script:Results = @(
+            [pscustomobject]@{ Name = 'CLI exe installed'; Ok = $true }
+            [pscustomobject]@{ Name = 'probe says "no radio" & <exits 1>'; Ok = $false }
+        )
+    }
+
+    It 'writes one testcase per check' {
+        $path = Join-Path $TestDrive 'smoke.xml'
+        Write-SmokeJUnit $path 'installer.x64.amd64' $script:Results
+        $suite = (Read-Report $path).testsuites.testsuite
+        $suite.name | Should -BeExactly 'installer.x64.amd64'
+        $suite.tests | Should -Be 2
+        $suite.failures | Should -Be 1
+        $suite.testcase[0].name | Should -BeExactly 'CLI exe installed'
+        $suite.testcase[0].classname | Should -BeExactly 'installer.x64.amd64'
+        $suite.testcase[0].failure | Should -BeNullOrEmpty
+        $suite.testcase[1].name | Should -BeExactly 'probe says "no radio" & <exits 1>'
+        $suite.testcase[1].failure.message | Should -BeExactly 'probe says "no radio" & <exits 1>'
+    }
+
+    It 'adds a failing testcase when the run stopped early' {
+        $path = Join-Path $TestDrive 'aborted.xml'
+        Write-SmokeJUnit $path 'installer.x86.amd64' $script:Results[0] 'setup.exe timed out'
+        $suite = (Read-Report $path).testsuites.testsuite
+        $suite.tests | Should -Be 2
+        $suite.failures | Should -Be 1
+        $suite.testcase[1].name | Should -BeExactly 'smoke test ran to completion'
+        $suite.testcase[1].failure.message | Should -BeExactly 'setup.exe timed out'
+    }
+
+    It 'writes a valid empty suite' {
+        $path = Join-Path $TestDrive 'empty.xml'
+        Write-SmokeJUnit $path 'installer.arm64.arm64' @()
+        $suite = (Read-Report $path).testsuites.testsuite
+        $suite.tests | Should -Be 0
+        $suite.failures | Should -Be 0
+    }
+
+    It 'writes UTF-8 without a byte-order mark' {
+        $path = Join-Path $TestDrive 'bom.xml'
+        Write-SmokeJUnit $path 's' $script:Results
+        [IO.File]::ReadAllBytes($path)[0] | Should -Be ([byte][char]'<')
+    }
 }
 
 Describe 'Get-PeMachine' {

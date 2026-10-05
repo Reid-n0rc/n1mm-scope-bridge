@@ -170,4 +170,26 @@ jobs:
         shell: pwsh
         env:
           PAYLOAD: ${{ matrix.payload }}
-        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName -Payload $env:PAYLOAD
+        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName -Payload $env:PAYLOAD -JUnit installer-junit.xml
+      # Every smoke check as a JUnit testcase in Codecov Test Analytics (#182),
+      # also when the smoke test fails. Never fails the job. Skipped when
+      # release.yml calls this workflow (no secrets are passed to it).
+      - name: Check Codecov token
+        if: ${{ !cancelled() && github.workflow == 'Windows installer' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ -z "$CODECOV_TOKEN" ]; then
+            echo "::warning::CODECOV_TOKEN is empty — installer test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
+          fi
+      - name: Upload smoke test results to Codecov
+        if: ${{ !cancelled() && github.workflow == 'Windows installer' && hashFiles('installer-junit.xml') != '' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: installer-junit.xml
+          disable_search: true
+          flags: installer
+          fail_ci_if_error: false

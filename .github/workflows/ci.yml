@@ -139,8 +139,28 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: sh tests/hooks/run.sh
-      - run: HOOK_SHELL=dash sh tests/hooks/run.sh
+      # JUnit (one testcase per check) feeds Codecov Test Analytics (#182).
+      - run: HOOKS_JUNIT=hooks-junit-sh.xml sh tests/hooks/run.sh
+      - if: ${{ !cancelled() }}
+        run: HOOK_SHELL=dash HOOKS_JUNIT=hooks-junit-dash.xml sh tests/hooks/run.sh
+      - name: Check Codecov token
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ -z "$CODECOV_TOKEN" ]; then
+            echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
+          fi
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: hooks-junit-sh.xml,hooks-junit-dash.xml
+          disable_search: true
+          flags: hooks
+          fail_ci_if_error: false
 
   pester:
     name: PowerShell tests (Pester)
