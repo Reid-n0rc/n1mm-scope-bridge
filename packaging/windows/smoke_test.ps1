@@ -15,10 +15,14 @@
 # probe must report the missing library; the x86 payload has no GUI.
 #
 #   pwsh packaging/windows/smoke_test.ps1 -Installer dist\windows\n1mm-scope-bridge-setup-0.1.0.exe [-Payload x86]
+#
+# -JUnit <file> also writes every check as a JUnit testcase (Codecov Test
+# Analytics, #182), including when the run stops early.
 
 param(
     [Parameter(Mandatory = $true)][string]$Installer,
-    [ValidateSet('', 'x64', 'arm64', 'x86')][string]$Payload = ''
+    [ValidateSet('', 'x64', 'arm64', 'x86')][string]$Payload = '',
+    [string]$JUnit = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +37,7 @@ $StartMenu = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$App
 $Desktop = Join-Path ([Environment]::GetFolderPath('Desktop')) "$AppName.lnk"
 $CliShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName\$AppName (command line).lnk"
 $failures = [System.Collections.Generic.List[string]]::new()
+$checks = [System.Collections.Generic.List[object]]::new()
 $plan = Get-PayloadPlan $Payload
 $Expected = $plan.Expected
 $HasGui = $plan.HasGui
@@ -40,6 +45,14 @@ $Downloads = $plan.Downloads
 $LibName = $plan.LibName
 $Machine = $plan.Machine
 Write-Host "payload: $Expected (requested: '$Payload'; OS: $env:PROCESSOR_ARCHITECTURE)"
+$Suite = "installer.$Expected.$env:PROCESSOR_ARCHITECTURE".ToLowerInvariant()
+
+function Save-JUnit([string]$abort = '') {
+    if ($JUnit) { Write-SmokeJUnit $JUnit $Suite $checks $abort }
+}
+
+# A fatal error still reports the checks that ran (then stops the script).
+trap { Save-JUnit "$($_.Exception.Message)"; break }
 
 function Wait-Process-Exit([string]$file, [string[]]$arguments, [int]$timeoutSec = 120, [string]$logFile = '') {
     $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -83,6 +96,7 @@ Check ($code -eq 0) "silent install exits 0 (got $code)"
 if ($code -ne 0) {
     Write-Host '--- install log ---'
     if (Test-Path $log) { Get-Content $log -Tail 60 } else { Write-Host '(no log written)' }
+    Save-JUnit
     exit 1
 }
 $cli = Join-Path $Dir 'n1mm-scope-bridge.exe'
@@ -181,6 +195,7 @@ Check (-not (Test-Path $Desktop)) 'desktop shortcut removed'
 Check (-not (Test-Path $UninstallKey)) 'uninstall entry removed'
 if ($hadSettings) { Check (Test-Path $settings) 'settings kept by silent uninstall' }
 
+Save-JUnit
 if ($failures.Count -gt 0) {
     Write-Host "`n$($failures.Count) check(s) failed"
     if (Test-Path $log) { Get-Content $log -Tail 40 }

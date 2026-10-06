@@ -20,9 +20,36 @@ function Get-PayloadPlan([string]$Payload) {
     }
 }
 
-# Records one check; failures go to the caller's $failures list.
+# Records one check; failures go to the caller's $failures list, and every
+# result to the caller's $checks list when it has one (JUnit, #182).
 function Check([bool]$ok, [string]$what) {
     if ($ok) { Write-Host "ok   - $what" } else { Write-Host "FAIL - $what"; $failures.Add($what) }
+    if ($null -ne $checks) { $checks.Add([pscustomobject]@{ Name = $what; Ok = $ok }) }
+}
+
+# Writes the checks as a JUnit report (one testcase per check) for Codecov
+# Test Analytics (#182). $abort is a fatal error that stopped the run early.
+function Write-SmokeJUnit([string]$path, [string]$suite, $results, [string]$abort = '') {
+    $doc = [xml]'<?xml version="1.0" encoding="UTF-8"?><testsuites/>'
+    $ts = $doc.DocumentElement.AppendChild($doc.CreateElement('testsuite'))
+    $ts.SetAttribute('name', $suite)
+    $cases = @($results)
+    if ($abort) { $cases += [pscustomobject]@{ Name = 'smoke test ran to completion'; Ok = $false; Message = $abort } }
+    $ts.SetAttribute('tests', [string]$cases.Count)
+    $ts.SetAttribute('failures', [string]@($cases | Where-Object { -not $_.Ok }).Count)
+    foreach ($c in $cases) {
+        $tc = $ts.AppendChild($doc.CreateElement('testcase'))
+        $tc.SetAttribute('classname', $suite)
+        $tc.SetAttribute('name', $c.Name)
+        if (-not $c.Ok) {
+            $f = $tc.AppendChild($doc.CreateElement('failure'))
+            $message = if ($c.PSObject.Properties['Message']) { $c.Message } else { $c.Name }
+            $f.SetAttribute('message', $message)
+        }
+    }
+    $settings = [Xml.XmlWriterSettings]@{ Indent = $true; Encoding = [Text.UTF8Encoding]::new($false) }
+    $writer = [Xml.XmlWriter]::Create($path, $settings)
+    try { $doc.Save($writer) } finally { $writer.Dispose() }
 }
 
 # The PE header's Machine field (0x8664 x64, 0xAA64 ARM64, 0x14C x86).
