@@ -7,29 +7,18 @@ once per radio; after that you only start the bridge.
 ## What you need
 
 - A **Yaesu FT-710** (other Yaesu models are planned).
-- The **USB cable** N1MM+ already uses for CAT. No other cable or adapter.
+- The radio connected to the PC with its **USB cable**. No other cable or
+  adapter.
 - A PC with **Windows 10 or 11** that runs N1MM+.
-- **N1MM+ already controlling the radio** (CAT working). If it isn't yet, set
-  that up first: see N1MM+'s [Configurer](https://n1mmwp.hamdocs.com/setup/the-configurer/)
-  (Hardware tab) and its notes for the
-  [FT-710](https://n1mmwp.hamdocs.com/manual-supported/supported-radios/#ft-710).
+- **N1MM+ already set up for the radio.** The bridge doesn't change that
+  setup and never uses the radio's COM ports.
 
 ## 1. Set up the radio
 
-These FT-710 settings are needed. The first two are what this bridge needs;
-the CAT settings are N1MM+'s own recommendations, listed here so everything
-is in one place.
-
 | Setting | Where | Set to | Why |
 |---|---|---|---|
-| SCU-LAN10 | **OPERATION SETTING → GENERAL → SCU-LAN10** (CAT menu **EX 03-01-26**) | **ON** | Makes the radio send its scope over USB. You do **not** need the SCU-LAN10 adapter. With it OFF the bridge reports `Could not open 'FT4222 A'`. |
+| SCU-LAN10 | **OPERATION SETTING → GENERAL → SCU-LAN10** (menu **EX 03-01-26**) | **ON** | Makes the radio send its scope over USB. You do **not** need the SCU-LAN10 adapter. With it OFF the bridge reports `Could not open 'FT4222 A'`. |
 | Scope mode | The radio's scope | **Center** | N1MM+'s frequencies are exact only in Center mode. In Cursor or Fixed mode the bridge still works but warns. |
-| CAT-1 RATE | Radio menu | Same as N1MM+'s port speed (N1MM+ suggests **38400**) | N1MM+'s recommendation for the FT-710 |
-| CAT-1 Time Out Timer | Radio menu | **1000** or higher | N1MM+'s recommendation for the FT-710 |
-
-N1MM+'s FT-710 notes also set the CAT-1 ("Enhanced") COM port in N1MM+ to
-38400, N, 8, 1, with DTR and RTS **Always Off**. The bridge never uses either
-COM port, so N1MM+ keeps both.
 
 After turning SCU-LAN10 on:
 
