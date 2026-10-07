@@ -6,6 +6,8 @@
 # is never stored in this repository; fork PRs have no secrets and skip the
 # upload, which never fails CI (fail_ci_if_error: false).
 codecov:
+  # Default branch for the dashboard, Tests page and branchless badges (#187).
+  branch: master
   require_ci_to_pass: true
 
 coverage:
