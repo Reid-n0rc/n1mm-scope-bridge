@@ -2,11 +2,12 @@
 
 From a new install to your radio's waterfall in N1MM Logger+ (N1MM+), in
 order. Each step links to the detailed page if you need more. Do steps 1–2
-once per radio; after that you only start the bridge.
+once; after that you only start the bridge.
 
 ## What you need
 
-- A **Yaesu FT-710** (other Yaesu models are planned).
+- A **supported Yaesu radio**: see [Pick your radio](radios/README.md). Today
+  that is the FT-710; other Yaesu models are planned.
 - The radio connected to the PC with its **USB cable**. No other cable or
   adapter.
 - A PC with **Windows 10 or 11** that runs N1MM+.
@@ -15,18 +16,13 @@ once per radio; after that you only start the bridge.
 
 ## 1. Set up the radio
 
-| Setting | Where | Set to | Why |
-|---|---|---|---|
-| SCU-LAN10 | **OPERATION SETTING → GENERAL → SCU-LAN10** (menu **EX 03-01-26**) | **ON** | Makes the radio send its scope over USB. You do **not** need the SCU-LAN10 adapter. With it OFF the bridge reports `Could not open 'FT4222 A'`. |
-| Scope mode | The radio's scope | **Center** | N1MM+'s frequencies are exact only in Center mode. In Cursor or Fixed mode the bridge still works but warns. |
+Open your radio's page and do everything on it once. Each page gives the menu
+path, the menu number and the button presses for every setting.
 
-After turning SCU-LAN10 on:
+- [Yaesu FT-710](radios/ft-710.md): turn **SCU-LAN10** **ON**, set the scope
+  to **CENTER**, then power-cycle the radio and replug the USB cable.
 
-1. Turn the radio **off and back on**.
-2. **Unplug the USB cable and plug it back in.** A power cycle alone is not
-   enough; the scope device only appears after the cable is replugged.
-
-Details: [Setting up your Yaesu radio](radio-setup.md).
+Other radios: [Pick your radio](radios/README.md).
 
 ## 2. Install the bridge
 
@@ -54,8 +50,8 @@ Details: the [install page](https://reid-n0rc.github.io/n1mm-scope-bridge/instal
 2. Press **Start**. The status pill turns green (**Streaming**) and the cards
    show your radio's frequency, span and scope mode.
 3. If the **Scope mode** card says **Switch the radio to Center**, set the
-   radio's scope to Center. The window offers N1MM+ function-key macros that
-   do it for you.
+   radio's scope to Center (see your radio's page). The window also offers
+   N1MM+ function-key macros that do it for you.
 
 No radio handy? Turn on **Use the built-in emulator** to try everything
 first. Details: [GUI](gui.md).
@@ -86,8 +82,9 @@ N1MM+'s own documentation:
 
 No waterfall?
 
-- **`Could not open 'FT4222 A'`**: SCU-LAN10 is OFF, or the radio needs the
-  power cycle **and** USB replug from step 1. Close wfview if it is running.
+- **`Could not open 'FT4222 A'`**: the radio's scope output is off (FT-710:
+  SCU-LAN10), or the radio needs the power cycle **and** USB replug from its
+  page in step 1. Close wfview if it is running.
 - **Streaming, but nothing in N1MM+**: recheck the source name in step 4.
 - Anything else: [Troubleshooting](troubleshooting.md) lists every message.
   Press **Copy diagnostics** in the window when asking for help.
