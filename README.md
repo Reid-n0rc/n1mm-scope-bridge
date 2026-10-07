@@ -20,6 +20,24 @@ Other Yaesu models are planned (see [Supported radios](#supported-radios)).
 > See the **[website](https://reid-n0rc.github.io/n1mm-scope-bridge/)** and
 > the **[user guide](docs/user/README.md)**.
 
+## Getting started
+
+1. **Set up the radio:** on the FT-710 set **OPERATION SETTING → GENERAL →
+   SCU-LAN10** to **ON** (no adapter needed), turn the radio off and on, then
+   unplug and replug the USB cable. Put the scope in **Center** mode.
+2. **Install:** download `n1mm-scope-bridge-setup-<version>.exe` from the
+   [latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)
+   and run it (Windows 10/11; it fetches FTDI's library for you).
+3. **Start the bridge** and press **Start**.
+4. **In N1MM+:** **Window → Spectrum Display** → gear → **For all other
+   radios, source named** → pick `FT-710`. See N1MM+'s
+   [Spectrum Display Window](https://n1mmwp.hamdocs.com/manual-windows/spectrum-display-window/)
+   documentation.
+
+The full step-by-step guide, with every required radio setting and links to
+N1MM+'s documentation, is **[Getting started](docs/user/getting-started.md)**
+(also on the [website](https://reid-n0rc.github.io/n1mm-scope-bridge/getting-started.html)).
+
 ## Test coverage
 
 [![Codecov coverage tree graph](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/graphs/tree.svg?token=X0SYOVMX1M)](https://app.codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
@@ -99,45 +117,26 @@ a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 
 ## Install (Windows)
 
-First set up the radio: on the FT-710, turn on **OPERATION SETTING → GENERAL →
-SCU-LAN10** (no adapter needed). See [Setting up your Yaesu radio](docs/user/radio-setup.md).
+Follow **[Getting started](docs/user/getting-started.md)**; it covers the
+radio settings, the installer and N1MM+ in order. In short:
 
-N1MM Scope Bridge runs on **Windows 10/11**, next to N1MM Logger+.
-You don't need Python or a command prompt.
-
-1. Download `n1mm-scope-bridge-setup-<version>.exe` from
-   the [latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest).
-   It is **one installer for all Windows PCs**: it picks the right version
-   for your PC.
-   - **64-bit Windows (Intel/AMD):** the full app.
-   - **Windows on ARM** (Snapdragon laptops, Windows 11 in Parallels on an
-     Apple silicon Mac): the x64 app by default, which Windows runs through
-     its built-in emulation and for which setup downloads FTDI's library.
-     Setup also offers a native ARM64 version; for that one you add FTDI's
-     ARM64 DLLs yourself (see [radio setup](docs/user/radio-setup.md)).
-   - **32-bit Windows:** the command-line version (the window needs 64-bit
-     Windows), started from the Start menu shortcut **N1MM Scope Bridge
-     (command line)**.
-
-   The installer is the only file on each release; the release notes give
-   its SHA-256 checksum.
-2. Run it. It installs for your Windows account only (no admin prompt), and
-   adds Start menu and optional desktop shortcuts.
-3. **FTDI LibFT4222** (FT-710 and other FT4222 radios): setup downloads it
-   for you. The "Download FTDI's LibFT4222 library" option is on by default:
-   setup fetches FTDI's signed DLLs from a pinned source, checks the checksum
-   and signatures, and puts them in the program folder. (We can't ship FTDI's
-   library inside our GPL installer, so your setup downloads it.) No internet
-   during install? Untick it and download LibFT4222 from
-   [ftdichip.com](https://ftdichip.com/products/ft4222h/) instead. If
-   Windows has no FTDI USB driver yet, setup also offers an optional
-   **Install FTDI USB driver** step (needs administrator; otherwise Windows
-   Update installs it when you plug in the radio).
-
-   The installer isn't code-signed yet (#130), so Windows SmartScreen may
-   warn: choose **More info → Run anyway**.
-4. Start **N1MM Scope Bridge**, press **Start**, and pick its name in N1MM+'s
-   Spectrum Display settings. See [docs/n1mm-setup.md](docs/n1mm-setup.md).
+- **One installer for all Windows PCs**, from the
+  [latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)
+  (the only file on each release; the notes give its SHA-256). 64-bit
+  Intel/AMD Windows gets the full app. Windows on ARM gets the x64 app by
+  default, or optionally a native ARM64 build, for which you add FTDI's ARM64
+  DLLs yourself. 32-bit Windows gets the command-line version (**N1MM Scope
+  Bridge (command line)** in the Start menu). Details:
+  [install page](https://reid-n0rc.github.io/n1mm-scope-bridge/install.html).
+- It installs for your Windows account only (no admin prompt). **FTDI
+  LibFT4222** is downloaded by setup from a pinned, checksum- and
+  signature-verified source, because we can't ship FTDI's library inside our
+  GPL installer. Setup can also install FTDI's USB driver (needs
+  administrator) if Windows doesn't have it. Without internet, see
+  [radio setup](docs/user/radio-setup.md).
+- The installer isn't code-signed yet (#130), so SmartScreen may warn:
+  **More info → Run anyway**.
+- N1MM+ setup: [docs/n1mm-setup.md](docs/n1mm-setup.md).
 
 macOS and Linux: the code is portable and tested there in CI, but these
 platforms are unsupported for operators. To run from source on any platform,
