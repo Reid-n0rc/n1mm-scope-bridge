@@ -1,75 +1,8 @@
 # Setting up your Yaesu radio
 
-Do this once per radio, before the first time you start the bridge.
+Radio setup has one page per radio, with each setting's menu path, menu
+number and button presses: [pick your radio](radios/README.md).
 
-## Yaesu FT-710
-
-1. **Connect the radio to the PC with a USB cable**: the same cable N1MM+
-   already uses for CAT. No other cable or adapter is needed.
-2. **Turn on the scope output:** on the radio, open the menu
-   **OPERATION SETTING → GENERAL → SCU-LAN10** and set it to **ON**.
-   - You do **not** need the SCU-LAN10 network adapter. This menu item is what
-     makes the radio send its spectrum scope over USB (through an FTDI FT4222
-     chip inside the radio).
-   - With it **OFF**, the scope interface doesn't appear on the PC at all, and
-     the bridge reports `Could not open 'FT4222 A'`.
-   - ON is the factory default, but it is often switched off.
-   - In Yaesu's CAT manual this is menu **EX 03-01-26** (`0` OFF, `1` ON).
-3. **FTDI's LibFT4222 library** reads that FT4222 chip. The Windows installer
-   downloads it for you: the **Download FTDI's LibFT4222 library** option is on
-   by default, and setup checks FTDI's signed files before putting them in the
-   program folder. (Its licence doesn't let us ship it inside this GPL
-   program.) If you installed without it, run setup again with the option
-   ticked, or get LibFT4222 from <https://ftdichip.com/products/ft4222h/> and
-   set **FTDI library folder** in Settings to the unzipped package folder
-   (for example `LibFT4222-v1.4.8`). The bridge finds the right DLLs inside it
-   for you: the package keeps `LibFT4222-64.dll` and `ftd2xx.dll` in different
-   folders. The x64 app needs the `amd64` ones (also on Windows on ARM), the
-   native ARM64 app the `arm64` ones, and the 32-bit command-line app the
-   `i386` ones. Setup can download the `amd64` and `i386` DLLs; for the native
-   ARM64 app, get FTDI's package and pick its folder.
-   **The FTDI USB driver** (what Windows needs to talk to the scope chip)
-   normally comes from Windows Update automatically the first time the scope
-   device appears. If Windows doesn't have it, setup offers **Install FTDI USB
-   driver (needs administrator)**. Only that step asks for administrator
-   rights. It installs FTDI's official Microsoft-signed (WHQL) driver package
-   from Microsoft Update Catalog, after checking the download's checksum, the
-   driver's Microsoft signature and that it covers the FT4222H. Why not FTDI's
-   website? ftdichip.com blocks all automated downloads with a "verify you are
-   human" check, so no installer can use it. The DLLs stay in the program's
-   own folder, which needs no administrator rights and can't clash with other
-   FTDI-based programs. Microsoft Update Catalog's FTDI driver package covers
-   32-bit and 64-bit Intel/AMD Windows only, so setup doesn't offer it on
-   Windows on ARM; there, Windows Update provides the driver if it has one.
-4. **Make the PC see the new scope device.** After turning SCU-LAN10 on:
-   1. Turn the radio **off and back on**.
-   2. **Unplug the USB cable and plug it back in.** A power cycle alone is not
-      enough; on the maintainer's FT-710 the scope device only appeared after
-      the cable was replugged.
-   3. Check that the scope device appears: run `n1mm-scope-bridge probe`, or
-      press **Start** in the window. (It shows up as an FTDI **FT4222** USB
-      device, VID `0x0403`, PID `0x601C`.)
-5. **Set the scope to Center mode** for exact frequencies in N1MM+. In Cursor
-   or Fixed mode the bridge still streams, but it warns that the frequency
-   edges are approximate. It can give you ready-to-paste N1MM+ function-key
-   macros to switch the scope to Center and back.
-6. **Leave N1MM+ connected as usual.** N1MM+ keeps both of the radio's COM
-   ports (CAT and the PTT/keying port). The bridge reads the scope through the
-   separate FT4222 device and never opens either COM port.
-
-### What the bridge never does
-
-- It never transmits or keys the radio.
-- It never opens the radio's COM ports, so it can't change radio settings
-  through CAT.
-- It never changes the SCU-LAN10 setting; you set that once on the radio.
-
-To turn the scope output off again, set **SCU-LAN10** back to **OFF**.
-
-## Other Yaesu radios
-
-The FTDX10, the FTDX101D/MP, and radios on the SCU-LAN10 network adapter are
-planned. Setup steps will be added here when each radio is supported.
-
-See also: [Setting up N1MM Logger+](../n1mm-setup.md) and
-[Troubleshooting](troubleshooting.md).
+- [Yaesu FT-710](radios/ft-710.md): turn **OPERATION SETTING → GENERAL →
+  SCU-LAN10** **ON**, set the scope to **CENTER**, then power-cycle the radio
+  and replug the USB cable.

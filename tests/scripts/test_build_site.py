@@ -478,6 +478,25 @@ def test_markdown_links_follow_the_release_ref(tmp_path: Path) -> None:
     assert f"/blob/{RELEASE['ref']}/docs/user/settings.md" in page
 
 
+def test_radio_pages_render_docs_from_a_subfolder(tmp_path: Path) -> None:
+    """Per-radio setup pages live in docs/user/radios/ (#194)."""
+    bs.build(tmp_path / "out", DEV)
+    page = (tmp_path / "out" / "radio-ft-710.html").read_text(encoding="utf-8")
+    assert '<h3 id="scu-lan10-on">' in page
+    assert "<table>" in page
+    assert "<!-- markdown:" not in page
+    picker = (tmp_path / "out" / "radios.html").read_text(encoding="utf-8")
+    assert 'href="radio-ft-710.html"' in picker
+    assert "/blob/dev/docs/user/radios/ft-710.md" in picker
+
+
+def test_markdown_marker_needs_a_plain_docs_user_path() -> None:
+    assert bs.MARKDOWN.fullmatch("<!-- markdown:docs/user/radios/ft-710.md -->")
+    assert bs.MARKDOWN.fullmatch("<!-- markdown:docs/user/radios/README.md -->")
+    for path in ("docs/user/../secret.md", "docs/user/a/b/c.md", "docs/other.md"):
+        assert not bs.MARKDOWN.fullmatch(f"<!-- markdown:{path} -->"), path
+
+
 def test_markdown_marker_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     src = write_site(tmp_path / "src", {"index.html": "<!-- markdown:docs/user/nope.md -->"})
     with pytest.raises(bs.SiteError, match="does not exist"):

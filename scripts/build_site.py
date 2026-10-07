@@ -56,7 +56,8 @@ BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
 # <!-- markdown:docs/user/NAME.md --> renders that doc (#23), so the page matches it.
-MARKDOWN = re.compile(r"<!-- markdown:(docs/user/[a-z0-9_-]+\.md) -->")
+# One subfolder is allowed, for example docs/user/radios/ft-710.md (#194).
+MARKDOWN = re.compile(r"<!-- markdown:(docs/user/(?:[a-z0-9_-]+/)?[A-Za-z0-9_-]+\.md) -->")
 # All screenshots whose scene starts with PREFIX-, in manifest (capture) order,
 # or a note when the build has none (for example installer pages, which are
 # captured on Windows by the release regression and arrive via the release run's

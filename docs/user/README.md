@@ -1,7 +1,7 @@
 # User guide
 
 - [Getting started](getting-started.md): start here. Radio settings, install, and N1MM+ setup, step by step
-- [Setting up your Yaesu radio](radio-setup.md): radio details (FT-710: turn on **SCU-LAN10**)
+- [Pick your radio](radios/README.md): one setup page per radio, with menu paths, menu numbers and button presses (FT-710: turn on **SCU-LAN10**)
 - [Command line](cli.md): every command and option
 - [Settings](settings.md): every setting, where it is stored, and its command-line equivalent
 - [GUI](gui.md): the window, Start/Stop, closing, and the system tray
