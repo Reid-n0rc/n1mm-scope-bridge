@@ -3,7 +3,7 @@
 **Website:** <https://reid-n0rc.github.io/n1mm-scope-bridge/>
 
 [![CI](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/branch/dev/graph/badge.svg)](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
+[![codecov](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/graph/badge.svg)](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
 
 **Your Yaesu radio's waterfall, in N1MM Logger+.** n1mm-scope-bridge takes the
 spectrum scope built into Yaesu radios and shows it in **N1MM Logger+'s
