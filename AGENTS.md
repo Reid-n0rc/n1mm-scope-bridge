@@ -176,18 +176,27 @@ git config core.hooksPath .githooks
 - `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
   bypass is `ALLOW_PROTECTED_PUSH=1`.
 - `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
-  needs `jq` and `awk`. It denies agent pushes to `master` or `dev`, force
-  pushes (except `--force-with-lease` on `issue-*` branches), deleting
-  non-`issue-*` remote branches, and every tag push (`--tags`,
-  `--follow-tags`, `push.followTags`, a `refs/tags/` refspec, or an existing
-  tag's name). It **fails closed**: it parses the command like a shell does
-  and denies any push it cannot classify, such as a git alias for push, a
-  computed argument (`$VAR`, `$(...)`), git run through another program
-  (`xargs`, `timeout`, `uv run`, `python -c`), commands piped into a shell, a
-  push combined with `git switch`/`checkout`/`tag`/`config` or `GIT_*`
-  variables, and any push when `jq` is missing. Run such pushes as a plain
-  `git push origin issue-<n>-<slug>`. Text that only mentions `git push`
-  (commit messages, quoted heredocs, `gh pr create --body`) is allowed.
+  needs `jq`. It is a strict **allowlist** that fails closed and does not
+  parse shell. A command that mentions `push` anywhere (any case, also split
+  by quotes or backslashes), or that runs `git` together with `alias` or a
+  shell metacharacter (`;` `&` `|` `` ` `` `$` `(` `)` `<` `>` `{` `}` `*`
+  `?` `[` `]` or a newline), must be exactly one of:
+  - `git push [-u|--set-upstream] origin issue-<n>-<slug>`
+  - `git push [-u|--set-upstream] origin HEAD:[refs/heads/]issue-<n>-<slug>`
+  - `git push --force-with-lease[=<lease>] origin issue-<n>-<slug>`
+
+  with `<slug>` matching `[a-z0-9][a-z0-9-]*`. Everything else is denied:
+  `dev`/`master`, a bare `git push`, other remotes, tags, `--force`/`-f`,
+  `+refspec`, `--delete`, `git -c`/`-C`/`--git-dir`, env prefixes, and
+  compound commands. A short-form push is also denied when a local tag has the
+  branch's name or `push.followTags` is set, and a plain `git` command is
+  denied while a configured alias mentions push or runs a shell (`!`).
+  `ALLOW_PROTECTED_PUSH` does not apply to agents. **Workarounds:** text that
+  merely mentions push is denied too, so put commit messages and PR or issue
+  bodies in a file (`git commit -F <file>`, `gh pr create --body-file <file>`,
+  `gh pr comment --body-file <file>`), and run other `git` commands one at a
+  time instead of chaining or piping them. Without `jq`, or with input it
+  cannot read, any command that mentions push or git is denied.
 - `.claude/settings.json` also commits Claude Code permission rules (#221):
   - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
     `gh pr merge … --auto`, `gh run view|watch|list|rerun`, `gh issue …`,
