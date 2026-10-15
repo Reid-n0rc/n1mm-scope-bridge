@@ -400,6 +400,14 @@ def test_self_test_reports_missing_packets(
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert not ok
     assert "received 0 N1MM packets" in message
+    assert "no pipeline stats" in message  # the timeout beat the first stats poll
+    assert "threads:" in message
+
+
+def test_self_test_failure_names_the_stalled_stage() -> None:
+    stats = PipelineStats(frames_read=12, frames_dropped=1, bad_frames=0, emitted=1)
+    assert gui_app._describe_stats(stats) == "read 12, dropped 1, bad 0, sent 1"
+    assert gui_app._describe_stats(None) == "no pipeline stats"
 
 
 def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.socket) -> None:

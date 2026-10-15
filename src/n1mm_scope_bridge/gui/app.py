@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import socket
 import sys
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -17,6 +18,7 @@ from n1mm_scope_bridge import __version__
 from n1mm_scope_bridge import settings as settings_mod
 from n1mm_scope_bridge.gui.main_window import APP_TITLE, MainWindow
 from n1mm_scope_bridge.gui.style import apply_style
+from n1mm_scope_bridge.pipeline import PipelineStats
 
 SELF_TEST_TIMEOUT_S = 15.0
 SELF_TEST_PACKETS = 3
@@ -101,6 +103,8 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
             emulator=True, n1mm_host="127.0.0.1", n1mm_port=rx.getsockname()[1], rate_hz=10.0
         )
         window = MainWindow(settings, settings_path=settings_path)
+        stats: list[PipelineStats] = []  # every POLL_MS; the last one explains a failure
+        window.controller.stats.connect(stats.append)
         window.show()
         window.toggle_streaming()
         packets = 0
@@ -113,13 +117,29 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
             except BlockingIOError:
                 time.sleep(0.02)
         status_ok = window.status.text().startswith(("VFO", "Streaming"))
+        threads = sorted(t.name for t in threading.enumerate() if t is not threading.main_thread())
         window.quit_app()  # never prompts, even when a system tray exists
         app.processEvents()
     if packets < SELF_TEST_PACKETS:
-        return False, f"self-test: received {packets} N1MM packets, expected {SELF_TEST_PACKETS}"
+        pipeline = _describe_stats(stats[-1] if stats else None)
+        running = ", ".join(threads) or "none"
+        return False, (
+            f"self-test: received {packets} N1MM packets, expected {SELF_TEST_PACKETS} "
+            f"({pipeline}; threads: {running})"
+        )
     if not status_ok:
         return False, f"self-test: status line not updated ({window.status.text()!r})"
     return True, f"self-test: OK ({packets} packets, style {app.property('bridgeStyle')})"
+
+
+def _describe_stats(stats: PipelineStats | None) -> str:
+    """Which pipeline stage stalled: frames read, dropped, bad, and sent (#209)."""
+    if stats is None:
+        return "no pipeline stats"
+    return (
+        f"read {stats.frames_read}, dropped {stats.frames_dropped}, "
+        f"bad {stats.bad_frames}, sent {stats.emitted}"
+    )
 
 
 def _write_self_test_log(path: Path, message: str) -> None:
