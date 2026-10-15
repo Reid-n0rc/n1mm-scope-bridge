@@ -153,11 +153,62 @@ def test_preview_signal_is_gated_by_preview_enabled(qtbot: QtBot) -> None:
     item = object()
     assert ctl.preview_enabled is False
     ctl._emit_preview(item)  # type: ignore[arg-type]
+    ctl._drain()
     assert previews == []
     ctl.preview_enabled = True
     for _ in range(5):
         ctl._emit_preview(item)  # type: ignore[arg-type]
+    ctl._drain()
     assert len(previews) == 5  # every radio frame, no N1MM+-rate throttling
+
+
+def test_pipeline_callbacks_never_emit_off_the_gui_thread(qtbot: QtBot) -> None:
+    """#207: a callback on another thread only queues; the GUI thread emits, in order."""
+    ctl = StreamController(source_factory=demo_factory)
+    seen: list[tuple[str, object, int]] = []
+    ctl.status.connect(lambda s: seen.append(("status", s, threading.get_ident())))
+    ctl.warning.connect(lambda w: seen.append(("warning", w, threading.get_ident())))
+    ctl.frame.connect(lambda f: seen.append(("frame", f, threading.get_ident())))
+
+    def pipeline_thread() -> None:
+        ctl._post("status")("s1")
+        ctl._post("warning")("w1")
+        ctl._post("frame")("f1")
+
+    worker = threading.Thread(target=pipeline_thread, name="ft710-test")
+    worker.start()
+    worker.join()
+    assert seen == []  # nothing emitted on the worker thread
+    ctl._drain()
+    gui = threading.get_ident()
+    assert seen == [("status", "s1", gui), ("warning", "w1", gui), ("frame", "f1", gui)]
+    ctl._drain()  # empty queue: no repeats
+    assert len(seen) == 3
+
+
+def test_queue_is_bounded_and_drops_the_oldest(qtbot: QtBot) -> None:
+    ctl = StreamController(source_factory=demo_factory)
+    frames: list[object] = []
+    ctl.frame.connect(frames.append)
+    post = ctl._post("frame")
+    for n in range(gc.QUEUE_MAX + 5):
+        post(n)
+    ctl._drain()
+    assert frames == list(range(5, gc.QUEUE_MAX + 5))
+
+
+def test_stop_delivers_the_last_queued_events(qtbot: QtBot, listener: socket.socket) -> None:
+    ctl = StreamController(source_factory=demo_factory)
+    warnings: list[str] = []
+    ctl.warning.connect(warnings.append)
+    assert ctl.start(settings_for(listener))
+    ctl._drain_timer.stop()  # hold events in the queue until stop() drains them
+    ctl._post("warning")("last words")
+    with qtbot.waitSignal(ctl.stopped, timeout=6000):
+        ctl.stop()
+    assert warnings[-1] == "last words"
+    assert not ctl._drain_timer.isActive()
+    assert not ctl._queue
 
 
 def test_preview_signal_flows_while_streaming_only_when_enabled(
