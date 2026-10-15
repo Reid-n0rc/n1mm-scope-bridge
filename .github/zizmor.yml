@@ -12,6 +12,10 @@ rules:
       # Base-branch checkout only; it reads PR metadata and labels/comments
       # (#211).
       - automation-triage.yml
+      # Runs only after a PR merges into dev, so a fork PR's merge can still
+      # close its linked issues. Checks out the base branch (dev) for the
+      # script, never the PR head; the PR number goes through env: (#220).
+      - close-linked-issues.yml
       # The Issue policy script must come from the base branch so a PR cannot
       # rewrite the check it is judged by; base-only checkout (#211).
       - issue-policy.yml
