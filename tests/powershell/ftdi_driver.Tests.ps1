@@ -200,3 +200,48 @@ Describe 'ftdi_driver.ps1' {
         }
     }
 }
+
+# The wrappers themselves, against the real read-only tools (#205): pnputil
+# only lists the driver store and expand.exe unpacks a CAB built here. Install
+# never runs unmocked. With no Mock, the helper's own wrappers shadow the
+# throwing stubs from BeforeAll.
+Describe 'ftdi_driver.ps1 native wrappers' {
+    BeforeEach { $script:ModulePath = $env:PSModulePath }
+    AfterEach { $env:PSModulePath = $script:ModulePath }
+
+    It 'reads the real driver store with pnputil' {
+        $r = Invoke-Helper Check ''
+        $r.Text | Should -BeIn @('INSTALLED', 'MISSING')
+        $r.Code | Should -Be 0
+    }
+
+    It 'unpacks a real CAB with expand.exe' {
+        $src = Join-Path $TestDrive 'pkg'
+        New-Item -ItemType Directory -Path $src | Out-Null
+        Set-Content -LiteralPath (Join-Path $src 'ftdibus.inf') -Value "[FtdiHw]`r`n%DeviceDesc%=FtdiBus,$script:HardwareId`r`n"
+        Set-Content -LiteralPath (Join-Path $src 'ftdibus.cat') -Value 'fake catalog'
+        $ddf = Join-Path $TestDrive 'pkg.ddf'
+        Set-Content -LiteralPath $ddf -Value @(
+            '.Set CabinetNameTemplate=real.cab'
+            ".Set DiskDirectoryTemplate=$TestDrive"
+            '.Set InfFileName=NUL'
+            '.Set RptFileName=NUL'
+            "`"$(Join-Path $src 'ftdibus.inf')`""
+            "`"$(Join-Path $src 'ftdibus.cat')`""
+        )
+        & (Join-Path $env:SystemRoot 'System32\makecab.exe') /F $ddf | Out-Null
+        $cab = Join-Path $TestDrive 'real.cab'
+        Test-Path -LiteralPath $cab | Should -BeTrue
+
+        Mock Import-Module {} -ParameterFilter { "$Name" -like '*Microsoft.PowerShell.Security*' }
+        Mock Get-AuthenticodeSignature {
+            [pscustomobject]@{
+                Status            = 'Valid'
+                SignerCertificate = [pscustomobject]@{ Subject = 'CN=Microsoft Windows Hardware Compatibility Publisher, O=Microsoft Corporation' }
+            }
+        }
+        $r = Invoke-Helper Verify $cab
+        $r.Text | Should -BeExactly 'OK'
+        $r.Code | Should -Be 0
+    }
+}
