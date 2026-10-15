@@ -8,6 +8,38 @@ All notable changes to this project are documented here. The format follows
 
 See `changelog.d/` for changes not yet released.
 
+## [0.1.3] - 2026-10-15
+
+### Added
+
+- Codecov Test Analytics: CI now uploads JUnit test results (`junit.xml`) next to coverage, and warns (without failing) when the `CODECOV_TOKEN` secret is empty. (#171)
+- Coverage now measures the development scripts in `scripts/` as well as the app, each with its own floor (`scripts/coverage_gate.py`), shown in Codecov as the `app` and `scripts` components. (#180)
+- Pester tests for the installer's PowerShell helpers (FTDI download check, FTDI driver install, smoke-test helpers), run in CI with coverage and test results reported to Codecov under the `powershell` flag. (#181)
+- The git/agent hook tests and the installer smoke test now write JUnit reports (`HOOKS_JUNIT=<file>`, `smoke_test.ps1 -JUnit <file>`), which CI sends to Codecov Test Analytics under the `hooks` and `installer` flags. (#182)
+- A step-by-step **Getting started** guide (`docs/user/getting-started.md`, and a new page on the website) walks from radio settings through install to N1MM+ Spectrum Display setup, with links to N1MM+'s own documentation. The README has a short Getting started section pointing to it. (#189)
+
+### Changed
+
+- Each GitHub release now carries only the Windows installer (`n1mm-scope-bridge-setup-<version>.exe`, versioned from the tag). Its notes give the installer's SHA-256 and link the build run, whose artifacts hold the portable zips, wheel, sdist, regression report and screenshots; the GPL source is GitHub's Source code archives of the tag. The website now takes release screenshots from the release run instead of a release file. (#167)
+- The website's download button now downloads the installer directly and shows its SHA-256 checksum, with a link to the release page for the notes. (#170)
+- Codecov now uses `master` as its default branch, matching GitHub, so its dashboard, Tests page and coverage badge show `master`. (#187)
+- Radio setup now has one page per radio, picked from a radio list (`docs/user/radios/`, and new **Pick your radio** and **Yaesu FT-710** pages on the website). The FT-710 page gives each required setting's menu path, menu number and button presses, including how to switch the scope to Center on the radio. CI fails if a supported radio has no setup page. (#194)
+- Update GitHub Actions used by the project's CI and release workflows. (#198)
+- Update development tools (ruff 0.17.0) and the bundled Qt libraries (PySide6 6.12.0). (#199)
+- The docs and website list only the Yaesu FT-710 (supported) and FTDX10 (planned) as radios. (#200)
+
+### Fixed
+
+- Republishing an older release no longer moves the website back to that version. (#167)
+- Release candidate tags (for example v0.1.3-rc1) now build an installer instead of failing on Windows' numbers-only file version. (#167)
+- Releases made by tagging or in the GitHub web UI now always get the installer and files: the version comes from the tag (no manual bump needed), an existing release is filled in instead of failing, a missing changelog section no longer blocks publishing, and `release.yml` can rebuild an existing tag with `-f publish=true`. (#167)
+
+## [0.1.2] - 2026-10-02
+
+### Fixed
+
+- The release workflow now explains when a release tag is not on master (so no installer is attached) and how to recover. (#160)
+
 ## [0.1.0] - 2026-10-02
 
 First release: the Yaesu FT-710's spectrum scope in N1MM Logger+'s Spectrum
