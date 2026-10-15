@@ -176,18 +176,28 @@ git config core.hooksPath .githooks
 - `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
   bypass is `ALLOW_PROTECTED_PUSH=1`.
 - `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
-  needs `jq`. It denies agent pushes to `master` or `dev`, force pushes
-  (except `--force-with-lease` on `issue-*` branches), and every tag push
-  (`--tags`, `--follow-tags`, a `refs/tags/` refspec, or an existing tag's
-  name).
+  needs `jq` and `awk`. It denies agent pushes to `master` or `dev`, force
+  pushes (except `--force-with-lease` on `issue-*` branches), deleting
+  non-`issue-*` remote branches, and every tag push (`--tags`,
+  `--follow-tags`, `push.followTags`, a `refs/tags/` refspec, or an existing
+  tag's name). It **fails closed**: it parses the command like a shell does
+  and denies any push it cannot classify, such as a git alias for push, a
+  computed argument (`$VAR`, `$(...)`), git run through another program
+  (`xargs`, `timeout`, `uv run`, `python -c`), commands piped into a shell, a
+  push combined with `git switch`/`checkout`/`tag`/`config` or `GIT_*`
+  variables, and any push when `jq` is missing. Run such pushes as a plain
+  `git push origin issue-<n>-<slug>`. Text that only mentions `git push`
+  (commit messages, quoted heredocs, `gh pr create --body`) is allowed.
 - `.claude/settings.json` also commits Claude Code permission rules (#221):
   - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
     `gh pr merge … --auto`, `gh run view|watch|list|rerun`, `gh issue …`,
     and `python scripts/ready_to_merge.py` / `check_overlap.py`;
   - **ask**: `git tag`, `gh issue delete|transfer`, any other `gh pr merge`,
     and `gh workflow run`;
-  - **deny**: `gh release …`, `gh pr merge … --admin`, tag pushes, force
-    pushes, and `gh api` `DELETE` calls.
+  - **deny**: `gh release …`, `gh pr merge` with `--admin` anywhere, adding
+    the `plan-approved` label (only the maintainer approves plans), tag
+    pushes, force pushes, and `gh api` `DELETE` calls (`-X DELETE`,
+    `-XDELETE`, `--method=DELETE`, upper or lower case).
 
   Permission globs match command text and can be sidestepped by compound
   commands, so the hook stays the authority for pushes. Put personal
