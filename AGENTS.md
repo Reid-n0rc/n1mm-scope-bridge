@@ -199,7 +199,10 @@ does not authorize work.
    lacks `plan-approved` or an assignee. CI must be green.
 6. The maintainer (or an agent the maintainer has explicitly authorized)
    merges, only after `python scripts/ready_to_merge.py <PR>` prints `READY`
-   (rule 10).
+   (rule 10). When the PR merges into `dev`, the **Close linked issues**
+   workflow (`.github/workflows/close-linked-issues.yml`) closes its
+   `Closes #<n>` issues with a comment saying the fix ships in the next
+   release. GitHub itself only does this for merges into `master`.
 
 Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware
