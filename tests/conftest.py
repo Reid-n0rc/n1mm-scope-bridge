@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import os
 import socket
+import sys
 from collections.abc import Generator, Iterator
 
 import pytest
@@ -43,9 +44,9 @@ def pytest_runtest_teardown(item: pytest.Item) -> Generator[None, object, object
     """
     result = yield
     if "gui" in item.keywords:
-        from PySide6.QtCore import QCoreApplication, QEvent  # noqa: PLC0415 - GUI tests only
-
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        qtcore = sys.modules.get("PySide6.QtCore")  # absent: no QObjects (e.g. 3.14t)
+        if qtcore is not None:
+            qtcore.QCoreApplication.sendPostedEvents(None, qtcore.QEvent.Type.DeferredDelete)
         gc.collect()
     return result
 
