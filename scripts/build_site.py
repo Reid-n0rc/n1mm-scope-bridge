@@ -19,7 +19,9 @@ Template syntax:
   <!-- if:prerelease --> ... <!-- endif:prerelease -->  only without --tag
   {{name}}                                   a value from the build context
   <!-- screenshot:NAME -->                   a GUI screenshot from --screenshots DIR
-  <!-- markdown:docs/user/NAME.md -->        that user doc, rendered (site_markdown.py)
+  <!-- markdown:docs/user/NAME.md -->        that user doc, rendered (site_markdown.py);
+                                             also docs/NAME.md. Links between rendered
+                                             docs point to their site pages (#192)
   <!-- screenshots:PREFIX -->                every screenshot named PREFIX-*, or a note
                                              (manifest.json written by
                                              `n1mm-scope-bridge gui --screenshot DIR`)
@@ -56,8 +58,9 @@ BLOCK = re.compile(r"<!-- if:(release|prerelease) -->(.*?)<!-- endif:\1 -->", re
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 SCREENSHOT = re.compile(r"<!-- screenshot:([a-z0-9-]+) -->")
 # <!-- markdown:docs/user/NAME.md --> renders that doc (#23), so the page matches it.
-# One subfolder is allowed, for example docs/user/radios/ft-710.md (#194).
-MARKDOWN = re.compile(r"<!-- markdown:(docs/user/(?:[a-z0-9_-]+/)?[A-Za-z0-9_-]+\.md) -->")
+# One subfolder is allowed, for example docs/user/radios/ft-710.md (#194), and
+# top-level docs such as docs/n1mm-setup.md (#192).
+MARKDOWN = re.compile(r"<!-- markdown:(docs/(?:user/(?:[a-z0-9_-]+/)?)?[A-Za-z0-9_-]+\.md) -->")
 # All screenshots whose scene starts with PREFIX-, in manifest (capture) order,
 # or a note when the build has none (for example installer pages, which are
 # captured on Windows by the release regression and arrive via the release run's
@@ -279,7 +282,10 @@ def render(
     *,
     name: str,
     shots: Shots | None = None,
+    doc_pages: Mapping[str, str] | None = None,
 ) -> str:
+    """Render one page. ``doc_pages`` maps docs the site renders to their pages."""
+
     def include(m: re.Match[str]) -> str:
         if m.group(1) not in partials:
             raise SiteError(f"{name}: unknown partial {m.group(1)!r}")
@@ -292,7 +298,7 @@ def render(
         if not path.is_file():
             raise SiteError(f"{name}: {m.group(1)} does not exist")
         base = f"{ctx['source_url']}/blob/{ctx['ref']}"
-        links = site_markdown.doc_link_mapper(base, posixpath.dirname(m.group(1)))
+        links = site_markdown.doc_link_mapper(base, posixpath.dirname(m.group(1)), doc_pages)
         try:
             return site_markdown.render(path.read_text(encoding="utf-8"), links)
         except site_markdown.MarkdownError as err:
@@ -456,6 +462,20 @@ def check_site(out: Path) -> list[str]:
     return problems
 
 
+def doc_pages(pages: Sequence[Path]) -> dict[str, str]:
+    """Which site page renders each doc, from the pages' markdown markers (#192).
+
+    Discovered from the pages themselves, so there is no hand-kept list to drift.
+    """
+    found: dict[str, str] = {}
+    for page in pages:
+        for doc in MARKDOWN.findall(page.read_text(encoding="utf-8")):
+            if found.get(doc, page.name) != page.name:
+                raise SiteError(f"{doc} is rendered by both {found[doc]} and {page.name}")
+            found[doc] = page.name
+    return found
+
+
 def build(
     out: Path, ctx: dict[str, str], src: Path = SITE, screenshots: Path | None = None
 ) -> list[Path]:
@@ -483,11 +503,19 @@ def build(
     pages = sorted(src.glob("*.html"))
     if not pages:
         raise SiteError(f"no pages in {src}")
+    docs = doc_pages(pages)
     written = []
     for page in pages:
         target = out / page.name
         target.write_text(
-            render(page.read_text(encoding="utf-8"), ctx, partials, name=page.name, shots=shots),
+            render(
+                page.read_text(encoding="utf-8"),
+                ctx,
+                partials,
+                name=page.name,
+                shots=shots,
+                doc_pages=docs,
+            ),
             encoding="utf-8",
         )
         written.append(target)
