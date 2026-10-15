@@ -138,6 +138,8 @@ jobs:
             --app-dir dist/apps/x64/n1mm-scope-bridge \
             --app-arm64 dist/apps/arm64/n1mm-scope-bridge \
             --app-x86 dist/apps/x86/n1mm-scope-bridge
+          # The glob matches our own installer names; ls -l is for the summary.
+          # shellcheck disable=SC2012
           ls -l dist/windows/n1mm-scope-bridge-setup-*.exe | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

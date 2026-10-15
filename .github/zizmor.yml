@@ -16,3 +16,13 @@ rules:
       # Runs the base branch's overlap script with a read-only token; never
       # checks out the PR head (#43, #211).
       - pr-overlap.yml
+  self-repository:
+    ignore:
+      # `uses: ./.github/workflows/<file>.yml` is GitHub's documented form for
+      # calling a reusable workflow in the same repository and commit. The
+      # newer `$/` form gives no extra safety here, and these calls sit on the
+      # release path, so they stay as they are.
+      - regression-selftest.yml:24
+      - release.yml:112
+      - release.yml:120
+      - windows-installer.yml:52
