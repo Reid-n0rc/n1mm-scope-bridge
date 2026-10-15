@@ -46,7 +46,11 @@
       "Bash(gh api *--method DELETE*)",
       "Bash(gh api *--method delete*)",
       "Bash(gh api *--method=DELETE*)",
-      "Bash(gh api *--method=delete*)"
+      "Bash(gh api *--method=delete*)",
+      "Bash(gh api *pending_deployments*)",
+      "Bash(gh api *deployments/*/statuses*)",
+      "Bash(gh api *deployment_protection_rule*)",
+      "Bash(gh api *approveDeployments*)"
     ]
   },
   "hooks": {

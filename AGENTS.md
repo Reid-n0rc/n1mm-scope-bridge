@@ -228,7 +228,11 @@ git config core.hooksPath .githooks
   - **deny**: `gh release …`, `gh pr merge` with `--admin` anywhere, adding
     the `plan-approved` label (only the maintainer approves plans), tag
     pushes, force pushes, and `gh api` `DELETE` calls (`-X DELETE`,
-    `-XDELETE`, `--method=DELETE`, upper or lower case).
+    `-XDELETE`, `--method=DELETE`, upper or lower case), and any `gh api`
+    call that could approve the release gate: `*/pending_deployments*`,
+    `*/deployments/*/statuses*`, `*/deployment_protection_rule*` and the
+    GraphQL `approveDeployments` mutation, whatever the method or field
+    spelling. `tests/test_agent_settings.py` checks these denies.
 
   Permission globs match command text and can be sidestepped by compound
   commands, so the hook stays the authority for pushes. Put personal
