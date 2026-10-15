@@ -14,6 +14,10 @@
 # workflow_dispatch (with the PR number) is used by the Copilot Autofix
 # conformance workflow (#83): dispatched on the PR branch so the check run
 # attaches to the PR's head commit. The script still comes from `dev`.
+#
+# merge_group (#216): the merge queue needs this check on its
+# gh-readonly-queue/dev/pr-<n>-<sha> commit. The PR number is parsed from that
+# ref, and the checkout is the queue's base commit, never the queue commit.
 name: Issue policy
 
 on:
@@ -25,6 +29,8 @@ on:
       pr:
         description: Pull request number to check
         required: true
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -40,12 +46,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'dev' || '' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'dev' || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
+      - name: PR number from the merge queue ref
+        id: queue
+        if: github.event_name == 'merge_group'
+        env:
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          # refs/heads/gh-readonly-queue/dev/pr-<n>-<sha> -> <n>
+          n="${QUEUE_REF##*/pr-}"
+          echo "pr=${n%%-*}" >> "$GITHUB_OUTPUT"
       - name: Check linked issue
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr }}
+          PR_NUMBER: ${{ inputs.pr || steps.queue.outputs.pr }}
         run: python scripts/check_issue_policy.py
