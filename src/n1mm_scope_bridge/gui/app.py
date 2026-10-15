@@ -122,6 +122,18 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
     return True, f"self-test: OK ({packets} packets, style {app.property('bridgeStyle')})"
 
 
+def _write_self_test_log(path: Path, message: str) -> None:
+    """Keep the result where the installer smoke test can read it (#209).
+
+    The windowed exe has no console, so its stdout and stderr are lost.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(message + "\n", encoding="utf-8")
+    except OSError:
+        pass  # best effort: the exit code still reports the result
+
+
 def _record(args: argparse.Namespace, app: QApplication) -> int:
     """``--record DIR``: animated recording of the streaming window (website, #124)."""
     try:
@@ -170,6 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         path = args.settings or Path(settings_mod.settings_path().parent / "self-test.json")
         ok, message = self_test(app, path)
         print(message, file=sys.stdout if ok else sys.stderr)
+        _write_self_test_log(path.with_name("self-test.log"), message)
         return 0 if ok else 1
     path = args.settings or settings_mod.settings_path()
     settings, warnings = settings_mod.load(path)

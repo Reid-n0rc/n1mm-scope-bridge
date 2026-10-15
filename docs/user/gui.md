@@ -204,6 +204,6 @@ On a system with no tray (rare), Close exits and Minimize minimizes normally.
 | Option | Meaning |
 |---|---|
 | `--settings PATH` | Use a different settings file |
-| `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression) |
+| `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression). The result line is also saved to `self-test.log` in the settings folder |
 | `--version` | Print the version |
 
