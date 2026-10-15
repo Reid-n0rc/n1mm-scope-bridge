@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import weakref
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ import pytest
 
 pytest.importorskip("PySide6", reason="GUI needs PySide6 (not available on free-threaded Python)")
 
+import shiboken6
 from pytestqt.qtbot import QtBot
 
 from n1mm_scope_bridge.control import ControlServer, request
@@ -69,11 +71,27 @@ def in_thread(fn: Callable[[], Any]) -> tuple[threading.Thread, dict[str, Any]]:
         try:
             box["value"] = fn()
         except Exception as err:
-            box["error"] = err
+            box["error"] = err.with_traceback(None)  # no cycle through this frame
 
     t = threading.Thread(target=run, name="worker")
     t.start()
     return t, box
+
+
+@pytest.fixture
+def make_remote(qtbot: QtBot) -> Iterator[Callable[..., GuiRemote]]:
+    """Build parentless GuiRemotes, then stop and delete them on the GUI thread (#217)."""
+    made: list[GuiRemote] = []
+
+    def make(host: Host | None = None, **kw: Any) -> GuiRemote:
+        made.append(GuiRemote(host if host is not None else Host(), **kw))
+        return made[-1]
+
+    yield make
+    for remote in made:
+        if shiboken6.isValid(remote):
+            remote.set_active(False)
+            shiboken6.delete(remote)
 
 
 # --- control_key ---------------------------------------------------------------------
@@ -89,9 +107,9 @@ def test_control_key() -> None:
 # --- GuiRemote ---------------------------------------------------------------------------
 
 
-def test_same_thread_calls_run_directly(qtbot: QtBot) -> None:
+def test_same_thread_calls_run_directly(make_remote: Callable[..., GuiRemote]) -> None:
     host = Host()
-    remote = GuiRemote(host)
+    remote = make_remote(host)
     assert remote.status() == {"streaming": False}
     remote.start()
     remote.stop()
@@ -99,9 +117,11 @@ def test_same_thread_calls_run_directly(qtbot: QtBot) -> None:
     assert host.calls[1:] == [("start",), ("stop",), ("set", "rate", 5.0)]
 
 
-def test_other_thread_calls_run_on_the_gui_thread(qtbot: QtBot) -> None:
+def test_other_thread_calls_run_on_the_gui_thread(
+    qtbot: QtBot, make_remote: Callable[..., GuiRemote]
+) -> None:
     host = Host()
-    remote = GuiRemote(host)
+    remote = make_remote(host)
     remote.set_active(True)
     t, box = in_thread(remote.status)
     qtbot.waitUntil(lambda: "value" in box or "error" in box, timeout=3000)
@@ -110,20 +130,55 @@ def test_other_thread_calls_run_on_the_gui_thread(qtbot: QtBot) -> None:
     assert host.calls == [("status", threading.current_thread().name)]
 
 
-def test_errors_are_handed_back_to_the_caller(qtbot: QtBot) -> None:
+def test_errors_are_handed_back_to_the_caller(
+    qtbot: QtBot, make_remote: Callable[..., GuiRemote]
+) -> None:
     host = Host()
     host.fail = ValueError("nope")
-    remote = GuiRemote(host)
+    remote = make_remote(host)
     remote.set_active(True)
     t, box = in_thread(remote.status)
     qtbot.waitUntil(lambda: "error" in box, timeout=3000)
     t.join(2)
+    assert type(box["error"]) is ValueError
     assert str(box["error"]) == "nope"
 
 
-def test_busy_gui_thread_times_out_instead_of_deadlocking(qtbot: QtBot) -> None:
+class FailingHost(Host):
+    def remote_status(self) -> dict[str, Any]:
+        raise ValueError("nope")
+
+
+def test_a_failed_call_leaves_no_cycle_keeping_the_remote_alive(qtbot: QtBot) -> None:
+    # #217: the error's traceback used to hold _invoke's frame (and so the
+    # remote and its QTimer) in a cycle that only a cyclic GC could free,
+    # possibly on a pipeline thread. Reference counting alone must free it now.
+    remote = GuiRemote(FailingHost())
+    remote.set_active(True)
+    errors: list[str] = []
+
+    def call(target: GuiRemote) -> None:
+        try:
+            target.status()
+        except ValueError as err:
+            errors.append(str(err))
+
+    t = threading.Thread(target=call, args=(remote,), name="worker")
+    t.start()
+    qtbot.waitUntil(lambda: bool(errors), timeout=3000)
+    t.join(2)
+    assert errors == ["nope"]
+    remote.set_active(False)
+    ref = weakref.ref(remote)
+    del remote, t
+    assert ref() is None  # freed without gc.collect()
+
+
+def test_busy_gui_thread_times_out_instead_of_deadlocking(
+    qtbot: QtBot, make_remote: Callable[..., GuiRemote]
+) -> None:
     host = Host()
-    remote = GuiRemote(host, timeout=0.05)
+    remote = make_remote(host, timeout=0.05)
     remote.set_active(True)
     t, box = in_thread(remote.status)
     t.join(2)  # the GUI thread is busy joining, so the job never runs in time
@@ -137,7 +192,9 @@ def test_busy_gui_thread_times_out_instead_of_deadlocking(qtbot: QtBot) -> None:
 # --- RemoteControl -----------------------------------------------------------------------
 
 
-def make_rc() -> tuple[RemoteControl, list[FakeServer], list[tuple[str, str]]]:
+def make_rc(
+    remote: GuiRemote,
+) -> tuple[RemoteControl, list[FakeServer], list[tuple[str, str]]]:
     made: list[FakeServer] = []
     logged: list[tuple[str, str]] = []
 
@@ -145,13 +202,13 @@ def make_rc() -> tuple[RemoteControl, list[FakeServer], list[tuple[str, str]]]:
         made.append(FakeServer(controller, **kw))
         return made[-1]  # type: ignore[return-value]
 
-    rc = RemoteControl(GuiRemote(Host()), log=lambda lvl, m: logged.append((lvl, m)),
+    rc = RemoteControl(remote, log=lambda lvl, m: logged.append((lvl, m)),
                        server_factory=factory)  # fmt: skip
     return rc, made, logged
 
 
-def test_remote_control_lifecycle(qtbot: QtBot) -> None:
-    rc, made, logged = make_rc()
+def test_remote_control_lifecycle(make_remote: Callable[..., GuiRemote]) -> None:
+    rc, made, logged = make_rc(make_remote())
     rc.apply(Settings(), {})
     assert (rc.server, rc.status_text, made) == (None, "Off", [])
     on = Settings(control_enabled=True)
@@ -173,13 +230,13 @@ def test_remote_control_lifecycle(qtbot: QtBot) -> None:
     assert ("info", "Remote control stopped") in logged
 
 
-def test_remote_control_reports_listen_errors(qtbot: QtBot) -> None:
+def test_remote_control_reports_listen_errors(make_remote: Callable[..., GuiRemote]) -> None:
     logged: list[tuple[str, str]] = []
 
     def broken(controller: Any, **kw: Any) -> ControlServer:
         raise OSError("address in use")
 
-    rc = RemoteControl(GuiRemote(Host()), log=lambda lvl, m: logged.append((lvl, m)),
+    rc = RemoteControl(make_remote(), log=lambda lvl, m: logged.append((lvl, m)),
                        server_factory=broken)  # fmt: skip
     rc.apply(Settings(control_enabled=True), {})
     assert rc.server is None
