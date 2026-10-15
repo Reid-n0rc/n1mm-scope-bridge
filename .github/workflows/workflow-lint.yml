@@ -1,0 +1,64 @@
+# Lints the GitHub Actions workflows (#223):
+# - actionlint: bad expressions, unknown inputs, and shellcheck on `run:` blocks.
+# - zizmor: security smells (dangerous triggers, template injection, excessive
+#   permissions, credential persistence, unpinned uses). Accepted findings and
+#   their reasons live in .github/zizmor.yml. Runs offline, with no SARIF upload.
+name: Workflow lint
+
+on:
+  pull_request:
+    branches: [dev, master]
+    paths:
+      - .github/workflows/**
+      - .github/actions/**
+      - .github/zizmor.yml
+      - .github/actionlint.yaml
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Exact release and its SHA-256 (from the release's checksums.txt).
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download actionlint
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
+      - name: Run actionlint
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ZIZMOR_VERSION: 1.30.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: false
+      - name: Run zizmor
+        run: >-
+          uvx "zizmor==${ZIZMOR_VERSION}" --offline --format=github
+          --min-severity=low --config .github/zizmor.yml .github/workflows

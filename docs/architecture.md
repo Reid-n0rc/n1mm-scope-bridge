@@ -48,6 +48,13 @@ per radio:  reader thread ──LatestQueue──► process thread ──Accumu
 - **Shutdown.** `stop()` sets one event and closes the source to unblock the
   reader. All threads are non-daemon and joined. A stage exception stops the
   pipeline and is re-raised from `join()`.
+- **QObjects are never left to garbage collection.** Every QObject has a
+  parent or is deleted explicitly on the GUI thread (`shiboken6.delete`).
+  Python's cyclic GC runs on whichever thread triggers it, often a pipeline
+  thread, so a QObject caught in a reference cycle could be deleted off the GUI
+  thread while its timer is running. That crashed Windows with an access
+  violation (#217). Error paths that hand exceptions between threads drop the
+  traceback or clear their references, so no cycle forms.
 - **No multiprocessing.** Pickling 4 KiB frames 50 times per second costs more
   than the work itself. Revisit only if hardware profiling (#5) shows a
   CPU-bound stage.

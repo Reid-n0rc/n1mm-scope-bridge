@@ -96,18 +96,25 @@ class GuiRemote(QObject):
             try:
                 box["value"] = fn()
             except Exception as err:  # handed back to the control thread below
-                box["error"] = err
+                # Drop the GUI-side traceback: it would tie this frame and ``box`` into a cycle.
+                box["error"] = err.with_traceback(None)
             finally:
                 done.set()
 
         with self._lock:
             self._pending.append(job)
-        if not done.wait(self._timeout):
-            raise ValueError("the bridge window is busy; try again")
-        if "error" in box:
-            raise box["error"]
-        result: T = box["value"]
-        return result
+        try:
+            if not done.wait(self._timeout):
+                raise ValueError("the bridge window is busy; try again")
+            if "error" in box:
+                raise box["error"]
+            result: T = box["value"]
+            return result
+        finally:
+            # Break error -> traceback -> this frame -> box -> error, which kept
+            # ``self`` (and its QTimer) alive until a cyclic GC, possibly on a
+            # pipeline thread (#217).
+            box.clear()
 
     def status(self) -> dict[str, Any]:
         return self._invoke(self._host.remote_status)

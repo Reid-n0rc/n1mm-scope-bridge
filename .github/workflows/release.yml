@@ -215,6 +215,11 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # Approval gate (#233): this is the only job in the `release` environment,
+  # whose required reviewer is the maintainer and whose deployment refs are
+  # `v*` tags and `master` (for the repair path). A tag alone never publishes:
+  # the build and regression run unattended, then this job waits for approval
+  # in the Actions UI. Dry runs (publish=false) skip it and never wait.
   publish:
     name: Publish GitHub release
     needs: [prepare, assemble]

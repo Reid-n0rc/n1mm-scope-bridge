@@ -83,6 +83,35 @@ def test_link_outside_repo_rejected() -> None:
         links("../../../etc/passwd")
 
 
+SITE_PAGES = {
+    "docs/user/troubleshooting.md": "troubleshooting.html",
+    "docs/n1mm-setup.md": "n1mm.html",
+}
+site_links = md.doc_link_mapper(BASE, "docs/user", SITE_PAGES)
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        ("troubleshooting.md", "troubleshooting.html"),
+        ("troubleshooting.md#no-radio", "troubleshooting.html#no-radio"),
+        ("../n1mm-setup.md#running-n1mm-on-another-pc", "n1mm.html#running-n1mm-on-another-pc"),
+        ("./troubleshooting.md", "troubleshooting.html"),
+        ("settings.md#x", f"{BASE}/docs/user/settings.md#x"),
+        ("https://example.com/troubleshooting.md", "https://example.com/troubleshooting.md"),
+        ("#local", "#local"),
+    ],
+)
+def test_link_mapping_to_site_pages(target: str, expected: str) -> None:
+    """Docs the site renders link to their site page, others to GitHub (#192)."""
+    assert site_links(target) == expected
+
+
+def test_site_page_mapping_still_rejects_links_outside_repo() -> None:
+    with pytest.raises(md.MarkdownError, match="outside"):
+        site_links("../../../troubleshooting.md")
+
+
 def test_real_user_docs_render() -> None:
     for name in ("troubleshooting.md", "settings.md", "gui.md", "udp-control.md"):
         path = ROOT / "docs" / "user" / name
