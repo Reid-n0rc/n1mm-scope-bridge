@@ -13,6 +13,19 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    # Groups match in order, so qt comes first: Qt updates arrive as their own PR.
     groups:
+      qt:
+        patterns: ["pyside6*", "PySide6*", "shiboken6"]
       dev-tools:
         dependency-type: development
+        exclude-patterns: ["pyside6*", "PySide6*", "shiboken6"]
+    ignore:
+      # Hold Qt minor/major bumps until a Windows GUI job passes on them (#222).
+      # update-types apply to version updates only; security updates still come.
+      - dependency-name: "pyside6*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "PySide6*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "shiboken6"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
