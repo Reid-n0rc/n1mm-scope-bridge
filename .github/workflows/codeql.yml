@@ -6,6 +6,10 @@ on:
     branches: [dev, master]
   push:
     branches: [dev, master]
+  # Merge queue on dev (#216, #218): code-scanning merge protection needs
+  # results for the gh-readonly-queue/... commit.
+  merge_group:
+    types: [checks_requested]
   schedule:
     - cron: "23 6 * * 1"
   workflow_dispatch: # also used by the Copilot Autofix conformance workflow (#83)
