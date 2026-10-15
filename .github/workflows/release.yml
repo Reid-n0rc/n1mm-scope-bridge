@@ -15,6 +15,12 @@
 # A release created by hand in the GitHub web UI (which also pushes the tag) is
 # filled in with the assets instead of failing.
 #
+# Approval gate (#233): only the publish job uses the `release` environment,
+# whose required reviewer is the maintainer and whose deployment refs are `v*`
+# tags and `master` (for the repair path). A tag alone never publishes: the
+# build and regression run unattended, then the publish job waits for approval
+# in the Actions UI. Dry runs (publish=false) skip that job and never wait.
+#
 # workflow_dispatch:
 #   - publish=false (default): a dry run of the current branch under a rehearsal
 #     tag name. Builds and uploads everything as workflow artifacts; never creates
