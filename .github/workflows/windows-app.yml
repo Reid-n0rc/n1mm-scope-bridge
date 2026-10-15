@@ -6,6 +6,12 @@
 #
 # Called by the release workflow (#46) and the installer build (#20) through
 # workflow_call; runs on its own for PRs that can change the app.
+#
+# Security (#211): inputs.ref must only ever be a trusted commit. Today that is
+# release.yml's commit, verified to be on master. Callers must not use
+# privileged triggers (pull_request_target, workflow_run, issue_comment) or
+# `secrets: inherit`. The "Guard: only trusted refs" step enforces the ref and
+# trigger rules before each checkout.
 name: Windows app
 
 on:
@@ -55,6 +61,25 @@ jobs:
             sync: "--group packaging --no-group gui-dev"
             gui: "off"
     steps:
+      - name: "Guard: only trusted refs"
+        # Fails closed before checking out inputs.ref (#211, CodeQL #37-#40).
+        # Never echoes the ref: it could carry workflow commands.
+        shell: bash
+        env:
+          REF: ${{ inputs.ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request_target | workflow_run | issue_comment)
+              echo "::error::Refusing to build under the privileged trigger $EVENT."
+              exit 1
+              ;;
+          esac
+          if [ -n "$REF" ] && ! [[ "$REF" =~ ^[0-9a-f]{40}$ || "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$ ]]; then
+            echo "::error::Refusing untrusted ref. inputs.ref must be a 40-character commit SHA or a vX.Y.Z[-rcN] tag."
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
