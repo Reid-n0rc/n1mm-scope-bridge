@@ -8,8 +8,8 @@ menu number, and the button presses.
 |---|---|---|
 | Yaesu FT-710 | [FT-710 setup](ft-710.md) | Supported |
 
-Radio not listed? The FTDX10, the FTDX101D/MP, and radios on the SCU-LAN10
-network adapter are planned. Ask for yours with a **Radio support request**:
+The FTDX10 is planned. Own one and can help test? Open a **Radio support
+request**:
 <https://github.com/Reid-n0rc/n1mm-scope-bridge/issues/new/choose>.
 
 ## Leave N1MM+ connected as usual
