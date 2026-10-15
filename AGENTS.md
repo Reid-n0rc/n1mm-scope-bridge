@@ -23,7 +23,16 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     it). Codecov shows them as the `app` and `scripts` components.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
-  - `sh tests/hooks/run.sh`: git hook and agent hook tests
+  - `sh tests/hooks/run.sh`: git hook and agent hook tests. With
+    `HOOKS_JUNIT=<file>` it also writes a JUnit report (one testcase per
+    check); CI sends it to Codecov Test Analytics with flag `hooks`, and the
+    installer smoke test (`smoke_test.ps1 -JUnit <file>`) with flag `installer`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File tests/powershell/run.ps1`
+    (Windows): Pester tests for the installer's PowerShell helpers
+    (`packaging/windows/ftdi_install.ps1`, `ftdi_driver.ps1`, `smoke_lib.ps1`).
+    `run.ps1` downloads a pinned, SHA-256-checked Pester 5 and writes JaCoCo
+    coverage (Codecov flag and component `powershell`) and JUnit results (Test
+    Analytics). Mock native tools and signatures; never install a driver.
 - Follow [STYLE.md](STYLE.md) for code, messages, docs, GUI, website, and git conventions.
 - Read these before touching the matching area:
   - [docs/architecture.md](docs/architecture.md): module layout and data flow

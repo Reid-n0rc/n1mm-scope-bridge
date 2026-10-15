@@ -2,13 +2,17 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Runs the streaming pipeline for the GUI and reports through Qt signals.
 
-Pipeline threads never touch widgets: ``on_status`` emits a signal, which Qt
-queues onto the GUI thread. A ``QTimer`` on the GUI thread polls the
+Pipeline threads never call Qt (#207): their callbacks append to a locked
+deque, and a ``QTimer`` on the GUI thread drains it every ``DRAIN_MS`` and
+emits the signals there. (Emitting from a plain Python thread stalled the
+sender on PySide6 6.12; see also ``remote.py``.) A second timer polls the
 pipeline's health and statistics.
 """
 
 from __future__ import annotations
 
+import threading
+from collections import deque
 from collections.abc import Callable, Iterable
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -24,6 +28,9 @@ Source = tuple[Iterable[bytes], Callable[[], object]]
 SourceFactory = Callable[[Settings], Source]
 SenderFactory = Callable[[str, int], N1mmSender]
 POLL_MS = 250
+DRAIN_MS = 20
+# Events held for the GUI thread; if it stalls this long, the oldest are dropped.
+QUEUE_MAX = 256
 
 
 def radio_source(settings: Settings) -> Source:
@@ -63,13 +70,35 @@ class StreamController(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self._poll)
+        self._lock = threading.Lock()
+        self._queue: deque[tuple[str, object]] = deque(maxlen=QUEUE_MAX)
+        self._drain_timer = QTimer(self)
+        self._drain_timer.setInterval(DRAIN_MS)
+        self._drain_timer.timeout.connect(self._drain)
         # Read from the pipeline thread on every frame; a plain bool needs no lock.
         self.preview_enabled = False
+
+    def _post(self, signal: str) -> Callable[[object], None]:
+        """A callback for pipeline threads: queue the payload for ``signal``, no Qt."""
+
+        def post(item: object) -> None:
+            with self._lock:
+                self._queue.append((signal, item))
+
+        return post
+
+    def _drain(self) -> None:
+        """On the GUI thread: emit every queued event in order."""
+        with self._lock:
+            events = list(self._queue)
+            self._queue.clear()
+        for signal, item in events:
+            getattr(self, signal).emit(item)
 
     def _emit_preview(self, item: ParsedFrame) -> None:
         """Forward a frame to the window only while the preview is shown (saves CPU)."""
         if self.preview_enabled:
-            self.preview.emit(item)
+            self._post("preview")(item)
 
     @property
     def running(self) -> bool:
@@ -91,9 +120,9 @@ class StreamController(QObject):
                 source,
                 self._sender,
                 close_source=close,
-                on_status=self.status.emit,
-                warn=self.warning.emit,
-                on_frame=self.frame.emit,
+                on_status=self._post("status"),
+                warn=self._post("warning"),
+                on_frame=self._post("frame"),
                 on_preview=self._emit_preview,
             )
             self._pipe.start()
@@ -101,6 +130,7 @@ class StreamController(QObject):
             self._cleanup()
             self.stopped.emit(friendly_error(exc))
             return False
+        self._drain_timer.start()
         self._timer.start()
         self.started.emit()
         return True
@@ -129,11 +159,15 @@ class StreamController(QObject):
                 pipe.join(timeout=5)
             except Exception as exc:
                 message = friendly_error(exc)
+        self._drain()  # the last status and warnings from the stopped threads
         self._cleanup()
         return message
 
     def _cleanup(self) -> None:
         self._timer.stop()
+        self._drain_timer.stop()
+        with self._lock:
+            self._queue.clear()
         self._pipe = None
         if self._sender is not None:
             self._sender.close()

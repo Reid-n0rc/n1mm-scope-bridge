@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from n1mm_scope_bridge.cli import build_parser
+from n1mm_scope_bridge.radios import RADIOS
 from n1mm_scope_bridge.settings import Settings
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -142,12 +143,180 @@ def test_checker_catches_an_undocumented_option() -> None:
 
 def test_radio_setup_page_documents_scu_lan10() -> None:
     """The FT-710 scope output depends on a radio menu setting; keep it documented."""
-    page = read("radio-setup.md")
+    page = read("radios/ft-710.md")
     assert "OPERATION SETTING → GENERAL → SCU-LAN10" in page
+    assert "EX 03-01-26" in page
     assert "**ON**" in page
-    assert "radio-setup.md" in read("README.md")
+    assert "radios/README.md" in read("radio-setup.md")
     for linked in (ROOT / "README.md", ROOT / "docs" / "n1mm-setup.md"):
         assert "radio-setup.md" in linked.read_text(encoding="utf-8"), linked.name
+
+
+# Every radio setup page has these sections, in this order (#194).
+RADIO_PAGE_HEADINGS = (
+    "## What you need",
+    "## Required settings",
+    "## Make the PC see the scope",
+    "## Check it works",
+    "## Undo",
+)
+# Each setting under "## Required settings" (one "### " heading per setting) says
+# where it is and how to get there.
+RADIO_SETTING_FIELDS = ("**Menu path:**", "**Menu number:**", "**Button presses:**")
+
+
+def radio_slug(model: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", model.lower()).strip("-")
+
+
+def _text(path: Path) -> str:
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def _setting_problems(model: str, text: str) -> list[str]:
+    settings = text.split("\n## Required settings\n", 1)[1].split("\n## ", 1)[0]
+    blocks = settings.split("\n### ")[1:]
+    if not blocks:
+        return [f"{model}: Required settings has no '### <setting>'"]
+    return [
+        f"{model}: {block.splitlines()[0]}: missing {field}"
+        for block in blocks
+        for field in RADIO_SETTING_FIELDS
+        if field not in block
+    ]
+
+
+def radio_page_problems(user: Path, site: Path, models: list[str]) -> list[str]:
+    """What is missing for each supported radio's setup page and site page."""
+    problems = []
+    index_text = _text(user / "radios" / "README.md")
+    if not index_text:
+        problems.append("docs/user/radios/README.md is missing")
+    picker_text = _text(site / "radios.html")
+    if "<!-- markdown:docs/user/radios/README.md -->" not in picker_text:
+        problems.append("site/radios.html must render docs/user/radios/README.md")
+    for model in models:
+        slug = radio_slug(model)
+        text = _text(user / "radios" / f"{slug}.md")
+        if not text:
+            problems.append(f"{model}: docs/user/radios/{slug}.md is missing")
+            continue
+        lines = text.splitlines()
+        found = [line for line in lines if line in RADIO_PAGE_HEADINGS]
+        if found != list(RADIO_PAGE_HEADINGS):
+            problems.append(f"{model}: needs the sections {', '.join(RADIO_PAGE_HEADINGS)}")
+        else:
+            problems += _setting_problems(model, text)
+        if f"({slug}.md)" not in index_text:
+            problems.append(f"{model}: docs/user/radios/README.md must link {slug}.md")
+        marker = f"<!-- markdown:docs/user/radios/{slug}.md -->"
+        if marker not in _text(site / f"radio-{slug}.html"):
+            problems.append(f"{model}: site/radio-{slug}.html must render {slug}.md")
+        if f'href="radio-{slug}.html"' not in picker_text:
+            problems.append(f"{model}: site/radios.html must link radio-{slug}.html")
+    return problems
+
+
+def test_every_supported_radio_has_a_setup_page() -> None:
+    models = [profile.model for profile in RADIOS.values()]
+    assert radio_page_problems(USER, ROOT / "site", models) == []
+
+
+GOOD_RADIO_PAGE = """# Radio X
+
+## What you need
+
+USB.
+
+## Required settings
+
+### Scope: ON
+
+- **Menu path:** A → B
+- **Menu number:** 1
+
+**Button presses:**
+
+1. Press it.
+
+## Make the PC see the scope
+
+Replug.
+
+## Check it works
+
+Start.
+
+## Undo
+
+OFF.
+"""
+
+
+def write_radio_docs(tmp_path: Path, page: str | None = GOOD_RADIO_PAGE) -> tuple[Path, Path]:
+    user, site = tmp_path / "user", tmp_path / "site"
+    (user / "radios").mkdir(parents=True)
+    site.mkdir()
+    (user / "radios" / "README.md").write_text("[X](radio-x.md)\n", encoding="utf-8")
+    if page is not None:
+        (user / "radios" / "radio-x.md").write_text(page, encoding="utf-8")
+    (site / "radios.html").write_text(
+        '<!-- markdown:docs/user/radios/README.md --><a href="radio-radio-x.html">X</a>',
+        encoding="utf-8",
+    )
+    (site / "radio-radio-x.html").write_text(
+        "<!-- markdown:docs/user/radios/radio-x.md -->", encoding="utf-8"
+    )
+    return user, site
+
+
+def test_radio_page_checker_accepts_a_complete_page(tmp_path: Path) -> None:
+    assert radio_page_problems(*write_radio_docs(tmp_path), ["Radio X"]) == []
+
+
+def test_radio_page_checker_catches_a_missing_page(tmp_path: Path) -> None:
+    problems = radio_page_problems(*write_radio_docs(tmp_path, None), ["Radio X"])
+    assert problems == ["Radio X: docs/user/radios/radio-x.md is missing"]
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        (("## Undo\n", "## Revert\n"), "needs the sections"),
+        (("**Button presses:**", "Steps:"), "Scope: ON: missing **Button presses:**"),
+        (("### Scope: ON", "Scope: ON"), "has no '### <setting>'"),
+    ],
+)
+def test_radio_page_checker_catches_an_incomplete_page(
+    tmp_path: Path, change: tuple[str, str], expected: str
+) -> None:
+    page = GOOD_RADIO_PAGE.replace(*change)
+    problems = radio_page_problems(*write_radio_docs(tmp_path, page), ["Radio X"])
+    assert len(problems) == 1
+    assert expected in problems[0]
+
+
+def test_radio_page_checker_catches_sections_out_of_order(tmp_path: Path) -> None:
+    page = GOOD_RADIO_PAGE.replace("## Undo\n\nOFF.\n", "").replace(
+        "## What you need", "## Undo\n\nOFF.\n\n## What you need"
+    )
+    problems = radio_page_problems(*write_radio_docs(tmp_path, page), ["Radio X"])
+    assert problems == ["Radio X: needs the sections " + ", ".join(RADIO_PAGE_HEADINGS)]
+
+
+def test_radio_page_checker_catches_missing_index_and_site_links(tmp_path: Path) -> None:
+    user, site = write_radio_docs(tmp_path)
+    (user / "radios" / "README.md").write_text("nothing\n", encoding="utf-8")
+    (site / "radios.html").write_text("", encoding="utf-8")
+    (site / "radio-radio-x.html").unlink()
+    assert radio_page_problems(user, site, ["Radio X"]) == [
+        "site/radios.html must render docs/user/radios/README.md",
+        "Radio X: docs/user/radios/README.md must link radio-x.md",
+        "Radio X: site/radio-radio-x.html must render radio-x.md",
+        "Radio X: site/radios.html must link radio-radio-x.html",
+    ]
+    (user / "radios" / "README.md").unlink()
+    assert "docs/user/radios/README.md is missing" in radio_page_problems(user, site, [])
 
 
 def test_code_signing_policy_and_privacy_pages() -> None:

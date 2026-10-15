@@ -81,10 +81,10 @@ jobs:
               p.write_text(t, encoding="utf-8")
           print("stamped", v)
           PY
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           python-version: "3.13"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: windows-app-*
           path: dist/apps
@@ -114,7 +114,7 @@ jobs:
             --app-arm64 dist/apps/arm64/n1mm-scope-bridge \
             --app-x86 dist/apps/x86/n1mm-scope-bridge
           ls -l dist/windows/n1mm-scope-bridge-setup-*.exe | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-installer
           path: dist/windows/n1mm-scope-bridge-setup-*.exe
@@ -162,7 +162,7 @@ jobs:
               p.write_text(t, encoding="utf-8")
           print("stamped", v)
           PY
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: windows-installer
           path: dist/windows
@@ -170,4 +170,26 @@ jobs:
         shell: pwsh
         env:
           PAYLOAD: ${{ matrix.payload }}
-        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName -Payload $env:PAYLOAD
+        run: ./packaging/windows/smoke_test.ps1 -Installer (Get-ChildItem dist/windows/n1mm-scope-bridge-setup-*.exe).FullName -Payload $env:PAYLOAD -JUnit installer-junit.xml
+      # Every smoke check as a JUnit testcase in Codecov Test Analytics (#182),
+      # also when the smoke test fails. Never fails the job. Skipped when
+      # release.yml calls this workflow (no secrets are passed to it).
+      - name: Check Codecov token
+        if: ${{ !cancelled() && github.workflow == 'Windows installer' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          if [ -z "$CODECOV_TOKEN" ]; then
+            echo "::warning::CODECOV_TOKEN is empty — installer test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
+          fi
+      - name: Upload smoke test results to Codecov
+        if: ${{ !cancelled() && github.workflow == 'Windows installer' && hashFiles('installer-junit.xml') != '' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: installer-junit.xml
+          disable_search: true
+          flags: installer
+          fail_ci_if_error: false

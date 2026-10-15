@@ -6,6 +6,9 @@
 # dir. Nothing touches the real origin, and no network is used.
 # Usage: sh tests/hooks/run.sh
 #        HOOK_SHELL=dash sh tests/hooks/run.sh   (run the guard under dash)
+#        HOOKS_JUNIT=hooks-junit.xml sh tests/hooks/run.sh
+#            (also write a JUnit report, one testcase per check, for Codecov
+#            Test Analytics, #182)
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HOOKS="$ROOT/.githooks"
@@ -16,8 +19,31 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 
 pass=0
 fail=0
-ok() { pass=$((pass + 1)); echo "ok   - $1"; }
-not_ok() { fail=$((fail + 1)); echo "FAIL - $1"; }
+ok() { pass=$((pass + 1)); echo "ok   - $1"; junit_case "$1" ""; }
+not_ok() { fail=$((fail + 1)); echo "FAIL - $1"; junit_case "$1" "$1"; }
+
+# junit_case <name> <failure message, empty if passed>: buffered for HOOKS_JUNIT.
+xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'; }
+junit_case() {
+    [ -n "${HOOKS_JUNIT:-}" ] || return 0
+    printf '    <testcase classname="hooks.%s" name="%s"' "${HOOK_SHELL:-sh}" "$(xml_escape "$1")" >>"$TMP/junit"
+    if [ -n "$2" ]; then
+        printf '>\n      <failure message="%s"/>\n    </testcase>\n' "$(xml_escape "$2")" >>"$TMP/junit"
+    else
+        printf '/>\n' >>"$TMP/junit"
+    fi
+}
+write_junit() {
+    [ -n "${HOOKS_JUNIT:-}" ] || return 0
+    {
+        echo '<?xml version="1.0" encoding="UTF-8"?>'
+        echo '<testsuites>'
+        printf '  <testsuite name="hooks.%s" tests="%d" failures="%d">\n' "${HOOK_SHELL:-sh}" $((pass + fail)) "$fail"
+        cat "$TMP/junit" 2>/dev/null
+        echo '  </testsuite>'
+        echo '</testsuites>'
+    } >"$HOOKS_JUNIT"
+}
 
 # expect <allow|block> <description> <command...>
 expect() {
@@ -199,4 +225,5 @@ done
 
 echo
 echo "passed: $pass, failed: $fail"
+write_junit
 [ "$fail" -eq 0 ]

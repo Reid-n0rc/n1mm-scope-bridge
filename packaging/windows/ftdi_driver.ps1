@@ -36,17 +36,26 @@ function Finish([string]$message, [int]$code) {
     exit $code
 }
 
+# Thin wrappers around the native tools, so tests can mock them (#181).
+function Invoke-Pnputil([string]$exe, [string[]]$arguments) {
+    return (& $exe @arguments 2>&1 | Out-String)
+}
+
+function Invoke-Expand([string]$cabPath, [string]$dest) {
+    & (Join-Path $env:SystemRoot 'System32\expand.exe') -F:* $cabPath $dest | Out-Null
+}
+
 function Test-FtdiDriverInstalled {
     # pnputil lists every third-party driver package; FTDI's bus driver INF is
     # published as oemNN.inf with "Original Name: ftdibus.inf".
-    $out = & $pnputil /enum-drivers 2>&1 | Out-String
+    $out = Invoke-Pnputil $pnputil @('/enum-drivers')
     return ($out -match '(?im)^\s*Original Name:\s*ftdibus\.inf\s*$')
 }
 
 function Expand-AndVerify {
     if (-not $Cab -or -not (Test-Path -LiteralPath $Cab)) { Finish "ERROR: driver package not found: $Cab" 1 }
     New-Item -ItemType Directory -Path $work | Out-Null
-    & (Join-Path $env:SystemRoot 'System32\expand.exe') -F:* $Cab $work | Out-Null
+    Invoke-Expand $Cab $work
     $infPath = Join-Path $work $Inf
     $catPath = Join-Path $work $Catalog
     if (-not (Test-Path $infPath)) { Finish "ERROR: $Inf is missing from the driver package" 1 }
@@ -73,7 +82,7 @@ try {
         }
         'Install' {
             $infPath = Expand-AndVerify
-            $out = & $pnputil /add-driver $infPath /install 2>&1 | Out-String
+            $out = Invoke-Pnputil $pnputil @('/add-driver', $infPath, '/install')
             $code = $LASTEXITCODE
             # 0 = added; 259 (ERROR_NO_MORE_ITEMS) = already up to date; 3010 = reboot required.
             if ($code -in 0, 259, 3010) {
