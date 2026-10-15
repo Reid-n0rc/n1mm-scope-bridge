@@ -23,6 +23,11 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     it). Codecov shows them as the `app` and `scripts` components.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
+  - `actionlint` and `uvx zizmor --config .github/zizmor.yml .github/workflows`
+    (optional, local only; not in `uv sync`): lint workflows for bugs and
+    security smells. CI's `Workflow lint` workflow enforces both, at pinned
+    versions, on PRs that touch workflows. Accepted zizmor findings, each with
+    a reason, live in `.github/zizmor.yml`.
   - `sh tests/hooks/run.sh`: git hook and agent hook tests. With
     `HOOKS_JUNIT=<file>` it also writes a JUnit report (one testcase per
     check); CI sends it to Codecov Test Analytics with flag `hooks`, and the
