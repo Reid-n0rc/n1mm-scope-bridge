@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -324,6 +327,8 @@ def test_self_test_passes(qapp: QApplication, tmp_path: Path) -> None:
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert ok, message
     assert "self-test: OK" in message
+    assert "blocked" not in message
+    assert not [t for t in threading.enumerate() if t.name == "selftest-watchdog"]  # joined
 
 
 def test_self_test_never_prompts_with_a_tray(
@@ -404,6 +409,9 @@ def test_self_test_reports_missing_packets(
     assert "received 0 N1MM packets" in message
     assert "no pipeline stats" in message  # the timeout beat the first stats poll
     assert "threads:" in message
+    assert "slowest processEvents: " in message
+    assert "late packets: " in message
+    assert "GUI thread blocked" not in message
 
 
 def test_self_test_reports_stopped_errors(
@@ -440,6 +448,34 @@ def test_self_test_stall_dumps_thread_stacks(
     assert "_thread_stacks" in stacks
     assert str(Path(gui_app.__file__).parents[1]) not in stacks  # home folder shown as ~
     assert "~" in stacks
+
+
+def test_self_test_watchdog_reports_a_blocked_gui_thread(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #219: one processEvents() call blocks the GUI thread past the deadline.
+    process_events = QApplication.processEvents
+    calls: list[int] = []
+
+    def slow_process_events(*args: Any) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            time.sleep(1.5)
+        process_events()
+
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(gui_app, "WATCHDOG_STALL_S", 0.2)
+    monkeypatch.setattr(QApplication, "processEvents", slow_process_events)
+    ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
+    assert not ok
+    first = message.splitlines()[0]
+    assert re.search(r"slowest processEvents: 1\.[5-9]\d s", first), first
+    late = re.search(r"late packets: (\d+)", first)
+    assert late, first
+    assert int(late.group(1)) >= 1, first  # sent while the GUI thread was blocked
+    assert "selftest-watchdog" not in first
+    assert "GUI thread blocked for" in message
+    assert "in slow_process_events" in message
 
 
 def test_self_test_failure_names_the_stalled_stage() -> None:

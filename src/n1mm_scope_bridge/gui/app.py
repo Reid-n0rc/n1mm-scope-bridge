@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from n1mm_scope_bridge.pipeline import PipelineStats
 
 SELF_TEST_TIMEOUT_S = 15.0
 SELF_TEST_PACKETS = 3
+WATCHDOG_STALL_S = 2.0  # the GUI thread's stack is dumped once a loop pass takes longer
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -114,16 +116,25 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
         window.show()
         window.toggle_streaming()
         packets = 0
+        slowest = 0.0  # the longest processEvents() call: a blocked GUI thread (#219)
         deadline = time.monotonic() + SELF_TEST_TIMEOUT_S
-        while time.monotonic() < deadline and packets < SELF_TEST_PACKETS:
-            app.processEvents()
-            try:
-                if b"<Spectrum>" in rx.recv(65535):
-                    packets += 1
-            except BlockingIOError:
-                time.sleep(0.02)
+        with _Watchdog() as watchdog:
+            while time.monotonic() < deadline and packets < SELF_TEST_PACKETS:
+                watchdog.tick()
+                started = time.monotonic()
+                app.processEvents()
+                slowest = max(slowest, time.monotonic() - started)
+                received = _receive(rx, 1)
+                packets += received
+                if not received:
+                    time.sleep(0.02)
+        late = _receive(rx, 50)  # sent but never read: the loop ran out of time (#219)
         status_ok = window.status.text().startswith(("VFO", "Streaming"))
-        threads = sorted(t.name for t in threading.enumerate() if t is not threading.main_thread())
+        threads = sorted(
+            t.name
+            for t in threading.enumerate()
+            if t is not threading.main_thread() and t.name != _Watchdog.NAME
+        )
         stacks = _thread_stacks() if packets < SELF_TEST_PACKETS else ""
         errors = [e for e in (*stops, window.model.last_error) if e]
         window.quit_app()  # never prompts, even when a system tray exists
@@ -135,11 +146,59 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
         error = "; errors: " + " | ".join(dict.fromkeys(errors)) if errors else ""
         return False, (
             f"self-test: received {packets} N1MM packets, expected {SELF_TEST_PACKETS} "
-            f"({pipeline}; threads: {running}{error})\n\n{stacks}"
+            f"({pipeline}; threads: {running}; slowest processEvents: {slowest:.2f} s; "
+            f"late packets: {late}{error})\n\n{watchdog.stack}{stacks}"
         ).rstrip()
     if not status_ok:
         return False, f"self-test: status line not updated ({window.status.text()!r})"
     return True, f"self-test: OK ({packets} packets, style {app.property('bridgeStyle')})"
+
+
+def _receive(rx: socket.socket, limit: int) -> int:
+    """Read up to ``limit`` queued datagrams without blocking; count the N1MM packets."""
+    count = 0
+    for _ in range(limit):
+        try:
+            count += int(b"<Spectrum>" in rx.recv(65535))
+        except BlockingIOError:
+            break
+    return count
+
+
+class _Watchdog:
+    """Saves the GUI thread's stack once if the self-test loop stops ticking (#219)."""
+
+    NAME = "selftest-watchdog"
+
+    def __init__(self) -> None:
+        self.stack = ""  # read only after the thread is joined
+        self._main = threading.get_ident()
+        self._lock = threading.Lock()
+        self._last = time.monotonic()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=self.NAME)
+
+    def __enter__(self) -> _Watchdog:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._stop.set()
+        self._thread.join()
+
+    def tick(self) -> None:
+        with self._lock:
+            self._last = time.monotonic()
+
+    def _run(self) -> None:
+        while not self._stop.wait(WATCHDOG_STALL_S / 4):
+            with self._lock:
+                idle = time.monotonic() - self._last
+            frame = sys._current_frames().get(self._main) if idle > WATCHDOG_STALL_S else None
+            if frame is not None:
+                stack = "".join(traceback.format_stack(frame)).replace(str(Path.home()), "~")
+                self.stack = f"GUI thread blocked for {idle:.2f} s at:\n{stack}\n"
+                return
 
 
 def _thread_stacks() -> str:
