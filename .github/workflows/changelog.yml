@@ -13,6 +13,9 @@ on:
       pr:
         description: Pull request number to check
         required: true
+  # Merge queue on dev (#216, #218): the check must report on the queue commit.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -26,11 +29,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: PR number from the merge queue ref
+        id: queue
+        if: github.event_name == 'merge_group'
+        env:
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+        run: |
+          # refs/heads/gh-readonly-queue/dev/pr-<n>-<sha> -> <n>
+          n="${QUEUE_REF##*/pr-}"
+          echo "pr=${n%%-*}" >> "$GITHUB_OUTPUT"
       - name: Check fragment
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ inputs.pr || github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs.pr || github.event.pull_request.number || steps.queue.outputs.pr }}
         run: |
           # Read files and labels from the PR as it is now, not the event payload.
           files=$(gh pr view "$PR_NUMBER" --json files --jq '.files[].path')
