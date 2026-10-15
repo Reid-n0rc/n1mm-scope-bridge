@@ -7,6 +7,9 @@
 #     while the current branch is master or dev)
 #   - git push --all / --mirror (they can update master and dev)
 #   - any force push: --force, -f (also combined, e.g. -fu), or a +refspec
+#   - any tag push: --tags, --follow-tags, a refspec containing refs/tags/,
+#     or a refspec whose source or destination names an existing local tag
+#     (e.g. "git push origin v1.2.3"). Tags come only from the maintainer.
 # Allows:
 #   - --force-with-lease (and --force-if-includes) when every target branch
 #     is an issue-* branch, because rebasing feature branches is normal.
@@ -32,16 +35,25 @@ cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
 
 deny() {
     echo "Blocked by .claude/hooks/guard-git-push.sh: $1" >&2
-    echo "master and dev change only through pull requests (see AGENTS.md)." >&2
+    echo "master and dev change only through pull requests, and only the maintainer pushes tags (see AGENTS.md)." >&2
     exit 2
 }
 
-current_branch() {
+git_here() {
     if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-        git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null
+        git -C "$cwd" "$@"
     else
-        git symbolic-ref --short -q HEAD 2>/dev/null
+        git "$@"
     fi
+}
+
+current_branch() {
+    git_here symbolic-ref --short -q HEAD 2>/dev/null
+}
+
+# is_tag <name>: true if <name> is an existing local tag.
+is_tag() {
+    [ -n "$1" ] && git_here show-ref --verify --quiet "refs/tags/$1" 2>/dev/null
 }
 
 # Check one "git push" invocation. Arguments are the tokens after "push".
@@ -59,6 +71,7 @@ check_push() {
             --force) force=1 ;;
             --force-with-lease | --force-with-lease=* | --force-if-includes) lease=1 ;;
             --all | --mirror | --branches) all=1 ;;
+            --tags | --follow-tags) deny "git push $arg pushes tags." ;;
             -o | --push-option | --repo | --receive-pack | --exec) [ $# -gt 0 ] && shift ;;
             --*) ;;
             -*f*) force=1 ;;
@@ -73,9 +86,15 @@ check_push() {
                     +*) force=1; arg=${arg#+} ;;
                 esac
                 case "$arg" in
-                    *:*) dst=${arg##*:} ;;
-                    *) dst=$arg ;;
+                    *refs/tags/*) deny "git push of a tag ($arg)." ;;
                 esac
+                case "$arg" in
+                    *:*) src=${arg%%:*}; dst=${arg##*:} ;;
+                    *) src=$arg; dst=$arg ;;
+                esac
+                if is_tag "$src" || is_tag "$dst"; then
+                    deny "git push of a tag ($arg)."
+                fi
                 [ "$dst" = "HEAD" ] && dst=$(current_branch)
                 dst=${dst#refs/heads/}
                 targets="$targets $dst"

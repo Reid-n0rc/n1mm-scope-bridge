@@ -176,8 +176,23 @@ git config core.hooksPath .githooks
 - `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
   bypass is `ALLOW_PROTECTED_PUSH=1`.
 - `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
-  needs `jq`. It denies agent pushes to `master` or `dev` and force pushes,
-  except `--force-with-lease` on `issue-*` branches.
+  needs `jq`. It denies agent pushes to `master` or `dev`, force pushes
+  (except `--force-with-lease` on `issue-*` branches), and every tag push
+  (`--tags`, `--follow-tags`, a `refs/tags/` refspec, or an existing tag's
+  name).
+- `.claude/settings.json` also commits Claude Code permission rules (#221):
+  - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
+    `gh pr merge … --auto`, `gh run view|watch|list|rerun`, `gh issue …`,
+    and `python scripts/ready_to_merge.py` / `check_overlap.py`;
+  - **ask**: `git tag`, `gh issue delete|transfer`, any other `gh pr merge`,
+    and `gh workflow run`;
+  - **deny**: `gh release …`, `gh pr merge … --admin`, tag pushes, force
+    pushes, and `gh api` `DELETE` calls.
+
+  Permission globs match command text and can be sidestepped by compound
+  commands, so the hook stays the authority for pushes. Put personal
+  additions in `.claude/settings.local.json`, which is not committed. Changes
+  to these rules are reviewed and merged by the maintainer personally.
 
 ## Issue lifecycle
 

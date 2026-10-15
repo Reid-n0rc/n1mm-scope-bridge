@@ -169,6 +169,17 @@ guard block "$DEVREPO" "git push origin"
 guard block "$DEVREPO" "git push origin HEAD"
 guard block "$DEVREPO" "git push --force-with-lease"
 
+# Tag pushes (#221): only the maintainer pushes tags.
+g tag v1.2.3
+guard block "$REPO" "git push origin v1.2.3"
+guard block "$REPO" "git push --tags"
+guard block "$REPO" "git push origin --tags"
+guard block "$REPO" "git push origin refs/tags/v1"
+guard block "$REPO" "git push origin HEAD:refs/tags/v1"
+guard block "$REPO" "git push --follow-tags origin issue-x"
+guard block "$REPO" "git push --delete origin v1.2.3"
+guard block "$REPO" "git status && git push origin v1.2.3"
+
 guard allow "$REPO" "git push -u origin issue-x"
 guard allow "$REPO" "git push origin issue-9-local-guardrails"
 guard allow "$REPO" "git push --force-with-lease origin issue-x"
@@ -181,6 +192,10 @@ guard allow "$REPO" "git fetch origin dev"
 guard allow "$REPO" "git switch dev"
 guard allow "$REPO" "echo push dev"
 guard allow "$REPO" "git push -o"
+guard allow "$REPO" "git push origin issue-x:issue-221-tags"
+guard allow "$REPO" "git push --no-follow-tags origin issue-x"
+guard allow "$REPO" "git push origin v9.9.9-not-a-tag"
+guard allow "$REPO" "git tag --list"
 
 # Non-Bash payloads and bad input fail open (with a warning).
 guard_raw() { printf '%s' "$1" | ${HOOK_SHELL:-sh} "$GUARD"; }

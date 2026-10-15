@@ -1,4 +1,41 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(gh pr checks *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge * --auto*)",
+      "Bash(gh run view *)",
+      "Bash(gh run watch *)",
+      "Bash(gh run list *)",
+      "Bash(gh run rerun *)",
+      "Bash(gh issue *)",
+      "Bash(python scripts/ready_to_merge.py *)",
+      "Bash(python scripts/check_overlap.py *)"
+    ],
+    "ask": [
+      "Bash(git tag *)",
+      "Bash(gh issue delete *)",
+      "Bash(gh issue transfer *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh workflow run *)"
+    ],
+    "deny": [
+      "Bash(gh release *)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(git push --tags*)",
+      "Bash(git push * --tags*)",
+      "Bash(git push * refs/tags/*)",
+      "Bash(git push --force *)",
+      "Bash(git push * --force)",
+      "Bash(git push -f *)",
+      "Bash(git push * -f)",
+      "Bash(gh api * -X DELETE*)",
+      "Bash(gh api * --method DELETE*)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
