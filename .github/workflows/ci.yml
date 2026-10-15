@@ -97,9 +97,30 @@ jobs:
       # No GUI (PySide6) on free-threaded Python (abi3 wheels only) or 32-bit x86 (no Qt 6).
       - run: uv sync --locked ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }}
       # junit.xml feeds Codecov Test Analytics (#171); legacy family = readable test names.
-      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
+      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest -raR --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
+      # Quarantined GUI tests (#222) rerun once; never let a pass on rerun go unseen.
+      # conftest.py tags them with a flaky_rerun JUnit property.
+      - name: Reruns summary
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          uv run --no-sync python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          path = pathlib.Path("junit.xml")
+          root = ET.parse(path).getroot() if path.exists() else ET.Element("testsuites")
+          ids = sorted(
+              f"{case.get('classname')}::{case.get('name')}"
+              for case in root.iter("testcase")
+              if any(p.get("name") == "flaky_rerun" for p in case.iter("property"))
+              and case.find("failure") is None
+              and case.find("error") is None
+          )
+          print(f"{len(ids)} test(s) passed only on rerun" + (": " + ", ".join(ids) if ids else ""))
+          EOF
       # Per-area floors (app 90%, scripts ratchet), replacing coverage's single fail_under (#180).
       - name: Coverage gate
         run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} python scripts/coverage_gate.py ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--config .coveragerc-nogui' || '' }}

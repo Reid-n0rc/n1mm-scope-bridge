@@ -326,6 +326,28 @@ by a person or an agent, following the steps above.
    run the full suite plus lint and type checks. Paste the commands and
    results into the PR. Never skip, xfail, or delete a failing test to get
    green.
+
+   **Flaky GUI quarantine (the one exception, #222).** A `gui` test that
+   fails intermittently (for example a Qt crash on a Windows runner) may be
+   marked `@pytest.mark.flaky(reruns=1, reason="<URL of its open issue>")`
+   from `pytest-rerunfailures`, and nothing else qualifies:
+   - only `gui` tests, exactly one rerun, and a `reason=` that links the open
+     issue tracking the fix; `tests/conftest.py` rejects anything else, and
+     any suite-wide `--reruns` or `--force-reruns`, at collection;
+   - never quarantine a non-GUI test;
+   - every rerun is visible: `RERUN` lines in the pytest summary, a
+     `flaky_rerun` property in `junit.xml` (Codecov Test Analytics), and
+     "N test(s) passed only on rerun" in the CI job summary;
+   - remove the marker in the PR that closes its issue.
+
+   **Qt update hold.** Dependabot groups `PySide6*` and `shiboken6` into
+   one `qt` PR and ignores their minor and major versions; patch versions
+   still come and must pass the Windows GUI tests. To take a held version,
+   bump it in a tracked issue after a green Windows GUI run (CI
+   `Test (windows-latest, Python 3.13)` plus the `Windows app` GUI
+   self-test), then drop the ignore. The ignore lists only
+   `version-update:*` types, which GitHub applies to version updates, not to
+   security updates, but still watch Dependabot alerts for PySide6 by hand.
 4. **Every release runs full regression from a clean environment**, and the
    maintainer runs an on-air check with a real FT-710 and N1MM+:
    ```bash
