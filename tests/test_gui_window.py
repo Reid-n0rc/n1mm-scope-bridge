@@ -344,6 +344,15 @@ def test_self_test_never_prompts_with_a_tray(
 def test_main_self_test(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 0
     assert "self-test: OK" in capsys.readouterr().out
+    # #209: the windowed exe has no console, so the result also goes to a file.
+    assert (tmp_path / "self-test.log").read_text(encoding="utf-8").startswith("self-test: OK")
+
+
+def test_self_test_log_failure_is_ignored(tmp_path: Path) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("not a folder")
+    gui_app._write_self_test_log(blocker / "self-test.log", "self-test: OK")  # no exception
+    assert blocker.read_text() == "not a folder"
 
 
 def test_self_test_failure_reported(
@@ -355,6 +364,7 @@ def test_self_test_failure_reported(
     monkeypatch.setattr(gui_app, "self_test", lambda app, path: (False, "self-test: received 0"))
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 1
     assert "received 0" in capsys.readouterr().err
+    assert (tmp_path / "self-test.log").read_text(encoding="utf-8") == "self-test: received 0\n"
 
 
 def test_main_opens_window_and_autostarts(
@@ -390,6 +400,14 @@ def test_self_test_reports_missing_packets(
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert not ok
     assert "received 0 N1MM packets" in message
+    assert "no pipeline stats" in message  # the timeout beat the first stats poll
+    assert "threads:" in message
+
+
+def test_self_test_failure_names_the_stalled_stage() -> None:
+    stats = PipelineStats(frames_read=12, frames_dropped=1, bad_frames=0, emitted=1)
+    assert gui_app._describe_stats(stats) == "read 12, dropped 1, bad 0, sent 1"
+    assert gui_app._describe_stats(None) == "no pipeline stats"
 
 
 def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.socket) -> None:
