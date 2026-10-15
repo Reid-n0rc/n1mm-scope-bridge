@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
+import gc
 import socket
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import Sequence
@@ -96,6 +99,7 @@ def application(argv: Sequence[str] | None = None) -> QApplication:
 
 def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
     """Stream the emulator through the real window to a loopback UDP listener."""
+    gc.collect()  # collect leftovers on the GUI thread, not in a pipeline thread (#219)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
         rx.bind(("127.0.0.1", 0))
         rx.setblocking(False)
@@ -105,6 +109,8 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
         window = MainWindow(settings, settings_path=settings_path)
         stats: list[PipelineStats] = []  # every POLL_MS; the last one explains a failure
         window.controller.stats.connect(stats.append)
+        stops: list[str] = []  # why streaming stopped; "" is a normal stop (#219)
+        window.controller.stopped.connect(stops.append)
         window.show()
         window.toggle_streaming()
         packets = 0
@@ -118,18 +124,31 @@ def self_test(app: QApplication, settings_path: Path) -> tuple[bool, str]:
                 time.sleep(0.02)
         status_ok = window.status.text().startswith(("VFO", "Streaming"))
         threads = sorted(t.name for t in threading.enumerate() if t is not threading.main_thread())
+        stacks = _thread_stacks() if packets < SELF_TEST_PACKETS else ""
+        errors = [e for e in (*stops, window.model.last_error) if e]
         window.quit_app()  # never prompts, even when a system tray exists
         app.processEvents()
+    gc.collect()
     if packets < SELF_TEST_PACKETS:
         pipeline = _describe_stats(stats[-1] if stats else None)
         running = ", ".join(threads) or "none"
+        error = "; errors: " + " | ".join(dict.fromkeys(errors)) if errors else ""
         return False, (
             f"self-test: received {packets} N1MM packets, expected {SELF_TEST_PACKETS} "
-            f"({pipeline}; threads: {running})"
-        )
+            f"({pipeline}; threads: {running}{error})\n\n{stacks}"
+        ).rstrip()
     if not status_ok:
         return False, f"self-test: status line not updated ({window.status.text()!r})"
     return True, f"self-test: OK ({packets} packets, style {app.property('bridgeStyle')})"
+
+
+def _thread_stacks() -> str:
+    """Every thread's stack, for a stalled self-test (#219); home folder shown as ``~``."""
+    with tempfile.TemporaryFile() as dump:  # faulthandler needs a real file descriptor
+        faulthandler.dump_traceback(dump, all_threads=True)
+        dump.seek(0)
+        text = dump.read().decode("utf-8", "replace")
+    return text.replace(str(Path.home()), "~")
 
 
 def _describe_stats(stats: PipelineStats | None) -> str:

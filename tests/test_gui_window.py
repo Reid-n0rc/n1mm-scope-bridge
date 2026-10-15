@@ -345,7 +345,9 @@ def test_main_self_test(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 0
     assert "self-test: OK" in capsys.readouterr().out
     # #209: the windowed exe has no console, so the result also goes to a file.
-    assert (tmp_path / "self-test.log").read_text(encoding="utf-8").startswith("self-test: OK")
+    log = (tmp_path / "self-test.log").read_text(encoding="utf-8")
+    assert log.startswith("self-test: OK")
+    assert "most recent call first" not in log  # #219: thread stacks only on a stall
 
 
 def test_self_test_log_failure_is_ignored(tmp_path: Path) -> None:
@@ -402,6 +404,42 @@ def test_self_test_reports_missing_packets(
     assert "received 0 N1MM packets" in message
     assert "no pipeline stats" in message  # the timeout beat the first stats poll
     assert "threads:" in message
+
+
+def test_self_test_reports_stopped_errors(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #219: a stage that stopped with an error must not look like a silent stall.
+    def fail_to_start(self: MainWindow) -> None:
+        self.controller.stopped.emit("")  # a normal stop is not an error
+        self.controller.stopped.emit("Streaming stopped: sender failed")
+        self.model.last_error = "N1MM+ port refused"
+
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(MainWindow, "toggle_streaming", fail_to_start)
+    ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
+    assert not ok
+    first = message.splitlines()[0]
+    assert first.endswith("errors: Streaming stopped: sender failed | N1MM+ port refused)")
+
+
+def test_self_test_stall_dumps_thread_stacks(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(Path, "home", lambda: Path(gui_app.__file__).parents[1])
+    assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 1
+    assert "most recent call first" in capsys.readouterr().err
+    log = (tmp_path / "self-test.log").read_text(encoding="utf-8")
+    first, _, stacks = log.partition("\n")
+    assert first.startswith("self-test: received 0 N1MM packets")  # the result line comes first
+    assert "Current thread" in stacks
+    assert "_thread_stacks" in stacks
+    assert str(Path(gui_app.__file__).parents[1]) not in stacks  # home folder shown as ~
+    assert "~" in stacks
 
 
 def test_self_test_failure_names_the_stalled_stage() -> None:
