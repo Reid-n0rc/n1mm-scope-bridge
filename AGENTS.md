@@ -431,7 +431,13 @@ has the `no-changelog` label.
    manual version bump is needed and a tag can't disagree with
    `pyproject.toml`. It checks the tag points at `master`, runs the release
    regression on the tag, builds everything, attests build provenance, and
-   publishes the release. **A release carries exactly one file: the universal
+   publishes the release. **Publishing waits for the maintainer's approval
+   (#233):** the **Publish GitHub release** job uses the `release`
+   environment (required reviewer @Reid-n0rc, self-review allowed, no admin
+   bypass, deployment refs `v*` tags and `master`), so it pauses as "Waiting
+   for review" until the maintainer approves it in the Actions UI. A tag alone
+   never publishes. Dry runs skip that job and never wait. Agents never
+   approve or bypass a deployment. **A release carries exactly one file: the universal
    installer** `n1mm-scope-bridge-setup-<version>.exe`. Its notes give the
    installer's SHA-256, a link to the workflow run (whose artifacts hold the
    zips, wheel, sdist, regression report, and screenshots), and point to
