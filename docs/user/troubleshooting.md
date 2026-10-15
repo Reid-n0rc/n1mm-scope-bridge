@@ -16,7 +16,7 @@ connection in one step. Every error the program can show is listed below.
 | `has no working FTDI USB driver for it` (added to `Could not open 'FT4222 A'`) | Windows sees the radio's FT4222H scope interface but has no FTDI USB driver for it | Run setup again and tick **Install FTDI USB driver (needs administrator)**, or let Windows Update install it (on Windows on ARM, Windows Update is the only source: Microsoft's FTDI package has no ARM64 driver), then unplug and replug the USB cable and run `probe` |
 | `… failed (FT_IO_ERROR)` | USB communication failed during setup or reading | Reconnect the USB cable (avoid unpowered hubs) and try again |
 | `No valid scope frames from 'FT4222 A'` | The radio is connected but isn't sending scope data | Make sure the radio's scope display is on, power-cycle the radio, then try again |
-| `scope is in … mode; frequency edges are only exact in Center mode` | The radio's scope is in Cursor or Fixed mode | Set the FT-710's scope to **Center** mode for an accurate N1MM+ display |
+| `scope is in … mode; frequency edges are only exact in Center mode` | The radio's scope is in Cursor or Fixed mode | Set the FT-710's scope to **Center** mode for an accurate N1MM+ display: see [Scope mode: CENTER](radios/ft-710.md#scope-mode-center) |
 | `The window needs PySide6, which is not installed` | `n1mm-scope-bridge gui` was run from a pip install without the GUI package | Use the Windows installer, or `pip install "n1mm-scope-bridge[gui]"` |
 | `unknown radio` | The `--radio` value or `radio` setting isn't supported | Run `list-radios` |
 | `was recorded from a … not a …` | The replayed capture came from a different radio model | Use `--radio` matching the capture |
@@ -38,7 +38,9 @@ connection in one step. Every error the program can show is listed below.
 
 `Set the FT-710's scope to Center mode` means the scope is in Cursor or Fixed
 mode, so N1MM+'s frequency scale is approximate. Switch the radio's scope to
-**Center** on the front panel (or with your own N1MM+ macro, for example
+**Center** on the front panel, following
+[Scope mode: CENTER](radios/ft-710.md#scope-mode-center) (or with your own
+N1MM+ macro, for example
 `{CAT1ASC SS0640000;}`, which N1MM+ sends over its CAT port). The bridge
 confirms when it sees Center. It never changes the mode itself and never
 opens the radio's COM ports.
