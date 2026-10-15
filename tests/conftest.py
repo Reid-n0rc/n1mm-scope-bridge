@@ -2,9 +2,10 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 from __future__ import annotations
 
+import gc
 import os
 import socket
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 
 import pytest
 
@@ -20,6 +21,33 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "hardware" in item.keywords:
             item.add_marker(skip)
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> Generator[None, object, object]:
+    """Collect cyclic garbage on the main thread before each GUI test (#217)."""
+    if "gui" in item.keywords:
+        gc.collect()
+    return (yield)
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Generator[None, object, object]:
+    """Collect cyclic garbage on the main thread after each GUI test (#217).
+
+    This wrapper sits outside pytest-qt's, so it runs after pytest-qt has closed
+    the test's widgets with ``deleteLater()``. Those deletes never run outside an
+    event loop, so they are flushed here first. A QObject left to a later
+    collection could be deleted on a pipeline thread instead, off the GUI
+    thread, which crashed Windows CI with an access violation.
+    """
+    result = yield
+    if "gui" in item.keywords:
+        from PySide6.QtCore import QCoreApplication, QEvent  # noqa: PLC0415 - GUI tests only
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        gc.collect()
+    return result
 
 
 @pytest.fixture
