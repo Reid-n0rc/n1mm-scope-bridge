@@ -12,7 +12,7 @@ n1mm-scope-bridge gui [--settings PATH] [--self-test]
 | Option | Default | Meaning |
 |---|---|---|
 | `--settings PATH` | the per-user settings file | Use a different settings file |
-| `--self-test` | off | Open the window, stream the built-in emulator to a local test listener, and exit with code 0 on success |
+| `--self-test` | off | Open the window, stream the built-in emulator to a local test listener, and exit with code 0 on success. The result line is also saved to `self-test.log` next to the settings file |
 | `--screenshot DIR` | off | Save PNG screenshots, light and dark, of the window (streaming and idle), Settings, and dialogs in a fixed demo state, plus `manifest.json` (sizes and alt text), into `DIR`, then exit. Used to build the website |
 | `--record DIR` | off | Record the streaming window, light and dark, into `DIR` as H.264 MP4 and VP9 WebM videos at the source's own frame rate, a lighter GIF fallback, and a still PNG (for viewers who prefer reduced motion), and add a `manifest.json` entry, then exit. Used for the website's live recording. Needs Pillow and, for video, ffmpeg (on `PATH`, or the `imageio-ffmpeg` package) — development tools, never shipped |
 | `--source SOURCE` | `emulator` | With `--screenshot` or `--record`: `emulator` uses the built-in FT-710 emulator (deterministic); `radio` reads the connected radio (receive only), and with `--screenshot` saves only the streaming window, labelled as a real-radio capture; `replay` (with `--record` only) plays back a capture recorded from a real radio with `record` |

@@ -176,7 +176,10 @@ if ($Downloads) {
 
 if ($HasGui) {
     $selfTest = Wait-Process-Exit $gui @('--self-test')
-    Check ($selfTest -eq 0) "installed GUI --self-test exits 0 (got $selfTest)"
+    # The windowed exe has no console; it leaves its result line here (#209).
+    $selfTestLog = Join-Path $env:APPDATA 'n1mm-scope-bridge\self-test.log'
+    $selfTestMessage = if (Test-Path $selfTestLog) { (Get-Content -LiteralPath $selfTestLog -Raw).Trim() } else { '(no self-test.log)' }
+    Check ($selfTest -eq 0) "installed GUI --self-test exits 0 (got $($selfTest): $selfTestMessage)"
 }
 
 # --- uninstall -----------------------------------------------------------------------------
