@@ -8,7 +8,7 @@
 **Your Yaesu radio's waterfall, in N1MM Logger+.** n1mm-scope-bridge takes the
 spectrum scope built into Yaesu radios and shows it in **N1MM Logger+'s
 Spectrum Display window**. The **Yaesu FT-710** is the first supported model.
-Other Yaesu models are planned (see [Supported radios](#supported-radios)).
+The FTDX10 is planned (see [Supported radios](#supported-radios)).
 
 > **Status: released ([latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)).**
 > Validated on a real Yaesu FT-710: live scope streaming, all spans, and
@@ -108,11 +108,8 @@ More detail: [docs/architecture.md](docs/architecture.md).
 |-------|-----------|--------|
 | Yaesu FT-710 | USB, FT4222 SPI | Supported (validated on a real radio; N1MM+ on-air check pending, #5) |
 | Yaesu FTDX10 | USB, FT4222 SPI (believed same as FT-710) | Planned, needs an owner to verify (#7) |
-| Yaesu FTDX101D/MP | USB, FT4222 SPI (expected dual-receiver frames) | Planned, needs an owner to verify (#7) |
-| Yaesu radios on SCU-LAN10 | Network (wfview's Yaesu LAN protocol) | Planned (#7) |
-| Icom (IC-7300, IC-7610, IC-705, …) | Not needed | N1MM+ supports these natively |
 
-Own one of the planned radios? Open a **Radio support request** issue. To add
+Own an FTDX10? Open a **Radio support request** issue. To add
 a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
 
 ## Install (Windows)

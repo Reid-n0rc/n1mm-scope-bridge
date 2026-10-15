@@ -7,7 +7,7 @@ once; after that you only start the bridge.
 ## What you need
 
 - A **supported Yaesu radio**: see [Pick your radio](radios/README.md). Today
-  that is the FT-710; other Yaesu models are planned.
+  that is the FT-710; the FTDX10 is planned.
 - The radio connected to the PC with its **USB cable**. No other cable or
   adapter.
 - A PC with **Windows 10 or 11** that runs N1MM+.
