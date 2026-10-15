@@ -1,6 +1,23 @@
 # zizmor configuration (#223). Every ignore below is an accepted finding with
 # its reason. Prefer fixing a finding over adding an ignore here.
 rules:
+  dangerous-triggers:
+    # Whole-file ignores: each file has one `on:` finding, and line numbers
+    # move whenever triggers are added (for example merge_group, #216).
+    ignore:
+      # pull_request_target is required so the policy runs from the base
+      # branch with a token that can label/comment on fork PRs. The job checks
+      # out the base branch only and never runs PR code (#83, #211).
+      - autofix-conform.yml
+      # Base-branch checkout only; it reads PR metadata and labels/comments
+      # (#211).
+      - automation-triage.yml
+      # The Issue policy script must come from the base branch so a PR cannot
+      # rewrite the check it is judged by; base-only checkout (#211).
+      - issue-policy.yml
+      # Runs the base branch's overlap script with a read-only token; never
+      # checks out the PR head (#43, #211).
+      - pr-overlap.yml
   self-repository:
     ignore:
       # `uses: ./.github/workflows/<file>.yml` is GitHub's documented form for

@@ -41,9 +41,6 @@ jobs:
           echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
           mkdir -p "$RUNNER_TEMP/actionlint"
           tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
-      - name: Negative check (temporary)
-        if: ${{ github.evnt.x }}
-        run: echo bad
       - name: Run actionlint
         run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
 
