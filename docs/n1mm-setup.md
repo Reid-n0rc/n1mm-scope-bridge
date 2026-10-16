@@ -4,7 +4,7 @@
 > documentation; an on-air check with N1MM+ is still pending (#5).
 
 0. Set up the radio first: on the FT-710, set the menu
-   **OPERATION SETTING → GENERAL → SCU-LAN10** to **ON** (no adapter needed).
+   **OPERATION SETTING → GENERAL → SCU-LAN10** to **ON**.
    This makes the radio send its scope over USB. Details:
    [Setting up your Yaesu radio](user/radio-setup.md).
 1. Keep N1MM+ connected to the FT-710 for CAT as usual (Config → Configure

@@ -36,7 +36,8 @@ no code copied).
   mismatch.
 - Frequencies are written in kHz with no more than 3 decimals (1 Hz
   resolution), and trailing zeros are trimmed.
-- Rate: the N1MM team notes that Icom sends about 3 per second, which is
+- Rate: the N1MM team notes that radios with native scope support send about
+  3 per second, which is
   adequate, and asks for no more than 5–10 per second. The bridge defaults
   to **4 per second** and caps the rate at 10.
 - XML special characters in `Name` and `app` are escaped.

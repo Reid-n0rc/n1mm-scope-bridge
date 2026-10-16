@@ -9,7 +9,7 @@ wins. Fix the other doc in the same PR.
 
 `n1mm-scope-bridge` reads a radio's spectrum scope and sends it to N1MM
 Logger+'s Spectrum Display window as N1MM's external `<Spectrum>` UDP packet.
-The first radio is the **Yaesu FT-710**. Its scope arrives through an FTDI
+The only supported radio is the **Yaesu FT-710**. Its scope arrives through an FTDI
 FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
 
 - Stack: Python 3.10 or later, standard library only at runtime (`ctypes`,
@@ -43,7 +43,6 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   - [docs/architecture.md](docs/architecture.md): module layout and data flow
   - [docs/protocol-yaesu-ft4222.md](docs/protocol-yaesu-ft4222.md): FT-710 frame layout
   - [docs/n1mm-spectrum-protocol.md](docs/n1mm-spectrum-protocol.md): N1MM packet
-  - [docs/adding-a-radio.md](docs/adding-a-radio.md): how a new radio plugs in
 
 ## Product target
 
@@ -260,8 +259,7 @@ git config core.hooksPath .githooks
 
 ## Issue lifecycle
 
-Anyone can file a **Bug report**, **Feature request**, or **Radio support
-request** without a plan. Those templates are intake only, and filing one
+Anyone can file a **Bug report** or **Feature request** without a plan. Those templates are intake only, and filing one
 does not authorize work.
 
 1. Before anyone works an issue, it needs a software plan: the goal, the
@@ -446,9 +444,9 @@ by a person or an agent, following the steps above.
 - Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
   I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
   small protocols, so tests can substitute fakes.
-- Radios plug in through a `RadioProfile` plus a `SpectrumSource`. See
-  [docs/adding-a-radio.md](docs/adding-a-radio.md). Do not special-case a
-  radio model outside its own module.
+- The FT-710 plugs in through a `RadioProfile` plus a `SpectrumSource` (see
+  [docs/architecture.md](docs/architecture.md)). Keep FT-710 specifics in its
+  own module.
 - Anything derived from wfview follows rule 6 (verbatim notices, GPL block,
   dated modification notice, THIRD_PARTY.md row).
 - Mark anything not yet confirmed on real hardware with `# UNVERIFIED:` and

@@ -1,16 +1,12 @@
-# Pick your radio
+# Supported radio
 
-Set up your radio once, before the first time you start the bridge. Each
-radio has its own page with every setting the bridge needs: the menu path, the
-menu number, and the button presses.
+The bridge supports the Yaesu FT-710 only. Set it up once, before the first
+time you start the bridge. Its page has every setting the bridge needs: the
+menu path, the menu number, and the button presses.
 
 | Radio | Setup page | Status |
 |---|---|---|
 | Yaesu FT-710 | [FT-710 setup](ft-710.md) | Supported |
-
-The FTDX10 is planned. Own one and can help test? Open a **Radio support
-request**:
-<https://github.com/Reid-n0rc/n1mm-scope-bridge/issues/new/choose>.
 
 ## Leave N1MM+ connected as usual
 

@@ -6,8 +6,8 @@ once; after that you only start the bridge.
 
 ## What you need
 
-- A **supported Yaesu radio**: see [Pick your radio](radios/README.md). Today
-  that is the FT-710; the FTDX10 is planned.
+- A **Yaesu FT-710**, the only supported radio (see
+  [Supported radio](radios/README.md)).
 - The radio connected to the PC with its **USB cable**. No other cable or
   adapter.
 - A PC with **Windows 10 or 11** that runs N1MM+.
@@ -16,15 +16,13 @@ once; after that you only start the bridge.
 
 ## 1. Set up the radio
 
-Open your radio's page and do everything on it once. Each page gives the menu
+Open the FT-710 setup page and do everything on it once. It gives the menu
 path, the menu number and the button presses for every setting.
 
 - [Yaesu FT-710](radios/ft-710.md): turn **SCU-LAN10** **ON**, set the scope
   to [**CENTER**](radios/ft-710.md#scope-mode-center) (touch the mode key at the
   left end under the scope until it shows **CENTER**), then power-cycle the
   radio and replug the USB cable.
-
-Other radios: [Pick your radio](radios/README.md).
 
 ## 2. Install the bridge
 
@@ -85,8 +83,8 @@ N1MM+'s own documentation:
 
 No waterfall?
 
-- **`Could not open 'FT4222 A'`**: the radio's scope output is off (FT-710:
-  SCU-LAN10), or the radio needs the power cycle **and** USB replug from its
+- **`Could not open 'FT4222 A'`**: the radio's scope output is off (menu
+  **SCU-LAN10** is OFF), or the radio needs the power cycle **and** USB replug from its
   page in step 1. Close wfview if it is running.
 - **Streaming, but nothing in N1MM+**: recheck the source name in step 4.
 - Anything else: [Troubleshooting](troubleshooting.md) lists every message.
