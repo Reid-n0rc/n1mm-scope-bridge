@@ -10,7 +10,11 @@
       "Bash(gh run watch *)",
       "Bash(gh run list *)",
       "Bash(gh run rerun *)",
-      "Bash(gh issue *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue list *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh issue close *)",
+      "Bash(gh issue create *)",
       "Bash(python scripts/ready_to_merge.py *)",
       "Bash(python scripts/check_overlap.py *)"
     ],

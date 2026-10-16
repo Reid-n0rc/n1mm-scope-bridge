@@ -223,8 +223,10 @@ git config core.hooksPath .githooks
   cannot read, any command that mentions push or git is denied.
 - `.claude/settings.json` also commits Claude Code permission rules (#221):
   - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
-    `gh run view|watch|list|rerun`, `gh issue …`, and
-    `python scripts/ready_to_merge.py` / `check_overlap.py`;
+    `gh run view|watch|list|rerun`, `gh issue view|list|comment|close|create`,
+    and `python scripts/ready_to_merge.py` / `check_overlap.py`. Each rule
+    names one exact subcommand; anything else (`gh issue edit`,
+    `gh run cancel`, `gh pr ready`, …) prompts;
   - **ask** (always prompts, and wins over allow): `git tag`,
     `gh issue … delete|transfer`, every `gh pr … merge` (`--auto` included),
     and `gh workflow … run`;
@@ -242,7 +244,12 @@ git config core.hooksPath .githooks
   **Known limits.** These rules are best-effort: globs match command text,
   so odd whitespace, mixed-case labels, a script file, `curl` with a token
   from elsewhere, or a sequence of commands can sidestep them, and the hook
-  stays the authority for pushes. The real gates are server-side: the
+  stays the authority for pushes. A trailing `*` in an allow rule still
+  admits extra flags of that one subcommand. Claude Code documents that
+  Bash rules respect shell operators, so `gh pr view *` does not allow
+  `gh pr view 1 && <other>`: each part of a compound command must be
+  allowed on its own, and the test models that. The allows are kept narrow
+  in case that splitting misses a form. The real gates are server-side: the
   `dev`/`master` rulesets, the `release` environment's required reviewer,
   and the convention that only the maintainer applies `plan-approved`.
   Agents act with the maintainer's token, so the **Issue policy** check

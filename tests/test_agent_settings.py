@@ -46,11 +46,25 @@ def _asked(command: str) -> bool:
     return any(_matches(rule, command) for rule in _rules("ask"))
 
 
-def _allowed(command: str) -> bool:
-    """Runs with no prompt: Claude Code checks deny, then ask, then allow."""
+def _allowed_one(command: str) -> bool:
     if _denied(command) or _asked(command):
         return False
     return any(_matches(rule, command) for rule in _rules("allow"))
+
+
+def _allowed(command: str) -> bool:
+    """Runs with no prompt: Claude Code checks deny, then ask, then allow.
+
+    Claude Code splits compound commands on shell operators, so every part
+    must be allowed on its own; a substitution (``$(``, backticks) or a
+    redirect always prompts.
+    """
+    if _denied(command) or _asked(command):
+        return False
+    if any(token in command for token in ("$(", "`", ">", "<")):
+        return False
+    parts = [part.strip() for part in re.split(r"&&|\|\||[;&|\n]", command)]
+    return all(part and _allowed_one(part) for part in parts)
 
 
 RUN = "repos/Reid-n0rc/n1mm-scope-bridge/actions/runs/123"
@@ -197,6 +211,51 @@ def test_no_risky_command_runs_without_a_prompt(command: str) -> None:
 )
 def test_routine_command_runs_without_a_prompt(command: str) -> None:
     assert _allowed(command), command
+
+
+NOT_ALLOWED = [
+    # Subcommands outside the narrow allowlist fall to a prompt.
+    "gh run cancel 123",
+    "gh run delete 123",
+    "gh issue edit 12 --add-label lane:core",
+    "gh issue edit 12 --remove-label plan-needs-approval",
+    "gh issue reopen 12",
+    "gh issue lock 12",
+    "gh issue pin 12",
+    "gh issue develop 12 --checkout",
+    "gh pr merge 1 --auto --delete-branch",
+    "gh pr close 230",
+    "gh pr edit 230 --base master",
+    "gh pr ready 230",
+    "gh pr comment 230 --body x",
+    # A trailing glob never admits a chained or substituted command.
+    "gh pr merge 1 --auto; rm -rf x",
+    "python scripts/ready_to_merge.py 230; rm -rf x",
+    "python scripts/ready_to_merge.py 230 && gh run cancel 1",
+    "python scripts/check_overlap.py 221 | sh",
+    "gh pr view 230 $(rm -rf x)",
+    "gh pr view 230 `rm -rf x`",
+    "gh issue view 12 > ~/.bashrc",
+    "gh run view 1 & gh run delete 1",
+    "gh issue list --limit 5\ngh issue delete 12",
+]
+
+
+@pytest.mark.parametrize("command", NOT_ALLOWED)
+def test_command_outside_allowlist_prompts(command: str) -> None:
+    assert not _allowed(command), command
+
+
+def test_every_allow_rule_names_one_exact_subcommand() -> None:
+    for rule in _rules("allow"):
+        body = rule.removeprefix("Bash(").removesuffix(")")
+        assert body.endswith(" *"), rule
+        assert "*" not in body[:-2], rule
+        assert len(body[:-2].split()) >= 2, rule
+
+
+def test_chain_of_allowed_commands_is_allowed() -> None:
+    assert _allowed("gh pr view 230 && gh pr checks 230")
 
 
 def test_matcher_rejects_non_bash_rules() -> None:
