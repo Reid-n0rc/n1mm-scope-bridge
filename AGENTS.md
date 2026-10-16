@@ -146,6 +146,8 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     positive, dismiss it with a written justification
     (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
     -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    Agents may not run that `gh api` write (see Local setup), so an agent
+    proposes the dismissal and its justification for the maintainer to run.
     One narrow exception is printed as a `NOTE`: a failed
     `github-advanced-security` run (GitHub's optional Copilot AI review, which
     fails when the Copilot quota runs out) does not block when the real
@@ -198,8 +200,63 @@ git config core.hooksPath .githooks
 - `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
   bypass is `ALLOW_PROTECTED_PUSH=1`.
 - `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
-  needs `jq`. It denies agent pushes to `master` or `dev` and force pushes,
-  except `--force-with-lease` on `issue-*` branches.
+  needs `jq`. It is a strict **allowlist** that fails closed and does not
+  parse shell. A command that mentions `push` anywhere (any case, also split
+  by quotes or backslashes), or that runs `git` together with `alias` or a
+  shell metacharacter (`;` `&` `|` `` ` `` `$` `(` `)` `<` `>` `{` `}` `*`
+  `?` `[` `]` or a newline), must be exactly one of:
+  - `git push [-u|--set-upstream] origin issue-<n>-<slug>`
+  - `git push [-u|--set-upstream] origin HEAD:[refs/heads/]issue-<n>-<slug>`
+  - `git push --force-with-lease[=<lease>] origin issue-<n>-<slug>`
+
+  with `<slug>` matching `[a-z0-9][a-z0-9-]*`. Everything else is denied:
+  `dev`/`master`, a bare `git push`, other remotes, tags, `--force`/`-f`,
+  `+refspec`, `--delete`, `git -c`/`-C`/`--git-dir`, env prefixes, and
+  compound commands. A short-form push is also denied when a local tag has the
+  branch's name or `push.followTags` is set, and a plain `git` command is
+  denied while a configured alias mentions push or runs a shell (`!`).
+  `ALLOW_PROTECTED_PUSH` does not apply to agents. **Workarounds:** text that
+  merely mentions push is denied too, so put commit messages and PR or issue
+  bodies in a file (`git commit -F <file>`, `gh pr create --body-file <file>`,
+  `gh pr comment --body-file <file>`), and run other `git` commands one at a
+  time instead of chaining or piping them. Without `jq`, or with input it
+  cannot read, any command that mentions push or git is denied.
+- `.claude/settings.json` also commits Claude Code permission rules (#221):
+  - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
+    `gh run view|watch|list|rerun`, `gh issue view|list|comment|close|create`,
+    and `python scripts/ready_to_merge.py` / `check_overlap.py`. Each rule
+    names one exact subcommand; anything else (`gh issue edit`,
+    `gh run cancel`, `gh pr ready`, …) prompts;
+  - **ask** (always prompts, and wins over allow): `git tag`,
+    `gh issue … delete|transfer`, every `gh pr … merge` (`--auto` included),
+    and `gh workflow … run`;
+  - **deny** (fail-closed, matched anywhere in the command so env prefixes
+    and `/path/to/gh` are caught): `gh release …`; any command containing
+    `--admin`, `--auto=` or `plan-approved` (common casings); any command
+    mentioning `graphql`, `pending_deployments`, `deployments/*/statuses`,
+    `deployment_protection_rule` or `approveDeployments`; every `gh api`
+    write (`-X`/`--method` with any method, and `-f`/`-F`/`--field`/
+    `--raw-field`/`--input`, which imply POST, also as `-iX`/`-if`/`-iF`);
+    `gh alias …` and `gh auth token`; tag and force pushes. Plain `gh api`
+    reads (GET) still work, with a prompt. Use typed `gh` subcommands for
+    writes. `tests/test_agent_settings.py` checks every known spelling.
+
+  **Known limits.** These rules are best-effort: globs match command text,
+  so odd whitespace, mixed-case labels, a script file, `curl` with a token
+  from elsewhere, or a sequence of commands can sidestep them, and the hook
+  stays the authority for pushes. A trailing `*` in an allow rule still
+  admits extra flags of that one subcommand. Claude Code documents that
+  Bash rules respect shell operators, so `gh pr view *` does not allow
+  `gh pr view 1 && <other>`: each part of a compound command must be
+  allowed on its own, and the test models that. The allows are kept narrow
+  in case that splitting misses a form. The real gates are server-side: the
+  `dev`/`master` rulesets, the `release` environment's required reviewer,
+  and the convention that only the maintainer applies `plan-approved`.
+  Agents act with the maintainer's token, so the **Issue policy** check
+  cannot tell an agent's label or approval from the maintainer's; that
+  residual risk rests on these rules and on review. Put personal additions
+  in `.claude/settings.local.json`, which is not committed. Changes to these
+  rules are reviewed and merged by the maintainer personally.
 
 ## Issue lifecycle
 
