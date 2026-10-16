@@ -11,6 +11,11 @@
 # workflow_dispatch only: never runs on PRs or pushes. Privacy (rule 11): it
 # runs only on GitHub-hosted runners, which hold no personal data; never upload
 # dumps taken on a developer machine.
+#
+# Never dispatch it on dev or master: its checks land on the branch head, and a
+# caught stall (a red job) would block a release PR. Dispatch it on an
+# issue-* branch: gh workflow run gui-freeze-dump.yml --ref issue-<n>-<slug>.
+# The job is skipped on any other ref.
 name: GUI freeze dump
 
 on:
@@ -34,6 +39,8 @@ concurrency:
 jobs:
   dump:
     name: Self-test loop (${{ matrix.arch }}, shard ${{ matrix.shard }})
+    # issue-* branches only (see the header): never dev or master.
+    if: startsWith(github.ref, 'refs/heads/issue-')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
