@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
-"""PySide6 stays below 6.12 until the Windows GUI freeze is fixed (#236).
+"""The PySide6 bound stays the same in the gui extra and the gui-dev group.
+
+The <6.12 stop-gap (#236) was lifted once the freeze was fixed at the source
+(#238), so neither carries an upper bound and the lock is on 6.12 or later.
 
 Plain text checks, so they also run on Python 3.10 (no ``tomllib``).
 """
@@ -13,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = '"PySide6-Essentials>=6.8,<6.12"'
+PIN = '"PySide6-Essentials>=6.8"'
 
 
 def _lines(name: str) -> list[str]:
@@ -38,10 +41,10 @@ def test_gui_extra_and_dev_group_share_the_pin(key: str) -> None:
 
 
 @pytest.mark.parametrize("package", ["pyside6-essentials", "shiboken6"])
-def test_lock_resolves_qt_below_6_12(package: str) -> None:
+def test_lock_resolves_qt_6_12_or_later(package: str) -> None:
     versions = _locked_versions((ROOT / "uv.lock").read_text(encoding="utf-8"), package)
     assert versions, f"{package} missing from uv.lock"
-    assert all((6, 8) <= _major_minor(v) < (6, 12) for v in versions), versions
+    assert all(_major_minor(v) >= (6, 12) for v in versions), versions
 
 
 def test_locked_versions_parses_entries() -> None:
