@@ -346,6 +346,25 @@ Copilot's repository instructions are in
   pass, and merging happens through the normal adoption routine or the
   maintainer. Dependabot PRs are still adopted by a person or agent.
 
+**Claude Code Action (pilot, `lane:site` only, #224).**
+`.github/workflows/claude.yml` runs `anthropics/claude-code-action` for the
+maintainer only:
+- **Trigger:** add the `agent-go` label to an assigned `plan-approved` +
+  `lane:site` issue, or comment `@claude ...` on such an issue or on one of
+  its own PRs (opened by `claude[bot]`). Anyone else's label or mention is
+  ignored, fork PRs are refused, and the conditions are re-read when the job
+  starts. Like every `issues` workflow, it runs from `master`, so it works
+  only after a release carries it there.
+- **What it does:** follows this file: branches `issue-<n>-<slug>` from `dev`,
+  adds a `changelog.d/` fragment, runs the regression, opens a PR into `dev`
+  with `Closes #<n>`, and stops.
+- **It never merges, and its PRs are adopted like any automated PR** (see
+  above): the maintainer reviews the PR and enables auto-merge. The action is
+  told never to merge, approve, tag, release or change labels, and those
+  tools are disallowed. No check in this repo blocks a green PR it opened, so
+  don't enable auto-merge on one you haven't reviewed.
+- **Stop it:** remove the label, or `gh workflow disable claude.yml`.
+
 **Automation triage** (`.github/workflows/automation-triage.yml`, every two
 hours, on demand, and when an automated PR opens) finds what still needs
 adopting:
