@@ -61,6 +61,12 @@ ADVISORY_WHEN_CODEQL_PASSED = ("github-advanced-security",)
 # Reduce secret-scanning alerts to their numbers inside gh, so the leaked value
 # never enters this process (and can never be logged).
 LEAK_ALERT_JQ = "[.[].number]"
+PR_FIELDS = ",".join(
+    (
+        "number", "state", "isDraft", "mergeable", "headRefOid", "body",
+        "baseRefName", "headRefName", "isCrossRepository",
+    )
+)  # fmt: skip
 
 Gh = Callable[[Sequence[str]], Any]
 
@@ -210,9 +216,7 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json, notes: list[str] | None =
     """Every reason the PR is not ready to merge (empty list = ready)."""
     pr = gh(
         [
-            "pr", "view", str(number), "--repo", repo, "--json",
-            "number,state,isDraft,mergeable,headRefOid,body,baseRefName,headRefName,"
-            "isCrossRepository",
+            "pr", "view", str(number), "--repo", repo, "--json", PR_FIELDS,
         ]
     )  # fmt: skip
     if not isinstance(pr, Mapping) or pr.get("number") != number:
