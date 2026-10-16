@@ -493,9 +493,9 @@ class Ft4222Reader:
             message = (
                 f"Could not open {self._description!r} ({status_name(status)}). Is the radio "
                 "on and connected by USB, with FTDI's D2XX driver installed? On the FT-710, "
-                "set the menu OPERATION SETTING > GENERAL > SCU-LAN10 to ON (no adapter "
-                "needed), then turn the radio off and on and unplug and replug its USB "
-                "cable so the scope device appears."
+                "set the menu OPERATION SETTING > GENERAL > SCU-LAN10 to ON, then turn the "
+                "radio off and on and unplug and replug its USB cable so the scope device "
+                "appears."
             )
             hint = self._driver_hint()
             raise DeviceNotFound(f"{message} {hint}" if hint else message)

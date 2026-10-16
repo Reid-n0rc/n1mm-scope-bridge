@@ -18,7 +18,7 @@ in a separate issue. Don't mix style sweeps into feature PRs.
   | Write | Not |
   |---|---|
   | N1MM+ (N1MM Logger+ on first use in a page) | N1MM, n1mm, N1MM Logger Plus |
-  | FT-710, FTDX10 | FT710, ft-710 (except the CLI key `ft710`) |
+  | FT-710 | FT710, ft-710 (except the CLI key `ft710`) |
   | wfview | WFView, WfView |
   | FTDI LibFT4222, D2XX | ft4222 lib, the FTDI DLL |
   | FT4222 (the chip) | 4222 |
