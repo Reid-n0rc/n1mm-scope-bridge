@@ -11,7 +11,7 @@ See `changelog.d/` for changes not yet released.
 ## [0.1.4] - 2026-10-15
 
 Patch release. The main fix: the Windows app in v0.1.3 could freeze shortly
-after streaming started. Upgrade if you run v0.1.3.
+after streaming started on its first launch. Upgrade if you run v0.1.3.
 
 ### Changed
 
@@ -27,7 +27,7 @@ after streaming started. Upgrade if you run v0.1.3.
 
 ### Fixed
 
-- The Windows app could freeze for several seconds right after streaming started. It now ships Qt for Python (PySide6) 6.11, the version before the freeze appeared, until the cause in 6.12 is fixed. (#236)
+- The Windows app no longer freezes for up to a minute (stopping the N1MM+ spectrum) on its first launch after Windows starts on some PCs. The cause was a slow font fallback scan for two status symbols, now removed, and the app is back on Qt for Python (PySide6) 6.12. (#238, #243)
 - The GUI no longer risks crashing when remote control reports an error: it now cleans up its internal objects on the window's own thread. (#217)
 - On the website, links between guide pages now open the matching site page and section instead of a file on GitHub, and the N1MM+ setup page now shows the same steps as the program's own guide. (#192)
 
