@@ -18,13 +18,12 @@
 #   action scopes to contents, pull requests and issues (no workflows,
 #   actions, or administration), so Claude cannot edit workflow files. Its
 #   pushes trigger CI, unlike GITHUB_TOKEN pushes.
-# - Merging and plan approval are blocked outside this workflow, whatever the
-#   token can do: the dev and master rulesets require checks posted by GitHub
-#   Actions, the Issue policy check fails a PR whose author is not a person
-#   until @Reid-n0rc approves its current head, and it
-#   ignores a `plan-approved` label that a bot other than github-actions[bot]
-#   added. Releases wait for the `release`
-#   environment's required reviewer (#233), which an app cannot be.
+# - The App token can do more than Claude is allowed to (merge a green PR,
+#   add labels, create tags). Server side: the dev and master rulesets require
+#   checks posted by GitHub Actions, master needs a code-owner review, and
+#   releases wait for the `release` environment's required reviewer (#233),
+#   which an app cannot be. Its PRs are adopted by the maintainer like any
+#   automated PR (AGENTS.md, Automated PRs).
 # - Claude's tools are an allowlist, plus the repo's .claude/settings.json deny
 #   rules and push guard hook, which the action restores from the base branch.
 #
@@ -51,8 +50,8 @@ jobs:
     # Exact equality on GitHub-set fields only (logins, types, label names).
     # The comment body is only searched for the trigger phrase, and only on
     # `created` events by the maintainer. PR comments work only on the
-    # agent's own same-repo PRs (author claude[bot]), so it never pushes to a
-    # person's PR, which the Issue policy would not hold for approval.
+    # agent's own same-repo PRs (author claude[bot]), so it is never asked to
+    # push to a person's PR.
     if: >-
       (github.event_name == 'issues'
         && github.event.action == 'labeled'

@@ -358,11 +358,11 @@ maintainer only:
 - **What it does:** follows this file: branches `issue-<n>-<slug>` from `dev`,
   adds a `changelog.d/` fragment, runs the regression, opens a PR into `dev`
   with `Closes #<n>`, and stops.
-- **It never merges.** The Issue policy check fails any PR whose author
-  GitHub doesn't report as a person (the action, Dependabot, Copilot
-  Autofix) until @Reid-n0rc approves the current head; then re-run that
-  check and auto-merge proceeds. `plan-approved` counts only when a person or
-  github-actions[bot] added it last.
+- **It never merges, and its PRs are adopted like any automated PR** (see
+  above): the maintainer reviews the PR and enables auto-merge. The action is
+  told never to merge, approve, tag, release or change labels, and those
+  tools are disallowed. No check in this repo blocks a green PR it opened, so
+  don't enable auto-merge on one you haven't reviewed.
 - **Stop it:** remove the label, or `gh workflow disable claude.yml`.
 
 **Automation triage** (`.github/workflows/automation-triage.yml`, every two
