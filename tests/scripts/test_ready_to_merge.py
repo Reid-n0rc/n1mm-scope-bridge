@@ -28,9 +28,36 @@ def pr(**kw: Any) -> dict[str, Any]:
         "body": "Closes #9",
         "baseRefName": "dev",
         "headRefName": "issue-9-x",
+        "isCrossRepository": False,
     }
     data.update(kw)
     return data
+
+
+def conn(items: list[dict[str, Any]], total: int | None = None, more: bool = False) -> Any:
+    return {
+        "totalCount": len(items) if total is None else total,
+        "pageInfo": {"hasNextPage": more},
+        "nodes": items,
+    }
+
+
+def node(**kw: Any) -> dict[str, Any]:
+    """A GraphQL ISSUE_QUERY issue node for #9 of o/r; keyword arguments override fields."""
+    data: dict[str, Any] = {
+        "__typename": "Issue",
+        "number": 9,
+        "state": "OPEN",
+        "repository": {"nameWithOwner": "o/r"},
+        "labels": conn([{"name": "plan-approved"}]),
+        "assignees": conn([{"login": "Reid-n0rc"}]),
+    }
+    data.update(kw)
+    return data
+
+
+def graphql(the_node: Any) -> dict[str, Any]:
+    return {"data": {"repository": {"issueOrPullRequest": the_node}}}
 
 
 def fake_gh(
@@ -42,11 +69,23 @@ def fake_gh(
     leaks: list[int] | None = None,
     issue: dict[str, Any] | None = None,
     missing_issue: bool = False,
+    response: Any = None,
+    calls: list[Sequence[str]] | None = None,
 ) -> rtm.Gh:
     def gh(args: Sequence[str]) -> Any:
+        if calls is not None:
+            calls.append(args)
         if args[0] == "pr":
             return the_pr or pr()
         path = args[1]
+        if path == "graphql":
+            if missing_issue:
+                raise RuntimeError("gh api graphql failed: HTTP 502")
+            number = int(args[-1].removeprefix("number="))
+            owner, name = args[5].removeprefix("owner="), args[7].removeprefix("name=")
+            repo = {"nameWithOwner": f"{owner}/{name}"}
+            default = node(number=number, repository=repo)
+            return response if response is not None else graphql(issue or default)
         if "/check-runs" in path:
             return {"check_runs": runs if runs is not None else [run("Lint and type check")]}
         if path.endswith("/status"):
@@ -56,13 +95,6 @@ def fake_gh(
         if "secret-scanning" in path:
             assert args[-2:] == ["--jq", rtm.LEAK_ALERT_JQ]  # only numbers reach the script
             return leaks or []
-        if "/issues/" in path:
-            if missing_issue:
-                raise RuntimeError("HTTP 404")
-            return issue or {
-                "labels": [{"name": "plan-approved"}],
-                "assignees": [{"login": "Reid-n0rc"}],
-            }
         raise AssertionError(f"unexpected gh call {args}")
 
     return gh
@@ -152,16 +184,124 @@ def test_pr_problems(change: dict[str, Any], message: str) -> None:
 
 
 def test_unapproved_or_missing_issue() -> None:
-    unapproved = {"labels": [{"name": "plan-needs-approval"}], "assignees": []}
+    unapproved = node(labels=conn([{"name": "plan-needs-approval"}]), assignees=conn([]))
     problems = rtm.evaluate(5, "o/r", fake_gh(issue=unapproved))
     assert any("plan-approved" in p for p in problems)
     assert any("not assigned" in p for p in problems)
     assert any("not an issue" in p for p in rtm.evaluate(5, "o/r", fake_gh(missing_issue=True)))
 
 
+def test_issue_is_read_through_graphql_for_this_repo() -> None:
+    calls: list[Sequence[str]] = []
+    assert rtm.evaluate(5, "o/r", fake_gh(calls=calls)) == []
+    (query,) = [c for c in calls if c[:2] == ["api", "graphql"]]
+    assert list(query[2:]) == [
+        "-f", query[3], "-f", "owner=o", "-f", "name=r", "-F", "number=9"
+    ]  # fmt: skip
+    assert any(arg.startswith("query=") and "totalCount" in arg for arg in query)
+    assert not any("/issues/" in arg for c in calls for arg in c)  # no REST issue read
+
+
+def blocked(gh: rtm.Gh, *messages: str) -> None:
+    """The PR is NOT READY, with every message among the reasons."""
+    problems = rtm.evaluate(5, "o/r", gh)
+    for message in messages:
+        assert any(message in p for p in problems), (message, problems)
+    assert rtm.main(["5", "o/r"], gh=gh) == 1
+
+
+@pytest.mark.parametrize(
+    ("the_node", "messages"),
+    [
+        (node(state="CLOSED"), ["#9 is closed"]),
+        (node(state="MERGED"), ["unexpected state"]),
+        (node(labels=conn([{"name": "plan-approved"}], total=2)), ["labels", "returned 1"]),
+        (node(labels=conn([{"name": "plan-approved"}], more=True)), ["labels", "incomplete"]),
+        (node(assignees=conn([{"login": "Reid-n0rc"}], total=101)), ["assignees"]),
+        (node(assignees=conn([{"login": "Reid-n0rc"}], more=True)), ["incomplete"]),
+        (node(assignees=conn([{"login": ""}])), ["no `login`"]),
+        (node(assignees=conn([{}])), ["no `login`"]),
+        (node(assignees=conn([{"login": None}])), ["no `login`"]),
+        (node(labels=conn([{"name": ""}])), ["no `name`"]),
+        (node(labels=None), ["labels are missing"]),
+        (node(repository={"nameWithOwner": "other/repo"}), ["belongs to 'other/repo'"]),
+        (node(repository=None), ["no repository"]),
+        (node(number=10), ["issue number 10"]),
+        ({"__typename": "PullRequest"}, ["#9 is not an issue"]),
+        ({"__typename": "Discussion"}, ["unexpected type"]),
+        (None, ["#9 is not an issue"]),
+    ],
+)
+def test_untrusted_or_failing_issue_is_not_ready(the_node: Any, messages: list[str]) -> None:
+    blocked(
+        fake_gh(issue=the_node) if the_node is not None else fake_gh(response=graphql(None)),
+        *messages,
+    )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"errors": [{"message": "Something went wrong"}]},
+        {"data": None},
+        {"data": {"repository": None}},
+        [],
+        "",
+    ],
+)
+def test_graphql_errors_are_not_ready(response: Any) -> None:
+    blocked(fake_gh(response=response), "#9 could not be verified", "#9 is not an issue")
+
+
+def test_api_error_is_not_ready(capsys: pytest.CaptureFixture[str]) -> None:
+    blocked(fake_gh(missing_issue=True), "#9 could not be verified: gh api graphql failed")
+    assert "NOT READY: PR #5" in capsys.readouterr().out
+
+
+def test_every_linked_issue_must_pass() -> None:
+    def gh(args: Sequence[str]) -> Any:
+        if args[:2] == ["api", "graphql"]:
+            number = int(args[-1].removeprefix("number="))
+            state = "OPEN" if number == 9 else "CLOSED"
+            return graphql(node(number=number, state=state))
+        return fake_gh(the_pr=pr(body="Closes #9\nFixes #11"))(args)
+
+    blocked(gh, "#11 is closed")
+    assert not any("#9" in p for p in rtm.evaluate(5, "o/r", gh))
+
+
+def test_cross_repo_and_url_references_do_not_count() -> None:
+    for body in ("Closes other/repo#9", "Closes https://github.com/o/r/issues/9", "Closes #\u0669"):
+        blocked(fake_gh(the_pr=pr(body=body)), "Closes #<n>")
+
+
+@pytest.mark.parametrize(
+    "the_pr",
+    [pr(number=6), pr(body=["Closes #9"]), [], None],
+)
+def test_wrong_or_malformed_pr_is_not_ready(
+    the_pr: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def gh(args: Sequence[str]) -> Any:
+        return the_pr if args[0] == "pr" else fake_gh()(args)
+
+    assert rtm.main(["5"], gh=gh) == 1
+    assert "NOT READY: could not evaluate PR #5" in capsys.readouterr().out
+
+
 def test_release_pr_needs_no_issue() -> None:
     release = pr(body="Release v0.1.0", baseRefName="master", headRefName="dev")
     assert rtm.evaluate(5, "o/r", fake_gh(the_pr=release)) == []
+    calls: list[Sequence[str]] = []
+    with_link = pr(body="Release, closes #9", baseRefName="master", headRefName="dev")
+    assert rtm.evaluate(5, "o/r", fake_gh(the_pr=with_link, missing_issue=True, calls=calls)) == []
+    assert not any(c[:2] == ["api", "graphql"] for c in calls)
+
+
+@pytest.mark.parametrize("cross", [True, None])
+def test_fork_dev_branch_is_not_a_release_pr(cross: bool | None) -> None:
+    fork = pr(body="Release", baseRefName="master", headRefName="dev", isCrossRepository=cross)
+    blocked(fake_gh(the_pr=fork), "Closes #<n>")
 
 
 def test_main_reports_all_reasons_and_usage(capsys: pytest.CaptureFixture[str]) -> None:
@@ -173,6 +313,8 @@ def test_main_reports_all_reasons_and_usage(capsys: pytest.CaptureFixture[str]) 
     assert "conflicts" in out
     assert rtm.main([], gh=gh) == 2
     assert rtm.main(["abc"], gh=gh) == 2
+    for bad in (["\u0665"], ["05"], ["+5"], [" 5"], ["5", "not a repo"], ["5", "o/r", "x"]):
+        assert rtm.main(bad, gh=gh) == 2
 
 
 def test_main_reports_gh_errors(capsys: pytest.CaptureFixture[str]) -> None:
@@ -181,6 +323,12 @@ def test_main_reports_gh_errors(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert rtm.main(["5"], gh=broken) == 1
     assert "could not evaluate" in capsys.readouterr().out
+
+    def crashing(args: Sequence[str]) -> Any:
+        raise ValueError("unexpected")
+
+    assert rtm.main(["5"], gh=crashing) == 1
+    assert "NOT READY: could not evaluate PR #5: unexpected" in capsys.readouterr().out
 
 
 def test_parse_helpers_directly() -> None:

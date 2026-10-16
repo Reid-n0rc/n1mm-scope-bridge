@@ -22,7 +22,15 @@ c. no open secret-scanning alerts in the repository;
 d. the dependency review check, when present, passed (part of a, reported
    separately so the reason is obvious);
 e. the PR is open, not a draft, mergeable (no conflicts), and closes an
-   approved, assigned issue (release PRs dev -> master are exempt).
+   approved, assigned issue (release PRs dev -> master of this repository are
+   exempt).
+
+Linked issues get exactly the Issue policy check's hardened rules (#247, #256),
+by reusing ``check_issue_policy``: each one is read through GitHub's GraphQL
+API (``ISSUE_QUERY``), must be an open Issue (not a PR) of this repository
+with the same number, and its labels and assignees count only when GitHub
+reports the complete list with non-empty names. Every linked issue must pass,
+and any error or unexpected data makes the PR not ready (fail closed).
 
 Otherwise it prints every reason and exits 1. Standard library plus ``gh``.
 """
@@ -36,10 +44,13 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from check_issue_policy import (
+    ISSUE_QUERY,
+    PR_NUMBER,
+    REPO_NAME,
     IssueInfo,
     is_release_pr,
     linked_issues,
-    parse_issue,
+    parse_issue_node,
     policy_problems,
 )
 
@@ -143,8 +154,43 @@ def leak_alert_problems(alert_numbers: Sequence[int]) -> list[str]:
     ]
 
 
-def pr_problems(pr: Mapping[str, Any], issues: Mapping[int, IssueInfo | None]) -> list[str]:
-    """Check (e). ``pr`` is ``gh pr view --json`` output."""
+def fetch_issue(gh: Gh, repo: str, number: int) -> IssueInfo | None:
+    """Linked issue ``number`` of ``repo``, read and validated like the Issue policy check.
+
+    Raises on any API error or data the check cannot trust (see
+    ``check_issue_policy.parse_issue_node``). None means no such number.
+    """
+    owner, name = repo.split("/", 1)
+    response = gh(
+        [
+            "api", "graphql",
+            "-f", f"query={ISSUE_QUERY}",
+            "-f", f"owner={owner}",
+            "-f", f"name={name}",
+            "-F", f"number={number}",
+        ]
+    )  # fmt: skip
+    return parse_issue_node(response, number, repo)
+
+
+def release_pr(pr: Mapping[str, Any], repo: str | None = None) -> bool:
+    """True for a release PR (dev -> master), from ``gh pr view --json`` output.
+
+    With ``repo``, the head branch must be in that same repository
+    (``isCrossRepository`` false), so a fork's branch named ``dev`` is not one.
+    """
+    head_repo = repo if pr.get("isCrossRepository") is False else None
+    as_api = {
+        "base": {"ref": pr.get("baseRefName"), "repo": {"full_name": repo}},
+        "head": {"ref": pr.get("headRefName"), "repo": {"full_name": head_repo}},
+    }
+    return is_release_pr(as_api, repo)
+
+
+def pr_problems(
+    pr: Mapping[str, Any], issues: Mapping[int, IssueInfo | None], repo: str | None = None
+) -> list[str]:
+    """Check (e). ``pr`` is ``gh pr view --json`` output (``repo``: see ``release_pr``)."""
     problems: list[str] = []
     if pr.get("state") != "OPEN":
         problems.append(f"PR is {str(pr.get('state', '')).lower()}, not open")
@@ -155,8 +201,7 @@ def pr_problems(pr: Mapping[str, Any], issues: Mapping[int, IssueInfo | None]) -
         problems.append("PR has merge conflicts: merge origin/dev into the branch")
     elif mergeable != "MERGEABLE":
         problems.append(f"GitHub has not computed mergeability yet ({mergeable}); retry shortly")
-    as_api = {"base": {"ref": pr.get("baseRefName")}, "head": {"ref": pr.get("headRefName")}}
-    if not is_release_pr(as_api):
+    if not release_pr(pr, repo):
         problems += policy_problems(linked_issues(pr.get("body")), issues)
     return problems
 
@@ -166,9 +211,14 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json, notes: list[str] | None =
     pr = gh(
         [
             "pr", "view", str(number), "--repo", repo, "--json",
-            "number,state,isDraft,mergeable,headRefOid,body,baseRefName,headRefName",
+            "number,state,isDraft,mergeable,headRefOid,body,baseRefName,headRefName,"
+            "isCrossRepository",
         ]
     )  # fmt: skip
+    if not isinstance(pr, Mapping) or pr.get("number") != number:
+        raise RuntimeError(f"GitHub did not return PR #{number}")
+    if not isinstance(pr.get("body"), (str, type(None))):
+        raise RuntimeError(f"PR #{number} body is not text")
     sha = pr["headRefOid"]
     runs = gh(["api", f"repos/{repo}/commits/{sha}/check-runs?per_page=100"])["check_runs"]
     statuses = gh(["api", f"repos/{repo}/commits/{sha}/status"]).get("statuses", [])
@@ -187,22 +237,29 @@ def evaluate(number: int, repo: str, gh: Gh = gh_json, notes: list[str] | None =
         ]
     )
     issues: dict[int, IssueInfo | None] = {}
-    for n in linked_issues(pr.get("body")):
+    lookup_problems: list[str] = []
+    for n in [] if release_pr(pr, repo) else linked_issues(pr.get("body")):
         try:
-            issues[n] = parse_issue(gh(["api", f"repos/{repo}/issues/{n}"]))
-        except RuntimeError:
+            issues[n] = fetch_issue(gh, repo, n)
+        except Exception as err:  # fail closed: an unverifiable issue never counts
             issues[n] = None
+            lookup_problems.append(f"#{n} could not be verified: {err}")
     return (
         check_problems(runs, statuses, notes)
         + code_scanning_problems(code_alerts or [])
         + leak_alert_problems(leak_numbers or [])
-        + pr_problems(pr, issues)
+        + pr_problems(pr, issues, repo)
+        + lookup_problems
     )
 
 
 def main(argv: Sequence[str] | None = None, gh: Gh = gh_json) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) not in (1, 2) or not args[0].isdigit():
+    if (
+        len(args) not in (1, 2)
+        or not PR_NUMBER.fullmatch(args[0])
+        or (len(args) == 2 and not REPO_NAME.fullmatch(args[1]))
+    ):
         print("usage: ready_to_merge.py <PR number> [owner/repo]", file=sys.stderr)
         return 2
     number = int(args[0])
@@ -210,7 +267,7 @@ def main(argv: Sequence[str] | None = None, gh: Gh = gh_json) -> int:
     notes: list[str] = []
     try:
         problems = evaluate(number, repo, gh, notes)
-    except (RuntimeError, KeyError, TypeError) as err:
+    except Exception as err:  # fail closed on anything unexpected
         print(f"NOT READY: could not evaluate PR #{number}: {err}")
         return 1
     for note in notes:
