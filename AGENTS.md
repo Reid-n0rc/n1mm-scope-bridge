@@ -146,6 +146,8 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     positive, dismiss it with a written justification
     (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
     -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    Agents may not run that `gh api` write (see Local setup), so an agent
+    proposes the dismissal and its justification for the maintainer to run.
     One narrow exception is printed as a `NOTE`: a failed
     `github-advanced-security` run (GitHub's optional Copilot AI review, which
     fails when the Copilot quota runs out) does not block when the real
@@ -221,23 +223,33 @@ git config core.hooksPath .githooks
   cannot read, any command that mentions push or git is denied.
 - `.claude/settings.json` also commits Claude Code permission rules (#221):
   - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
-    `gh pr merge … --auto`, `gh run view|watch|list|rerun`, `gh issue …`,
-    and `python scripts/ready_to_merge.py` / `check_overlap.py`;
-  - **ask**: `git tag`, `gh issue delete|transfer`, any other `gh pr merge`,
-    and `gh workflow run`;
-  - **deny**: `gh release …`, `gh pr merge` with `--admin` anywhere, adding
-    the `plan-approved` label (only the maintainer approves plans), tag
-    pushes, force pushes, and `gh api` `DELETE` calls (`-X DELETE`,
-    `-XDELETE`, `--method=DELETE`, upper or lower case), and any `gh api`
-    call that could approve the release gate: `*/pending_deployments*`,
-    `*/deployments/*/statuses*`, `*/deployment_protection_rule*` and the
-    GraphQL `approveDeployments` mutation, whatever the method or field
-    spelling. `tests/test_agent_settings.py` checks these denies.
+    `gh run view|watch|list|rerun`, `gh issue …`, and
+    `python scripts/ready_to_merge.py` / `check_overlap.py`;
+  - **ask** (always prompts, and wins over allow): `git tag`,
+    `gh issue … delete|transfer`, every `gh pr … merge` (`--auto` included),
+    and `gh workflow … run`;
+  - **deny** (fail-closed, matched anywhere in the command so env prefixes
+    and `/path/to/gh` are caught): `gh release …`; any command containing
+    `--admin`, `--auto=` or `plan-approved` (common casings); any command
+    mentioning `graphql`, `pending_deployments`, `deployments/*/statuses`,
+    `deployment_protection_rule` or `approveDeployments`; every `gh api`
+    write (`-X`/`--method` with any method, and `-f`/`-F`/`--field`/
+    `--raw-field`/`--input`, which imply POST, also as `-iX`/`-if`/`-iF`);
+    `gh alias …` and `gh auth token`; tag and force pushes. Plain `gh api`
+    reads (GET) still work, with a prompt. Use typed `gh` subcommands for
+    writes. `tests/test_agent_settings.py` checks every known spelling.
 
-  Permission globs match command text and can be sidestepped by compound
-  commands, so the hook stays the authority for pushes. Put personal
-  additions in `.claude/settings.local.json`, which is not committed. Changes
-  to these rules are reviewed and merged by the maintainer personally.
+  **Known limits.** These rules are best-effort: globs match command text,
+  so odd whitespace, mixed-case labels, a script file, `curl` with a token
+  from elsewhere, or a sequence of commands can sidestep them, and the hook
+  stays the authority for pushes. The real gates are server-side: the
+  `dev`/`master` rulesets, the `release` environment's required reviewer,
+  and the convention that only the maintainer applies `plan-approved`.
+  Agents act with the maintainer's token, so the **Issue policy** check
+  cannot tell an agent's label or approval from the maintainer's; that
+  residual risk rests on these rules and on review. Put personal additions
+  in `.claude/settings.local.json`, which is not committed. Changes to these
+  rules are reviewed and merged by the maintainer personally.
 
 ## Issue lifecycle
 

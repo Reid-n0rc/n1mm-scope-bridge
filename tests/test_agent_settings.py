@@ -3,9 +3,12 @@
 """The committed Claude Code permission rules keep their safety denies (#221).
 
 ``.claude/settings.json`` must deny an agent approving its own plan, merging
-with ``--admin``, or approving the release deployment gate (#233, #234). The
+with ``--admin``, approving the release deployment gate (#233, #234), any
+GraphQL call, and any ``gh api`` write, in every spelling we know of. The
 globs are matched the way Claude Code matches ``Bash(...)`` rules: ``*`` stands
-for any text, and the whole command must match.
+for any text, the whole command must match, and rules are checked deny first,
+then ask, then allow. These rules are best-effort; the real gates are
+server-side (see AGENTS.md, Local setup).
 """
 
 from __future__ import annotations
@@ -39,8 +42,20 @@ def _denied(command: str) -> bool:
     return any(_matches(rule, command) for rule in _rules("deny"))
 
 
+def _asked(command: str) -> bool:
+    return any(_matches(rule, command) for rule in _rules("ask"))
+
+
+def _allowed(command: str) -> bool:
+    """Runs with no prompt: Claude Code checks deny, then ask, then allow."""
+    if _denied(command) or _asked(command):
+        return False
+    return any(_matches(rule, command) for rule in _rules("allow"))
+
+
 RUN = "repos/Reid-n0rc/n1mm-scope-bridge/actions/runs/123"
 DEPLOY = "repos/Reid-n0rc/n1mm-scope-bridge/deployments/45/statuses"
+LABELS = "repos/Reid-n0rc/n1mm-scope-bridge/issues/12/labels"
 
 DENIED = [
     # Approving or rejecting the release environment gate.
@@ -50,34 +65,89 @@ DENIED = [
     f"gh api {RUN}/pending_deployments --field state=approved",
     f"gh api {RUN}/pending_deployments -f state=rejected",
     f"gh api -XPOST /{RUN}/pending_deployments",
+    f"gh api {RUN}/pending_deployments",
     # Writing a deployment status directly.
     f"gh api -X POST {DEPLOY} -f state=success",
     f"gh api --method POST {DEPLOY} --field state=success",
     f"gh api --method=POST {DEPLOY} --input status.json",
     f"gh api {DEPLOY} -f state=success",
-    # Custom deployment protection rule callback and the GraphQL mutation.
+    # Custom deployment protection rule callback.
     f"gh api -X POST {RUN}/deployment_protection_rule -f state=approved",
+    # Any GraphQL call (addLabelsToLabelable, mergePullRequest, approveDeployments).
     "gh api graphql -f query='mutation { approveDeployments(input: {}) { clientMutationId } }'",
-    # Only the maintainer approves plans or bypasses the merge ruleset.
+    "gh api graphql -F query=@mutation.graphql",
+    "gh api graphql --input mutation.json",
+    "gh api https://api.github.com/graphql --input q.json",
+    # Any gh api write: an explicit method, or a field or body (implies POST).
+    f"gh api -X PATCH {LABELS}",
+    f"gh api -XPUT {LABELS}",
+    f"gh api {LABELS} -X POST",
+    f"gh api {LABELS} --method PUT",
+    f"gh api {LABELS} --method=POST",
+    f"gh api {LABELS} -f labels[]=lane:core",
+    f"gh api {LABELS} -flabels[]=lane:core",
+    f"gh api {LABELS} -F labels[]=@labels.txt",
+    f"gh api {LABELS} --raw-field labels[]=lane:core",
+    f"gh api {LABELS} --field=labels[]=lane:core",
+    f"gh api {LABELS} --input labels.json",
+    f"gh api -i -X POST {LABELS}",
+    f"gh api -iX POST {LABELS}",
+    f"gh api {LABELS} -if labels[]=lane:core",
+    f"gh api {LABELS} -iF labels[]=lane:core",
+    "gh api -X DELETE repos/o/r/git/refs/heads/dev",
+    "gh api --method=delete repos/o/r/git/refs/heads/dev",
+    "gh api -X=DELETE repos/o/r/git/refs/heads/dev",
+    # Env prefixes and other paths to gh.
+    f"GH_TOKEN=x gh api {LABELS} -f labels[]=x",
+    f"command gh api {LABELS} --input l.json",
+    f"/usr/local/bin/gh api -X POST {LABELS}",
+    "GH_TOKEN=x gh release create v1.0.0",
+    "/opt/homebrew/bin/gh release upload v1.0.0 x.exe",
+    # Only the maintainer approves plans, in any spelling.
     "gh issue edit 12 --add-label plan-approved",
+    "gh issue edit 12 --add-label=plan-approved",
     "gh issue edit 12 --add-label lane:core,plan-approved",
+    "gh issue edit 12 --add-label PLAN-APPROVED",
+    "gh issue edit 12 --add-label Plan-Approved",
     "gh issue create --title x --label plan-approved",
     "gh issue create --title x -l plan-approved",
+    f"gh api {LABELS} -f 'labels[]=plan-approved'",
+    "gh label edit plan-needs-approval --name plan-approved",
+    "GH_TOKEN=x gh issue edit 12 --add-label plan-approved",
+    # Never bypass the ruleset, in any flag order or spelling.
     "gh pr merge 230 --admin",
     "gh pr merge --admin 230 --auto",
     "gh pr merge 230 --merge --admin --auto",
-    # Releases and deletes.
+    "gh pr merge 230 --admin=true",
+    "gh pr merge 230 --auto=false --merge",
+    "command gh pr merge --admin 230",
+    # Indirection that would hide any of the above.
+    "gh alias set ok 'api -X POST repos/o/r/issues/1/labels'",
+    "gh auth token",
     "gh release create v1.0.0",
-    "gh api -X DELETE repos/o/r/git/refs/heads/dev",
-    "gh api --method=delete repos/o/r/git/refs/heads/dev",
+]
+
+ASKED = [
+    "gh pr merge 230 --auto --merge",
+    "gh pr merge 230 --merge",
+    "gh pr -R Reid-n0rc/n1mm-scope-bridge merge 230",
+    "GH_TOKEN=x gh pr merge 230 --merge",
+    "gh issue delete 12",
+    "gh issue -R o/r delete 12",
+    "gh issue transfer 12 o/other",
+    "gh workflow run release.yml --ref dev -f tag=v0.1.0-rc1",
+    "git tag v1.0.0",
 ]
 
 NOT_DENIED = [
     "gh pr merge 230 --auto --merge",
     "gh pr view 230",
     "gh issue edit 12 --add-label lane:core",
+    "gh issue edit 12 --remove-label plan-needs-approval",
     f"gh api {RUN}",
     "gh api repos/Reid-n0rc/n1mm-scope-bridge/pulls/230",
+    "gh api repos/Reid-n0rc/n1mm-scope-bridge/pulls/230 --jq .state",
+    "gh api --paginate repos/Reid-n0rc/n1mm-scope-bridge/code-scanning/alerts",
 ]
 
 
@@ -89,10 +159,12 @@ def test_settings_is_valid_json_with_all_rule_lists() -> None:
 @pytest.mark.parametrize(
     "rule",
     [
-        "Bash(gh api *pending_deployments*)",
-        "Bash(gh api *deployments/*/statuses*)",
-        "Bash(gh pr merge *--admin*)",
-        "Bash(gh issue edit *--add-label*plan-approved*)",
+        "Bash(*pending_deployments*)",
+        "Bash(*deployments/*/statuses*)",
+        "Bash(*graphql*)",
+        "Bash(*--admin*)",
+        "Bash(*plan-approved*)",
+        "Bash(*gh api * --input*)",
     ],
 )
 def test_required_deny_rule_present(rule: str) -> None:
@@ -109,10 +181,22 @@ def test_routine_command_is_not_denied(command: str) -> None:
     assert not _denied(command), command
 
 
-def test_no_allow_rule_permits_an_approval_endpoint() -> None:
-    for command in DENIED:
-        if "deploy" in command.lower():
-            assert not any(_matches(rule, command) for rule in _rules("allow")), command
+@pytest.mark.parametrize("command", ASKED)
+def test_command_always_prompts(command: str) -> None:
+    assert _asked(command) or _denied(command), command
+    assert not _allowed(command), command
+
+
+@pytest.mark.parametrize("command", DENIED + ASKED)
+def test_no_risky_command_runs_without_a_prompt(command: str) -> None:
+    assert not _allowed(command), command
+
+
+@pytest.mark.parametrize(
+    "command", ["gh pr view 230", "gh pr checks 230", "gh issue view 221", "gh run list --limit 5"]
+)
+def test_routine_command_runs_without_a_prompt(command: str) -> None:
+    assert _allowed(command), command
 
 
 def test_matcher_rejects_non_bash_rules() -> None:
