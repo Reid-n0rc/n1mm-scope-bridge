@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import capture_golden as cg
 import dev_cat as dc
@@ -186,3 +187,93 @@ def test_auto_main_dry_run_and_argument_checks(tmp_path: Path) -> None:
                     "--seconds", "0.3"]) == 0  # fmt: skip
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["cases"][0]["confirmed"] is True
+
+
+def _session(out: Path, names: tuple[str, ...], answers: list[str], *, firmware: str) -> None:
+    replies = iter(answers)
+    cg.run_session(
+        cg._emulator_for,
+        out,
+        ask=lambda _: next(replies),
+        say=lambda _: None,
+        auto_yes=False,
+        dry_run=False,
+        cases=[c for c in cg.CASES if c.name in names],
+        seconds=0.1,
+        firmware=firmware,
+    )
+
+
+def test_only_rerun_keeps_earlier_cases(tmp_path: Path) -> None:
+    """`--only tx-dummy-load ...` must not drop the cases recorded earlier."""
+    earlier: dict[str, Any] = {
+        "validated_against": cg.git_blob_hash(cg.PARSER_FILE),
+        "radio": "FT-710",
+        "dry_run": False,
+        "firmware": "unknown",
+        "mode": "auto",
+        "original_scope": {"span_index": 3, "mode": "4"},
+        "vfo_a_hz": 7_074_000,
+        "cases": [
+            {"name": "usb-replug", "skipped": True, "reason": "operator-only"},
+            {"name": "power-on-startup", "file": "power-on-startup.raw", "confirmed": True},
+            {"name": "center-span-0", "file": "center-span-0.raw", "confirmed": True},
+            {"name": "tx-dummy-load", "skipped": True, "reason": "operator-only"},
+        ],
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(earlier), encoding="utf-8")
+    # Record tx and usb-replug; skip power-on, which keeps its earlier capture.
+    _session(
+        tmp_path,
+        ("tx-dummy-load", "power-on-startup", "usb-replug"),
+        ["", "y", "s", "", "y"],
+        firmware="",
+    )
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    by_name = {c["name"]: c for c in manifest["cases"]}
+    assert [c["name"] for c in manifest["cases"]] == [
+        "center-span-0",
+        "tx-dummy-load",
+        "power-on-startup",
+        "usb-replug",
+    ]
+    assert by_name["center-span-0"] == earlier["cases"][2]
+    assert by_name["power-on-startup"] == earlier["cases"][1]
+    assert by_name["tx-dummy-load"]["confirmed"] is True
+    assert by_name["usb-replug"]["file"] == "usb-replug.raw"
+    assert manifest["mode"] == "mixed"
+    assert manifest["firmware"] == "unknown"
+    assert manifest["original_scope"] == earlier["original_scope"]
+    assert manifest["vfo_a_hz"] == 7_074_000
+
+
+def test_rerun_keeps_new_firmware_and_mode(tmp_path: Path) -> None:
+    _session(tmp_path, ("center-span-0",), ["", "y"], firmware="FW 1.0")
+    _session(tmp_path, ("cursor-mode",), ["", "y"], firmware="FW 1.1")
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert [c["name"] for c in manifest["cases"]] == ["center-span-0", "cursor-mode"]
+    assert manifest["firmware"] == "FW 1.1"
+    assert manifest["mode"] == "interactive"
+
+
+def test_rerun_of_the_same_cases_replaces_them(tmp_path: Path) -> None:
+    _session(tmp_path, ("center-span-0",), ["", "n"], firmware="FW 1.0")
+    _session(tmp_path, ("center-span-0",), ["", "y"], firmware="FW 1.0")
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["cases"]) == 1
+    assert manifest["cases"][0]["confirmed"] is True
+
+
+def test_manifest_from_another_parser_is_replaced(tmp_path: Path) -> None:
+    stale: dict[str, Any] = {"validated_against": "0" * 40, "radio": "FT-710", "dry_run": False}
+    stale["cases"] = [{"name": "center-span-0", "file": "center-span-0.raw"}]
+    (tmp_path / "manifest.json").write_text(json.dumps(stale), encoding="utf-8")
+    said: list[str] = []
+    cg._write_manifest(
+        tmp_path,
+        {"validated_against": "1" * 40, "radio": "FT-710", "dry_run": False, "cases": []},
+        said.append,
+    )
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["cases"] == []
+    assert any("replaced" in s for s in said)

@@ -27,7 +27,9 @@ dev dependency group ``hardware`` (pyserial): ``uv sync --group hardware``.
 Dry run of the unattended flow: ``--auto --dry-run``.
 
 Captures are written to tests/fixtures/golden/ (each under 256 KiB) with a
-manifest.json; commit them in a PR for #36.
+manifest.json; commit them in a PR for #36. A later run (for example with
+``--only``) keeps the earlier cases it didn't record, as long as the parser
+(``radios/yaesu_scope.py``) hasn't changed in between.
 """
 
 from __future__ import annotations
@@ -292,8 +294,41 @@ def run_session(  # noqa: PLR0913 - collaborators injected for tests and dry run
 
 
 def _write_manifest(out_dir: Path, manifest: dict[str, Any], say: Callable[[str], object]) -> None:
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    path = out_dir / "manifest.json"
+    if path.exists():
+        _merge_previous(json.loads(path.read_text(encoding="utf-8")), manifest, say)
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     say(f"\nWrote {len(manifest['cases'])} cases and manifest.json to {out_dir}")
+
+
+def _merge_previous(
+    previous: dict[str, Any], manifest: dict[str, Any], say: Callable[[str], object]
+) -> None:
+    """Keep the cases of an earlier session that this one didn't record (``--only``)
+    or skipped.
+
+    Only when both sessions used the same parser, radio and dry-run setting:
+    otherwise the earlier captures no longer validate anything and are dropped."""
+    same = all(previous.get(k) == manifest[k] for k in ("validated_against", "radio", "dry_run"))
+    if not same:
+        say("  The earlier manifest.json is from another parser, radio or dry run: replaced.")
+        return
+    recorded = {c["name"] for c in manifest["cases"] if not c.get("skipped")}
+    kept = [c for c in previous.get("cases", []) if c.get("name") not in recorded]
+    if not kept:
+        return
+    kept_names = {c.get("name") for c in kept}  # a case skipped now keeps its earlier result
+    fresh = [c for c in manifest["cases"] if c["name"] not in kept_names]
+    order = {c.name: i for i, c in enumerate(CASES)}
+    manifest["cases"] = sorted(kept + fresh, key=lambda c: order.get(c.get("name", ""), len(order)))
+    if manifest["firmware"] == "unknown":
+        manifest["firmware"] = previous.get("firmware", "unknown")
+    if previous.get("mode") != manifest["mode"]:
+        manifest["mode"] = "mixed"
+    for key in ("original_scope", "vfo_a_hz"):
+        if key in previous and key not in manifest:
+            manifest[key] = previous[key]
+    say(f"  Kept {len(kept)} earlier cases from manifest.json.")
 
 
 def _auto_case(
