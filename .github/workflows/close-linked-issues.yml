@@ -28,8 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read # check out the base branch for the script
-      pull-requests: read # read the merged PR (state, base, body)
-      issues: write # close the issues and comment
+      pull-requests: read # read the merged PR (state, base, author, body, last edit)
+      issues: write # read issues and timelines, close them and comment
     steps:
       # Base branch only. Never check out or run the PR head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
