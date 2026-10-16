@@ -6,12 +6,16 @@ Every PR into `dev` must close at least one issue, and each linked issue must
 carry the `plan-approved` label and have an assignee. Release PRs
 (head `dev` -> base `master`) are exempt.
 
-Bots get two extra rules (#224), so an app with write access (the Claude Code
-Action pilot) can neither approve its own plan nor merge its own PR:
-- a `plan-approved` label added by a bot does not count, except one added by
-  github-actions[bot] (the Copilot Autofix conformance workflow, #83);
-- a PR opened by a bot needs an approving review from a maintainer on its
-  current head commit. Approving does not re-run this check: re-run it.
+Two extra rules (#224) stop an app with write access (the Claude Code Action
+pilot) from approving its own plan or merging its own work:
+- `plan-approved` counts only when its latest `labeled` event came from a
+  person or from github-actions[bot] (the Copilot Autofix conformance
+  workflow, #83). Another bot, or no such event, fails;
+- an automated PR (author not reported as a person, or any commit with a bot
+  as GitHub author or committer) needs an approving review from a maintainer
+  on its current head commit. Approving does not re-run this check: re-run it.
+Every decision uses data fetched from the GitHub API for this repository, and
+every missing field or API error fails the check.
 
 Runs in CI with GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH set.
 The PR is re-read through the API (by number, from the event or from the
@@ -40,6 +44,7 @@ TRUSTED_LABEL_BOTS = ("github-actions[bot]",)
 """Bots allowed to add `plan-approved` (Copilot Autofix conformance, #83)."""
 VERDICTS = ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")
 """Review states that set a reviewer's verdict (COMMENTED does not)."""
+UNKNOWN_ACTOR = "an unknown account"
 
 
 @dataclass(frozen=True)
@@ -47,8 +52,8 @@ class IssueInfo:
     labels: tuple[str, ...]
     assignees: tuple[str, ...]
     is_pull_request: bool = False
-    approved_by_bot: str | None = None
-    """The untrusted bot that added `plan-approved`, if one did."""
+    untrusted_approver: str | None = None
+    """Who added `plan-approved`, when that isn't a person or a trusted bot."""
 
 
 @dataclass(frozen=True)
@@ -70,9 +75,17 @@ def is_release_pr(pr: Mapping[str, Any] | None) -> bool:
     """True for release PRs, which promote `dev` to `master` and close no issue."""
     if not pr:
         return False
-    return bool(
-        pr.get("base", {}).get("ref") == "master" and pr.get("head", {}).get("ref") == "dev"
-    )
+    base = pr.get("base") or {}
+    head = pr.get("head") or {}
+    if base.get("ref") != "master" or head.get("ref") != "dev":
+        return False
+    if "repo" not in base and "repo" not in head:
+        # `gh pr view` shape (ready_to_merge.py), which has no repo fields.
+        return True
+    # API shape: a fork's branch named `dev` (or a deleted fork) is not a release PR.
+    base_repo = (base.get("repo") or {}).get("full_name")
+    head_repo = (head.get("repo") or {}).get("full_name")
+    return bool(base_repo) and head_repo == base_repo
 
 
 def policy_problems(numbers: Sequence[int], issues: Mapping[int, IssueInfo | None]) -> list[str]:
@@ -90,9 +103,9 @@ def policy_problems(numbers: Sequence[int], issues: Mapping[int, IssueInfo | Non
             continue
         if APPROVED_LABEL not in issue.labels:
             problems.append(f"#{n} does not have the `{APPROVED_LABEL}` label.")
-        elif issue.approved_by_bot:
+        elif issue.untrusted_approver:
             problems.append(
-                f"#{n}: `{APPROVED_LABEL}` was added by '{issue.approved_by_bot}'. "
+                f"#{n}: `{APPROVED_LABEL}` was added by '{issue.untrusted_approver}'. "
                 "Only the maintainer approves plans."
             )
         if not issue.assignees:
@@ -102,26 +115,50 @@ def policy_problems(numbers: Sequence[int], issues: Mapping[int, IssueInfo | Non
     return problems
 
 
-def bot_label_actor(events: Sequence[Mapping[str, Any]]) -> str | None:
-    """The untrusted bot that last added `plan-approved`, or None.
+def untrusted_label_actor(events: Sequence[Mapping[str, Any]]) -> str | None:
+    """Who last added `plan-approved`, when that isn't trusted; None when it is.
 
     `events` is the issue's event list, oldest first. Only the most recent
-    `labeled` event for the label counts.
+    `labeled` event for the label counts. A person (`User`) or a trusted bot
+    is trusted. Anything else fails closed: another bot, a missing actor, or
+    no `labeled` event at all (returned as UNKNOWN_ACTOR).
     """
-    actor: Mapping[str, Any] | None = None
+    found = False
+    actor: Mapping[str, Any] = {}
     for event in events:
         label = event.get("label") or {}
-        if event.get("event") == "labeled" and label.get("name") == APPROVED_LABEL:
+        name = str(label.get("name") or "").lower()
+        if event.get("event") == "labeled" and name == APPROVED_LABEL:
+            found = True
             actor = event.get("actor") or {}
-    if actor is None or actor.get("type") != "Bot":
+    login = str(actor.get("login") or "")
+    if not found or not login:
+        return UNKNOWN_ACTOR
+    if actor.get("type") == "User" or (actor.get("type") == "Bot" and login in TRUSTED_LABEL_BOTS):
         return None
-    login = str(actor.get("login", ""))
-    return None if login in TRUSTED_LABEL_BOTS else login
+    return login
 
 
-def is_bot_pr(pr: Mapping[str, Any]) -> bool:
-    """True when a GitHub App or bot account opened the PR."""
-    return bool((pr.get("user") or {}).get("type") == "Bot")
+def automation_reason(
+    pr: Mapping[str, Any], commits: Sequence[Mapping[str, Any]] = ()
+) -> str | None:
+    """Why the PR counts as automated (and needs a maintainer's approval), or None.
+
+    A PR is automated when GitHub does not report a person (`User`) as its
+    author, or when any of its commits has a bot as GitHub author or
+    committer, for example the Claude Code Action pushing to a person's PR.
+    A missing author fails closed.
+    """
+    user = pr.get("user") or {}
+    login = str(user.get("login") or "")
+    if user.get("type") != "User" or not login:
+        return f"PR by '{login or UNKNOWN_ACTOR}'"
+    for commit in commits:
+        for role in ("author", "committer"):
+            who = commit.get(role) or {}
+            if who.get("type") == "Bot":
+                return f"PR with commits by '{who.get('login') or UNKNOWN_ACTOR}'"
+    return None
 
 
 def parse_reviews(data: Sequence[Mapping[str, Any]]) -> list[Review]:
@@ -135,27 +172,37 @@ def parse_reviews(data: Sequence[Mapping[str, Any]]) -> list[Review]:
     ]
 
 
-def bot_pr_problems(pr: Mapping[str, Any], reviews: Sequence[Review]) -> list[str]:
-    """For a bot's PR, require a maintainer's approval of the current head commit.
+def bot_pr_problems(
+    pr: Mapping[str, Any],
+    reviews: Sequence[Review],
+    commits: Sequence[Mapping[str, Any]] = (),
+) -> list[str]:
+    """For an automated PR, require a maintainer's approval of the current head commit.
 
     `reviews` are oldest first. A maintainer's latest approving, rejecting, or
     dismissed review is their verdict. Plain comments do not change it.
     """
-    if not is_bot_pr(pr):
+    reason = automation_reason(pr, commits)
+    if reason is None:
         return []
-    head = str((pr.get("head") or {}).get("sha", ""))
+    head = str((pr.get("head") or {}).get("sha") or "")
     verdict: dict[str, Review] = {}
     for review in reviews:
         if review.user in MAINTAINERS and review.state in VERDICTS:
             verdict[review.user] = review
     if head and any(r.state == "APPROVED" and r.commit_id == head for r in verdict.values()):
         return []
-    login = (pr.get("user") or {}).get("login", "a bot")
     owners = ", ".join(f"@{m}" for m in MAINTAINERS)
     return [
-        f"PR by '{login}' needs an approving review from {owners} on its current head "
+        f"{reason} needs an approving review from {owners} on its current head "
         f"({head[:7]}). Approve it, then re-run this check."
     ]
+
+
+def issue_in_repo(data: Mapping[str, Any], repo: str) -> bool:
+    """True when the API's issue belongs to `repo` (a transferred issue redirects elsewhere)."""
+    url = str(data.get("repository_url") or "").lower()
+    return url == f"https://api.github.com/repos/{repo}".lower()
 
 
 def parse_issue(data: Mapping[str, Any]) -> IssueInfo:
@@ -174,11 +221,14 @@ def fetch_issue(repo: str, number: int, token: str) -> IssueInfo | None:  # prag
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return parse_issue(json.load(resp))
+            data = json.load(resp)
     except urllib.error.HTTPError as err:
         if err.code == 404:
             return None
         raise RuntimeError(f"GitHub API returned {err.code} for issue #{number}") from err
+    if not issue_in_repo(data, repo):
+        return None
+    return parse_issue(data)
 
 
 def _get_all(url: str, token: str) -> list[dict[str, Any]]:  # pragma: no cover
@@ -190,25 +240,33 @@ def _get_all(url: str, token: str) -> list[dict[str, Any]]:  # pragma: no cover
             headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
-            batch: list[dict[str, Any]] = json.load(resp)
+            batch = json.load(resp)
+        if not isinstance(batch, list):
+            raise RuntimeError(f"GitHub API returned no list for {url}")
         items.extend(batch)
         if len(batch) < 100:
-            break
-    return items
+            return items
+    raise RuntimeError(f"Too many items at {url} to check")
 
 
 def fetch_checked_issue(repo: str, number: int, token: str) -> IssueInfo | None:  # pragma: no cover
-    """The issue, plus which bot (if any) added its `plan-approved` label."""
+    """The issue, plus who added its `plan-approved` label when that isn't trusted."""
     info = fetch_issue(repo, number, token)
     if info is None or APPROVED_LABEL not in info.labels:
         return info
     events = _get_all(f"https://api.github.com/repos/{repo}/issues/{number}/events", token)
-    return replace(info, approved_by_bot=bot_label_actor(events))
+    return replace(info, untrusted_approver=untrusted_label_actor(events))
 
 
 def fetch_pr_reviews(repo: str, number: int, token: str) -> list[Review]:  # pragma: no cover
     url = f"https://api.github.com/repos/{repo}/pulls/{number}/reviews"
     return parse_reviews(_get_all(url, token))
+
+
+def fetch_pr_commits(  # pragma: no cover
+    repo: str, number: int, token: str
+) -> list[dict[str, Any]]:
+    return _get_all(f"https://api.github.com/repos/{repo}/pulls/{number}/commits", token)
 
 
 def fetch_pr(repo: str, number: int, token: str) -> dict[str, Any]:  # pragma: no cover
@@ -242,6 +300,7 @@ def run(
     fetch_pull: Callable[[int], Mapping[str, Any]] | None = None,
     pr_number: int | None = None,
     fetch_reviews: Callable[[int], Sequence[Review]] | None = None,
+    fetch_commits: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
 ) -> int:
     pr = current_pr(event, pr_number, fetch_pull)
     if pr is None:
@@ -253,10 +312,12 @@ def run(
     numbers = linked_issues((pr or {}).get("body"))
     issues = {n: fetch(n) for n in numbers}
     problems = policy_problems(numbers, issues)
-    if is_bot_pr(pr):
-        number = pr.get("number")
+    number = pr.get("number")
+    commits = fetch_commits(int(number)) if fetch_commits and number else ()
+    if automation_reason(pr, commits):
+        # No reviews to read (no number or no fetcher) fails closed.
         reviews = fetch_reviews(int(number)) if fetch_reviews and number else []
-        problems += bot_pr_problems(pr, reviews)
+        problems += bot_pr_problems(pr, reviews, commits)
     if problems:
         for p in problems:
             out(f"::error::{p}")
@@ -278,6 +339,7 @@ def main() -> int:  # pragma: no cover
             fetch_pull=lambda n: fetch_pr(repo, n, token),
             pr_number=pr_number,
             fetch_reviews=lambda n: fetch_pr_reviews(repo, n, token),
+            fetch_commits=lambda n: fetch_pr_commits(repo, n, token),
         )
     except Exception as exc:
         print(f"::error::{exc}")

@@ -11,9 +11,10 @@
 # push a commit, or re-run the job after fixing the issue. The script re-reads
 # the PR through the API, so a re-run sees the current body.
 #
-# Bot PRs (#224, for example the Claude Code Action pilot) also need an
-# approving review from @Reid-n0rc on the current head, and a `plan-approved`
-# label added by a bot other than github-actions[bot] does not count. Approving
+# Automated PRs (#224: a bot author, or a commit by a bot, for example the
+# Claude Code Action pilot) also need an approving review from @Reid-n0rc on
+# the current head, and `plan-approved` counts only when a person or
+# github-actions[bot] added it last. Missing data fails the check. Approving
 # the PR does not re-run this check either: re-run the job. There is
 # deliberately no pull_request_review trigger, because that event runs the
 # workflow file from the PR, which would let a PR rewrite the check it is

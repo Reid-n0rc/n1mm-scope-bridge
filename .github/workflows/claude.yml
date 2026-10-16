@@ -3,9 +3,11 @@
 # Triggers, all gated on the maintainer (Reid-n0rc) in the job `if:`:
 # - the `agent-go` label on an issue that already has `plan-approved` and
 #   `lane:site` and is assigned;
-# - an `@claude` comment on such an issue, or on a same-repo pull request.
+# - an `@claude` comment on such an issue, or on one of the agent's own
+#   same-repo pull requests (opened by claude[bot]).
 # Anyone else's label or mention is ignored. There is no pull_request_target
-# trigger, and fork pull requests are refused before Claude starts.
+# trigger, and fork pull requests are refused. A first step re-reads the
+# issue or PR, so the trigger conditions must still hold when the job runs.
 #
 # issues and issue_comment workflows run from the default branch (`master`),
 # so this file only takes effect after a release PR carries it there.
@@ -18,9 +20,10 @@
 #   pushes trigger CI, unlike GITHUB_TOKEN pushes.
 # - Merging and plan approval are blocked outside this workflow, whatever the
 #   token can do: the dev and master rulesets require checks posted by GitHub
-#   Actions, the Issue policy check fails a bot-authored PR until @Reid-n0rc
-#   approves its current head, and it ignores a `plan-approved` label that a
-#   bot other than github-actions[bot] added. Releases wait for the `release`
+#   Actions, the Issue policy check fails a PR authored by or containing
+#   commits by a bot until @Reid-n0rc approves its current head, and it
+#   ignores a `plan-approved` label that a bot other than github-actions[bot]
+#   added. Releases wait for the `release`
 #   environment's required reviewer (#233), which an app cannot be.
 # - Claude's tools are an allowlist, plus the repo's .claude/settings.json deny
 #   rules and push guard hook, which the action restores from the base branch.
@@ -45,24 +48,40 @@ concurrency:
 jobs:
   claude:
     name: Claude agent
+    # Exact equality on GitHub-set fields only (logins, types, label names).
+    # The comment body is only searched for the trigger phrase, and only on
+    # `created` events by the maintainer. PR comments work only on the
+    # agent's own same-repo PRs (author claude[bot]), so it never pushes to a
+    # person's PR, which the Issue policy would not hold for approval.
     if: >-
       (github.event_name == 'issues'
+        && github.event.action == 'labeled'
         && github.event.label.name == 'agent-go'
         && github.event.sender.login == 'Reid-n0rc'
+        && github.event.sender.type == 'User'
+        && !github.event.issue.pull_request
         && contains(github.event.issue.labels.*.name, 'plan-approved')
         && contains(github.event.issue.labels.*.name, 'lane:site')
         && github.event.issue.assignee)
       || (github.event_name == 'issue_comment'
+        && github.event.action == 'created'
         && github.event.comment.user.login == 'Reid-n0rc'
+        && github.event.comment.user.type == 'User'
         && github.event.comment.author_association == 'OWNER'
         && contains(github.event.comment.body, '@claude')
-        && (github.event.issue.pull_request
-          || (contains(github.event.issue.labels.*.name, 'plan-approved')
-            && contains(github.event.issue.labels.*.name, 'lane:site'))))
+        && ((github.event.issue.pull_request
+            && github.event.issue.user.login == 'claude[bot]')
+          || (!github.event.issue.pull_request
+            && contains(github.event.issue.labels.*.name, 'plan-approved')
+            && contains(github.event.issue.labels.*.name, 'lane:site')
+            && github.event.issue.assignee)))
       || (github.event_name == 'pull_request_review_comment'
+        && github.event.action == 'created'
         && github.event.comment.user.login == 'Reid-n0rc'
+        && github.event.comment.user.type == 'User'
         && github.event.comment.author_association == 'OWNER'
         && contains(github.event.comment.body, '@claude')
+        && github.event.pull_request.user.login == 'claude[bot]'
         && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -72,16 +91,33 @@ jobs:
       pull-requests: read
       id-token: write
     steps:
-      - name: Refuse fork pull requests
-        if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+      # Event payloads are a snapshot from trigger time. Re-read the issue or
+      # PR now, so removing a label (or a fork PR) stops the run.
+      - name: Re-check the trigger at run time
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          IS_PR: ${{ github.event_name == 'pull_request_review_comment' || (github.event.issue.pull_request && 'true') || 'false' }}
         run: |
-          fork="$(gh pr view "$PR" -R "$REPO" --json isCrossRepository --jq .isCrossRepository)"
-          if [ "$fork" != "false" ]; then
-            echo "::error::#$PR is a fork pull request; the Claude agent never runs fork code."
+          set -euo pipefail
+          if [ "$IS_PR" = "true" ]; then
+            ok="$(gh api "repos/$REPO/pulls/$NUMBER" | jq -r --arg repo "$REPO" \
+              '.state == "open" and .user.login == "claude[bot]" and .user.type == "Bot"
+                and .head.repo.full_name == $repo')"
+            what="an open, same-repo PR opened by claude[bot]"
+          else
+            need='["plan-approved","lane:site"]'
+            if [ "$EVENT" = "issues" ]; then need='["plan-approved","lane:site","agent-go"]'; fi
+            ok="$(gh api "repos/$REPO/issues/$NUMBER" | jq -r --argjson need "$need" \
+              '[.labels[].name] as $have
+                | ($need | all(. as $l | any($have[]; . == $l)))
+                  and (.assignees | length > 0) and .state == "open" and .pull_request == null')"
+            what="an open, assigned issue labeled $need"
+          fi
+          if [ "$ok" != "true" ]; then
+            echo "::error::#$NUMBER is no longer $what. Not running the Claude agent."
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
