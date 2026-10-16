@@ -7,10 +7,15 @@ from typing import Any
 import pytest
 from check_issue_policy import (
     IssueInfo,
+    Review,
+    bot_label_actor,
+    bot_pr_problems,
     current_pr,
+    is_bot_pr,
     is_release_pr,
     linked_issues,
     parse_issue,
+    parse_reviews,
     policy_problems,
     run,
 )
@@ -144,3 +149,125 @@ def test_run_without_any_pr_fails() -> None:
     out: list[str] = []
     assert run({}, lambda n: OK, out.append) == 1
     assert "PR_NUMBER" in out[0]
+
+
+# --- bots (#224): no self-approved plans, no merge without the maintainer -------------
+
+HEAD = "abc1234def"
+BOT_PR = {
+    "number": 9,
+    "body": "Closes #1",
+    "user": {"login": "claude[bot]", "type": "Bot"},
+    "base": {"ref": "dev"},
+    "head": {"ref": "issue-1-x", "sha": HEAD},
+}
+
+
+def _labeled(login: str, kind: str, label: str = "plan-approved") -> dict[str, Any]:
+    return {"event": "labeled", "label": {"name": label}, "actor": {"login": login, "type": kind}}
+
+
+@pytest.mark.parametrize(
+    ("events", "expected"),
+    [
+        ([_labeled("Reid-n0rc", "User")], None),
+        ([_labeled("claude[bot]", "Bot")], "claude[bot]"),
+        ([_labeled("github-actions[bot]", "Bot")], None),
+        ([_labeled("claude[bot]", "Bot"), _labeled("Reid-n0rc", "User")], None),
+        ([_labeled("Reid-n0rc", "User"), _labeled("claude[bot]", "Bot")], "claude[bot]"),
+        ([_labeled("claude[bot]", "Bot", label="lane:site")], None),
+        ([{"event": "assigned", "actor": {"login": "x[bot]", "type": "Bot"}}], None),
+        ([{"event": "labeled", "label": None, "actor": None}], None),
+        ([], None),
+    ],
+    ids=[
+        "maintainer",
+        "untrusted-bot",
+        "autofix-conform-bot",
+        "bot-then-maintainer",
+        "maintainer-then-bot",
+        "other-label",
+        "other-event",
+        "missing-fields",
+        "no-events",
+    ],
+)
+def test_bot_label_actor(events: list[dict[str, Any]], expected: str | None) -> None:
+    assert bot_label_actor(events) == expected
+
+
+def test_policy_rejects_plan_approved_by_a_bot() -> None:
+    issue = IssueInfo(("plan-approved",), ("Reid-n0rc",), approved_by_bot="claude[bot]")
+    assert policy_problems([1], {1: issue}) == [
+        "#1: `plan-approved` was added by 'claude[bot]'. Only the maintainer approves plans."
+    ]
+
+
+def test_parse_reviews() -> None:
+    data: list[dict[str, Any]] = [
+        {"user": {"login": "a"}, "state": "APPROVED", "commit_id": "c"},
+        {"user": None},
+    ]
+    assert parse_reviews(data) == [Review("a", "APPROVED", "c"), Review("", "", "")]
+
+
+def test_human_pr_needs_no_review() -> None:
+    human = {**BOT_PR, "user": {"login": "Reid-n0rc", "type": "User"}}
+    assert not is_bot_pr(human)
+    assert not is_bot_pr({})
+    assert bot_pr_problems(human, []) == []
+
+
+@pytest.mark.parametrize(
+    ("reviews", "ok"),
+    [
+        ([], False),
+        ([Review("Reid-n0rc", "APPROVED", HEAD)], True),
+        ([Review("Reid-n0rc", "APPROVED", "stale00")], False),
+        ([Review("someone", "APPROVED", HEAD)], False),
+        ([Review("Reid-n0rc", "APPROVED", HEAD), Review("Reid-n0rc", "COMMENTED", HEAD)], True),
+        ([Review("Reid-n0rc", "APPROVED", HEAD), Review("Reid-n0rc", "DISMISSED", HEAD)], False),
+        (
+            [Review("Reid-n0rc", "CHANGES_REQUESTED", HEAD), Review("Reid-n0rc", "APPROVED", HEAD)],
+            True,
+        ),
+    ],
+    ids=[
+        "no-review",
+        "approved-head",
+        "approved-stale-commit",
+        "non-codeowner",
+        "comment-after-approval",
+        "dismissed",
+        "approved-after-changes",
+    ],
+)
+def test_bot_pr_needs_maintainer_approval_on_head(reviews: list[Review], ok: bool) -> None:
+    problems = bot_pr_problems(BOT_PR, reviews)
+    assert (problems == []) is ok
+    if not ok:
+        assert problems[0].startswith("PR by 'claude[bot]' needs an approving review")
+        assert "(abc1234)" in problems[0]
+
+
+def test_bot_pr_without_head_sha_fails() -> None:
+    pr = {**BOT_PR, "head": {}}
+    assert bot_pr_problems(pr, [Review("Reid-n0rc", "APPROVED", "")]) != []
+
+
+def test_run_bot_pr_checks_reviews() -> None:
+    out: list[str] = []
+    seen: list[int] = []
+
+    def reviews(n: int) -> list[Review]:
+        seen.append(n)
+        return [Review("Reid-n0rc", "APPROVED", HEAD)]
+
+    event = {"pull_request": BOT_PR}
+    assert run(event, lambda n: OK, out.append, fetch_reviews=reviews) == 0
+    assert seen == [9]
+    out.clear()
+    assert run(event, lambda n: OK, out.append, fetch_reviews=lambda n: []) == 1
+    assert "approving review" in out[0]
+    out.clear()
+    assert run(event, lambda n: OK, out.append) == 1
