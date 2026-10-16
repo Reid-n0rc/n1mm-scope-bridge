@@ -430,7 +430,7 @@ class MainWindow(QMainWindow):
             cards["mode"].value.setText(short_mode(s.mode_name))
             cards["mode"].detail.setText(s.mode_name)
             if s.edges_verified:
-                cards["mode"].show_chip("✓ Exact frequencies", "success")
+                cards["mode"].show_chip("Exact frequencies", "success")
             else:
                 cards["mode"].show_chip("Switch the radio to Center", "warning")
         target = f"{self._settings.n1mm_host}:{self._settings.n1mm_port}"
@@ -623,7 +623,7 @@ class MainWindow(QMainWindow):
     def show_problems(self, problems: dict[str, str]) -> None:
         for key, label in self._errors.items():
             message = problems.get(key, "")
-            label.setText(f"⚠ {message}" if message else "")
+            label.setText(message)
             label.setVisible(bool(message))
 
     def open_settings(self, page: str | None = None) -> SettingsDialog:
