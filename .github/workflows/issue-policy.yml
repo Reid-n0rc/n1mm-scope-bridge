@@ -11,7 +11,7 @@
 # push a commit, or re-run the job after fixing the issue. The script re-reads
 # the PR through the API, so a re-run sees the current body.
 #
-# Automated PRs (#224: a bot author, or a commit by a bot, for example the
+# Automated PRs (#224: an author that is not a person, for example the
 # Claude Code Action pilot) also need an approving review from @Reid-n0rc on
 # the current head, and `plan-approved` counts only when a person or
 # github-actions[bot] added it last. Missing data fails the check. Approving

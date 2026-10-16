@@ -11,9 +11,11 @@ pilot) from approving its own plan or merging its own work:
 - `plan-approved` counts only when its latest `labeled` event came from a
   person or from github-actions[bot] (the Copilot Autofix conformance
   workflow, #83). Another bot, or no such event, fails;
-- an automated PR (author not reported as a person, or any commit with a bot
-  as GitHub author or committer) needs an approving review from a maintainer
-  on its current head commit. Approving does not re-run this check: re-run it.
+- a PR whose author GitHub does not report as a person (`user.type` is not
+  `User`, or the login is missing) needs an approving review from a
+  maintainer on its current head commit. Approving does not re-run this
+  check: re-run it. Commit authors are not used: git metadata is
+  self-asserted, so it can't prove who pushed.
 Every decision uses data fetched from the GitHub API for this repository, and
 every missing field or API error fails the check.
 
@@ -139,25 +141,16 @@ def untrusted_label_actor(events: Sequence[Mapping[str, Any]]) -> str | None:
     return login
 
 
-def automation_reason(
-    pr: Mapping[str, Any], commits: Sequence[Mapping[str, Any]] = ()
-) -> str | None:
+def automation_reason(pr: Mapping[str, Any]) -> str | None:
     """Why the PR counts as automated (and needs a maintainer's approval), or None.
 
     A PR is automated when GitHub does not report a person (`User`) as its
-    author, or when any of its commits has a bot as GitHub author or
-    committer, for example the Claude Code Action pushing to a person's PR.
-    A missing author fails closed.
+    author. A missing author or login fails closed.
     """
     user = pr.get("user") or {}
     login = str(user.get("login") or "")
     if user.get("type") != "User" or not login:
         return f"PR by '{login or UNKNOWN_ACTOR}'"
-    for commit in commits:
-        for role in ("author", "committer"):
-            who = commit.get(role) or {}
-            if who.get("type") == "Bot":
-                return f"PR with commits by '{who.get('login') or UNKNOWN_ACTOR}'"
     return None
 
 
@@ -175,14 +168,13 @@ def parse_reviews(data: Sequence[Mapping[str, Any]]) -> list[Review]:
 def bot_pr_problems(
     pr: Mapping[str, Any],
     reviews: Sequence[Review],
-    commits: Sequence[Mapping[str, Any]] = (),
 ) -> list[str]:
     """For an automated PR, require a maintainer's approval of the current head commit.
 
     `reviews` are oldest first. A maintainer's latest approving, rejecting, or
     dismissed review is their verdict. Plain comments do not change it.
     """
-    reason = automation_reason(pr, commits)
+    reason = automation_reason(pr)
     if reason is None:
         return []
     head = str((pr.get("head") or {}).get("sha") or "")
@@ -201,8 +193,7 @@ def bot_pr_problems(
 
 def issue_in_repo(data: Mapping[str, Any], repo: str) -> bool:
     """True when the API's issue belongs to `repo` (a transferred issue redirects elsewhere)."""
-    url = str(data.get("repository_url") or "").lower()
-    return url == f"https://api.github.com/repos/{repo}".lower()
+    return data.get("repository_url") == f"https://api.github.com/repos/{repo}"
 
 
 def parse_issue(data: Mapping[str, Any]) -> IssueInfo:
@@ -263,12 +254,6 @@ def fetch_pr_reviews(repo: str, number: int, token: str) -> list[Review]:  # pra
     return parse_reviews(_get_all(url, token))
 
 
-def fetch_pr_commits(  # pragma: no cover
-    repo: str, number: int, token: str
-) -> list[dict[str, Any]]:
-    return _get_all(f"https://api.github.com/repos/{repo}/pulls/{number}/commits", token)
-
-
 def fetch_pr(repo: str, number: int, token: str) -> dict[str, Any]:  # pragma: no cover
     req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}/pulls/{number}",
@@ -300,7 +285,6 @@ def run(
     fetch_pull: Callable[[int], Mapping[str, Any]] | None = None,
     pr_number: int | None = None,
     fetch_reviews: Callable[[int], Sequence[Review]] | None = None,
-    fetch_commits: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
 ) -> int:
     pr = current_pr(event, pr_number, fetch_pull)
     if pr is None:
@@ -313,11 +297,10 @@ def run(
     issues = {n: fetch(n) for n in numbers}
     problems = policy_problems(numbers, issues)
     number = pr.get("number")
-    commits = fetch_commits(int(number)) if fetch_commits and number else ()
-    if automation_reason(pr, commits):
+    if automation_reason(pr):
         # No reviews to read (no number or no fetcher) fails closed.
         reviews = fetch_reviews(int(number)) if fetch_reviews and number else []
-        problems += bot_pr_problems(pr, reviews, commits)
+        problems += bot_pr_problems(pr, reviews)
     if problems:
         for p in problems:
             out(f"::error::{p}")
@@ -339,7 +322,6 @@ def main() -> int:  # pragma: no cover
             fetch_pull=lambda n: fetch_pr(repo, n, token),
             pr_number=pr_number,
             fetch_reviews=lambda n: fetch_pr_reviews(repo, n, token),
-            fetch_commits=lambda n: fetch_pr_commits(repo, n, token),
         )
     except Exception as exc:
         print(f"::error::{exc}")

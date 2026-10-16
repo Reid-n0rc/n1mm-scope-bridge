@@ -358,10 +358,10 @@ maintainer only:
 - **What it does:** follows this file: branches `issue-<n>-<slug>` from `dev`,
   adds a `changelog.d/` fragment, runs the regression, opens a PR into `dev`
   with `Closes #<n>`, and stops.
-- **It never merges.** The Issue policy check fails any automated PR (a bot
-  author, or any commit with a bot as GitHub author or committer) until
-  @Reid-n0rc approves the current head; then re-run that check and
-  auto-merge proceeds. `plan-approved` counts only when a person or
+- **It never merges.** The Issue policy check fails any PR whose author
+  GitHub doesn't report as a person (the action, Dependabot, Copilot
+  Autofix) until @Reid-n0rc approves the current head; then re-run that
+  check and auto-merge proceeds. `plan-approved` counts only when a person or
   github-actions[bot] added it last.
 - **Stop it:** remove the label, or `gh workflow disable claude.yml`.
 

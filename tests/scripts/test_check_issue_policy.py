@@ -182,8 +182,6 @@ BOT_PR = {
     "head": {"ref": "issue-1-x", "sha": HEAD},
 }
 HUMAN_PR = {**BOT_PR, "user": PERSON}
-BOT_COMMIT = {"author": {"login": "claude[bot]", "type": "Bot"}, "committer": None}
-HUMAN_COMMIT = {"author": PERSON, "committer": {"login": "web-flow", "type": "User"}}
 
 
 def _labeled(login: str | None, kind: str | None, label: str = "plan-approved") -> dict[str, Any]:
@@ -241,7 +239,7 @@ def test_policy_rejects_plan_approved_by_a_bot() -> None:
     ("url", "ok"),
     [
         ("https://api.github.com/repos/Reid-n0rc/n1mm-scope-bridge", True),
-        ("https://api.github.com/repos/reid-n0rc/N1MM-scope-bridge", True),
+        ("https://api.github.com/repos/reid-n0rc/N1MM-scope-bridge", False),
         ("https://api.github.com/repos/someone/other", False),
         ("https://api.github.com/repos/Reid-n0rc/n1mm-scope-bridge-fork", False),
         (None, False),
@@ -261,38 +259,57 @@ def test_parse_reviews() -> None:
 
 
 @pytest.mark.parametrize(
-    ("pr", "commits", "expected"),
+    ("pr", "expected"),
     [
-        (HUMAN_PR, [], None),
-        (HUMAN_PR, [HUMAN_COMMIT, {"author": None, "committer": None}], None),
-        (BOT_PR, [], "PR by 'claude[bot]'"),
-        (HUMAN_PR, [HUMAN_COMMIT, BOT_COMMIT], "PR with commits by 'claude[bot]'"),
+        (HUMAN_PR, None),
+        (BOT_PR, "PR by 'claude[bot]'"),
         (
-            HUMAN_PR,
-            [{"author": PERSON, "committer": {"type": "Bot"}}],
-            f"PR with commits by '{UNKNOWN}'",
+            {**HUMAN_PR, "user": {"login": "dependabot[bot]", "type": "Bot"}},
+            "PR by 'dependabot[bot]'",
         ),
-        ({**HUMAN_PR, "user": None}, [], f"PR by '{UNKNOWN}'"),
-        ({**HUMAN_PR, "user": {"login": "Reid-n0rc"}}, [], "PR by 'Reid-n0rc'"),
-        ({**HUMAN_PR, "user": {"type": "User"}}, [], f"PR by '{UNKNOWN}'"),
-        ({}, [], f"PR by '{UNKNOWN}'"),
+        ({**HUMAN_PR, "user": {"login": "Reid-n0rc", "type": "user"}}, "PR by 'Reid-n0rc'"),
+        ({**HUMAN_PR, "user": {"login": "Reid-n0rc", "type": "Organization"}}, "PR by 'Reid-n0rc'"),
+        ({**HUMAN_PR, "user": None}, f"PR by '{UNKNOWN}'"),
+        ({**HUMAN_PR, "user": {"login": "Reid-n0rc"}}, "PR by 'Reid-n0rc'"),
+        ({**HUMAN_PR, "user": {"type": "User"}}, f"PR by '{UNKNOWN}'"),
+        ({**HUMAN_PR, "user": {"login": "", "type": "User"}}, f"PR by '{UNKNOWN}'"),
+        ({}, f"PR by '{UNKNOWN}'"),
     ],
     ids=[
         "person",
-        "person-unlinked-commit",
         "bot-author",
-        "bot-commit-on-human-pr",
-        "bot-committer-no-login",
+        "dependabot",
+        "type-case-differs",
+        "organization",
         "missing-user",
         "missing-type",
         "missing-login",
+        "empty-login",
         "empty",
     ],
 )
-def test_automation_reason(
-    pr: dict[str, Any], commits: list[dict[str, Any]], expected: str | None
-) -> None:
-    assert automation_reason(pr, commits) == expected
+def test_automation_reason(pr: dict[str, Any], expected: str | None) -> None:
+    assert automation_reason(pr) == expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Closes other/repo#1",
+        "Closes https://github.com/other/repo/issues/1",
+        "Refs #1",
+        "Closes #1x",
+    ],
+    ids=["other-repo-shorthand", "other-repo-url", "not-a-closing-keyword", "not-a-number"],
+)
+def test_foreign_or_non_closing_references_do_not_link(body: str) -> None:
+    assert linked_issues(body) == []
+
+
+def test_every_linked_issue_must_pass() -> None:
+    unapproved = IssueInfo(("lane:site",), ("Reid-n0rc",))
+    problems = policy_problems([1, 2], {1: OK, 2: unapproved})
+    assert problems == ["#2 does not have the `plan-approved` label."]
 
 
 def test_human_pr_needs_no_review() -> None:
@@ -333,12 +350,6 @@ def test_bot_pr_needs_maintainer_approval_on_head(reviews: list[Review], ok: boo
         assert "(abc1234)" in problems[0]
 
 
-def test_bot_commit_on_human_pr_needs_approval() -> None:
-    problems = bot_pr_problems(HUMAN_PR, [], [BOT_COMMIT])
-    assert problems[0].startswith("PR with commits by 'claude[bot]' needs an approving review")
-    assert bot_pr_problems(HUMAN_PR, [Review("Reid-n0rc", "APPROVED", HEAD)], [BOT_COMMIT]) == []
-
-
 @pytest.mark.parametrize("head", [{}, {"sha": None}, {"sha": ""}, None])
 def test_bot_pr_without_head_sha_fails(head: dict[str, Any] | None) -> None:
     pr = {**BOT_PR, "head": head}
@@ -363,24 +374,6 @@ def test_run_bot_pr_checks_reviews() -> None:
     assert run(event, lambda n: OK, out.append) == 1
     no_number = {"pull_request": {**BOT_PR, "number": None}}
     assert run(no_number, lambda n: OK, out.append, fetch_reviews=reviews) == 1
-
-
-def test_run_checks_commits_of_human_pr() -> None:
-    out: list[str] = []
-    event = {"pull_request": HUMAN_PR}
-
-    def bot_commits(n: int) -> list[dict[str, Any]]:
-        return [BOT_COMMIT]
-
-    def approved(n: int) -> list[Review]:
-        return [Review("Reid-n0rc", "APPROVED", HEAD)]
-
-    assert run(event, lambda n: OK, out.append, fetch_commits=bot_commits) == 1
-    assert out[0].startswith("::error::PR with commits by 'claude[bot]'")
-    assert (
-        run(event, lambda n: OK, out.append, fetch_commits=bot_commits, fetch_reviews=approved) == 0
-    )
-    assert run(event, lambda n: OK, out.append, fetch_commits=lambda n: [HUMAN_COMMIT]) == 0
 
 
 def test_run_missing_author_fails_closed() -> None:
