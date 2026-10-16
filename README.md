@@ -5,10 +5,9 @@
 [![CI](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Reid-n0rc/n1mm-scope-bridge/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge/graph/badge.svg)](https://codecov.io/gh/Reid-n0rc/n1mm-scope-bridge)
 
-**Your Yaesu radio's waterfall, in N1MM Logger+.** n1mm-scope-bridge takes the
-spectrum scope built into Yaesu radios and shows it in **N1MM Logger+'s
-Spectrum Display window**. The **Yaesu FT-710** is the first supported model.
-The FTDX10 is planned (see [Supported radios](#supported-radios)).
+**Your Yaesu FT-710's waterfall, in N1MM Logger+.** n1mm-scope-bridge takes
+the spectrum scope built into the **Yaesu FT-710** and shows it in **N1MM
+Logger+'s Spectrum Display window**. The FT-710 is the only supported radio.
 
 > **Status: released ([latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)).**
 > Validated on a real Yaesu FT-710: live scope streaming, all spans, and
@@ -23,7 +22,7 @@ The FTDX10 is planned (see [Supported radios](#supported-radios)).
 ## Getting started
 
 1. **Set up the radio:** on the FT-710 set **OPERATION SETTING → GENERAL →
-   SCU-LAN10** to **ON** (no adapter needed), turn the radio off and on, then
+   SCU-LAN10** to **ON**, turn the radio off and on, then
    unplug and replug the USB cable. Put the scope in **Center** mode.
 2. **Install:** download `n1mm-scope-bridge-setup-<version>.exe` from the
    [latest release](https://github.com/Reid-n0rc/n1mm-scope-bridge/releases/latest)
@@ -50,11 +49,10 @@ See [docs/legal-notices.md](docs/legal-notices.md).
 
 ## Why
 
-N1MM+ draws a native spectrum/waterfall for Icom radios that send scope data
-over CI-V, and for Flex and some SDRs. It has no native support for the scope
-in Yaesu's current radios, even though they produce it. This project reads
-the radio's scope stream and forwards it to N1MM+ through N1MM's documented
-external spectrum interface.
+N1MM+ draws a native spectrum/waterfall for some radios that send their scope
+data over CAT. It has no native support for the FT-710's scope, even though
+the radio produces it. This project reads the FT-710's scope stream and
+forwards it to N1MM+ through N1MM's documented external spectrum interface.
 
 ## How it works
 
@@ -95,22 +93,20 @@ FT-710's scope in **Center** mode for exact frequencies in N1MM+.
 
 **Required radio setting:** the FT-710 only exposes its FT4222 scope interface
 over USB when the menu item **OPERATION SETTING → GENERAL → SCU-LAN10** is
-**ON**. You don't need the SCU-LAN10 adapter; the setting alone turns on the
-scope output (wfview documents the same requirement). If it is OFF, the
+**ON**. The setting turns on the scope output (wfview documents the same
+requirement). If it is OFF, the
 radio's USB connection shows only the COM ports and audio, and the bridge
 reports `Could not open 'FT4222 A'`.
 
 More detail: [docs/architecture.md](docs/architecture.md).
 
-## Supported radios
+## Supported radio
 
 | Radio | Transport | Status |
 |-------|-----------|--------|
 | Yaesu FT-710 | USB, FT4222 SPI | Supported (validated on a real radio; N1MM+ on-air check pending, #5) |
-| Yaesu FTDX10 | USB, FT4222 SPI (believed same as FT-710) | Planned, needs an owner to verify (#7) |
 
-Own an FTDX10? Open a **Radio support request** issue. To add
-a radio, see [docs/adding-a-radio.md](docs/adding-a-radio.md).
+The bridge supports the Yaesu FT-710 only.
 
 ## Install (Windows)
 
@@ -158,7 +154,6 @@ regression suite, user docs, and the website.
 1. On-air check with N1MM+ (#5) and the operator-only test captures (#36)
 2. Code signing for the installer (#130)
 3. Verify Cursor-mode frequency edges (currently unverified)
-4. More Yaesu radios (#7)
 
 ## Command line (advanced)
 

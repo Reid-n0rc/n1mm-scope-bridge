@@ -1,145 +1,103 @@
 #!/bin/sh
 # Claude Code PreToolUse hook for the Bash tool (wired in .claude/settings.json).
 #
-# Denies:
-#   - git push whose target is master or dev (e.g. "origin dev",
-#     "HEAD:dev", "feature:refs/heads/master", ":dev", or a bare "git push"
-#     while the current branch is master or dev)
-#   - git push --all / --mirror (they can update master and dev)
-#   - any force push: --force, -f (also combined, e.g. -fu), or a +refspec
-# Allows:
-#   - --force-with-lease (and --force-if-includes) when every target branch
-#     is an issue-* branch, because rebasing feature branches is normal.
+# A strict allowlist that fails closed (#221). It does not parse shell. It
+# checks a command that mentions "push" (any case, anywhere, also once quotes
+# and backslashes are removed), and one that runs git together with "alias" or
+# a shell metacharacter (; & | ` $ ( ) < > { } * ? [ ] or a newline), since
+# those can build a push without the word (git p{u,}sh, git config alias.p).
+# A checked command must be exactly one of these, with single spaces:
+#   git push [-u|--set-upstream] origin issue-<n>-<slug>
+#   git push [-u|--set-upstream] origin HEAD:[refs/heads/]issue-<n>-<slug>
+#   git push --force-with-lease[=<lease>] origin issue-<n>-<slug>
+# where <slug> is [a-z0-9][a-z0-9-]*. Shell metacharacters, git -c/-C,
+# --git-dir, env prefixes, other remotes, bare pushes, tags, --delete and
+# --force never match, so they are denied. A short-form push is also denied
+# when a local tag has the branch's name or push.followTags is set, and a
+# plain git command is denied when a configured alias mentions push or runs
+# a shell (!).
 #
-# Protocol: reads the hook JSON on stdin. Exit 2 with a reason on stderr
-# blocks the tool call; exit 0 lets it through. Requires jq. Without jq, or
-# with unparseable input, the command is allowed and a warning is printed.
+# Text that only mentions push (a commit message, a PR body, echo) is denied
+# too. Put it in a file instead: git commit -F <file>, gh pr create
+# --body-file <file>. Run other git commands one at a time, without
+# metacharacters. Everything else passes straight through.
+#
+# This is defence in depth; the rulesets on master and dev are the real
+# protection. Protocol: hook JSON on stdin; exit 2 with a reason on stderr
+# blocks the call, exit 0 allows it. Needs jq. Without jq, or with input jq
+# cannot read, any input that would need a check is denied.
 
+LC_ALL=C
+export LC_ALL
 input=$(cat)
-
-if ! command -v jq >/dev/null 2>&1; then
-    echo "guard-git-push: jq not found; git push guard is disabled." >&2
-    exit 0
-fi
-
-if ! cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null); then
-    echo "guard-git-push: could not parse hook input; allowing." >&2
-    exit 0
-fi
-cwd=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
-
-[ -n "$cmd" ] || exit 0
+nl='
+'
 
 deny() {
     echo "Blocked by .claude/hooks/guard-git-push.sh: $1" >&2
-    echo "master and dev change only through pull requests (see AGENTS.md)." >&2
+    echo "Pushes are allowlisted: use \`git push [-u] origin issue-<n>-<slug>\`; anything else needs the maintainer (ALLOW_PROTECTED_PUSH does not apply to agents)." >&2
+    echo "To mention push in a message or body, put it in a file: git commit -F <file>, gh pr create --body-file <file>." >&2
+    echo "Run other git commands one at a time, without alias or ; & | \` \$ ( ) < > { } * ? [ ]." >&2
     exit 2
 }
 
-current_branch() {
-    if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-        git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null
-    else
-        git symbolic-ref --short -q HEAD 2>/dev/null
-    fi
+# classify <text>: 0 if it mentions push or runs git with alias or a
+# metacharacter (check it), 2 if it runs git plainly, 1 otherwise (pass).
+# Quotes and backslashes are removed first, so p'u'sh and p\ush count.
+classify() {
+    norm=$(printf '%s' "$1" | tr -d "\\\\'\"" | tr '[:upper:]' '[:lower:]')
+    case $norm in *push*) return 0 ;; esac
+    printf '%s\n' "$norm" | grep -Eq '(^|[^a-z0-9_])git([^a-z0-9_]|$)' || return 1
+    case $norm in *alias* | *[]\;\&\|\`\$\(\)\<\>\{\}\*\?\[]* | *"$nl"*) return 0 ;; esac
+    return 2
 }
 
-# Check one "git push" invocation. Arguments are the tokens after "push".
-check_push() {
-    force=0
-    lease=0
-    all=0
-    remote=""
-    targets=""
-    have_refspec=0
-    while [ $# -gt 0 ]; do
-        arg=$1
-        shift
-        case "$arg" in
-            --force) force=1 ;;
-            --force-with-lease | --force-with-lease=* | --force-if-includes) lease=1 ;;
-            --all | --mirror | --branches) all=1 ;;
-            -o | --push-option | --repo | --receive-pack | --exec) [ $# -gt 0 ] && shift ;;
-            --*) ;;
-            -*f*) force=1 ;;
-            -*) ;;
-            *)
-                if [ -z "$remote" ]; then
-                    remote=$arg
-                    continue
-                fi
-                have_refspec=1
-                case "$arg" in
-                    +*) force=1; arg=${arg#+} ;;
-                esac
-                case "$arg" in
-                    *:*) dst=${arg##*:} ;;
-                    *) dst=$arg ;;
-                esac
-                [ "$dst" = "HEAD" ] && dst=$(current_branch)
-                dst=${dst#refs/heads/}
-                targets="$targets $dst"
-                ;;
-        esac
-    done
+if ! command -v jq >/dev/null 2>&1; then
+    echo "guard-git-push.sh: jq not found; denying any command that mentions push or git" >&2
+    classify "$input"
+    [ $? -eq 1 ] || deny "jq is not installed, so the command cannot be checked."
+    exit 0
+fi
 
-    [ "$all" = 1 ] && deny "git push --all/--mirror can update master or dev."
+# The command, trimmed, with NUL bytes turned into newlines (denied below).
+if ! cmd=$(printf '%s' "$input" | jq -r '(.tool_input.command // "")
+    | if type == "string" then . else error("command is not a string") end
+    | explode | map(if . == 0 then 10 else . end) | implode
+    | sub("^\\s+"; "") | sub("\\s+$"; "")' 2>/dev/null); then
+    classify "$input"
+    [ $? -eq 1 ] || deny "the hook input could not be parsed."
+    exit 0
+fi
 
-    if [ "$have_refspec" = 0 ]; then
-        targets=$(current_branch)
-    fi
+classify "$cmd"
+rc=$?
+dir=$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null) || dir=.
+if [ $rc -eq 2 ]; then
+    # Plain git: deny if a configured alias could push or run a shell.
+    case $(git -C "$dir" config --get-regexp '^alias[.]' 2>/dev/null | tr '[:upper:]' '[:lower:]') in
+        *push* | *" !"*) deny "a git alias in your config can push or run a shell." ;;
+    esac
+    exit 0
+fi
+[ $rc -eq 0 ] || exit 0
+case $cmd in *"$nl"*) deny "a multi-line command may not mention push or run git." ;; esac
 
-    for t in $targets; do
-        case "$t" in
-            master | dev) deny "git push to $t." ;;
-        esac
-    done
+branch='issue-[0-9]+-[a-z0-9][a-z0-9-]*'
+up='( -u| --set-upstream)?'
+allow="^(git push$up origin ($branch|HEAD:(refs/heads/)?$branch)"
+allow="$allow|git push --force-with-lease(=[A-Za-z0-9._/:-]+)? origin $branch)\$"
+printf '%s\n' "$cmd" | grep -Eq "$allow" ||
+    deny "not an allowlisted push (or it runs git with alias or a metacharacter)."
 
-    [ "$force" = 1 ] && deny "force push (--force, -f, or +refspec). Use --force-with-lease on an issue-* branch."
-
-    if [ "$lease" = 1 ]; then
-        [ -n "$targets" ] || deny "--force-with-lease with an unknown target branch."
-        for t in $targets; do
-            case "$t" in
-                issue-*) ;;
-                *) deny "--force-with-lease is only allowed on issue-* branches (target: $t)." ;;
-            esac
-        done
-    fi
-}
-
-# Split the command into simple segments at ; & | ( ) and newlines, then
-# look for "git [global options] push ..." in each segment.
-segments=$(printf '%s\n' "$cmd" | tr ';&|()' '\n\n\n\n\n')
-
-set -f
-nl='
-'
-IFS=$nl
-for seg in $segments; do
-    IFS=' 	'
-    # Drop simple quotes so "HEAD:dev" and 'dev' compare as plain words.
-    seg=$(printf '%s' "$seg" | tr -d "\"'")
-    set -- $seg
-    while [ $# -gt 0 ] && [ "$1" != "git" ]; do shift; done
-    [ $# -gt 0 ] || { IFS=$nl; continue; }
-    shift
-    # Skip git global options to find the subcommand.
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            -C | -c | --git-dir | --work-tree | --namespace)
-                shift
-                [ $# -gt 0 ] && shift
-                ;;
-            -*) shift ;;
-            *) break ;;
-        esac
-    done
-    if [ "${1:-}" = "push" ]; then
-        shift
-        check_push "$@"
-    fi
-    IFS=$nl
-done
-
+# A short name that is also a local tag, or push.followTags, would push a tag.
+name=${cmd##* }
+case $name in
+    HEAD:*) ;;
+    *) if git -C "$dir" show-ref -q --verify "refs/tags/$name" 2>/dev/null; then
+        deny "a local tag is named $name; use HEAD:refs/heads/$name."
+    fi ;;
+esac
+if [ "$(git -C "$dir" config --bool --get push.followTags 2>/dev/null)" = true ]; then
+    deny "push.followTags is set, so this push would also push tags."
+fi
 exit 0

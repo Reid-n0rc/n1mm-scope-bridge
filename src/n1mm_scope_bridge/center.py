@@ -18,8 +18,8 @@ from collections.abc import Callable
 from n1mm_scope_bridge.radios.base import ScopeStatus
 
 # FT-710 "Scope Mode" CAT command (wfview rigs/FT-710.rig command 68, "SS06",
-# 5 parameter bytes padded right with 0; Yaesu FTDX10 CAT manual: SS P1=0 P2=6
-# P3=mode P4-P7=0). UNVERIFIED (#62): exact parameter format on the FT-710.
+# 5 parameter bytes padded right with 0: SS06 + mode code + 0000).
+# UNVERIFIED (#62): exact parameter format on the FT-710.
 # N1MM+ sends these from its own CAT port; the bridge never sends CAT.
 CENTER_CODE = "4"  # Center (Normal)
 MODE_CODES = "0123456789AB"

@@ -22,17 +22,14 @@ operator's previous mode when it stops.
   parameter bytes, left-justified (padded right with `0`), get and set
   supported. wfview sends the mode code as one character: `SS06` + code +
   `0000` + `;`.
-- Yaesu's FTDX10 CAT manual (same command family) agrees. `SS P1 P2 P3 P4–P7;`
-  with P1=0 and P2=6 is MODE. P3 values: `0` 3DSS CENTER, `1` 3DSS CURSOR,
-  `2` 3DSS FIX, `3`/`4`/`5` W/F CENTER, `6`/`7`/`8` W/F CURSOR,
-  `9`/`A`/`B` W/F FIX. P4–P7 are `0`.
+- The mode code is the one the bridge already decodes from the scope frame
+  (status byte 17, first hex digit; codes `0`–`A`, table in
+  docs/protocol-yaesu-ft4222.md, from wfview). So the previous mode can be
+  read from the frames, with **no CAT read needed**.
   - Set Center (Normal): `SS0640000;`
-  - Read: `SS06;` → `SS06<P3>0000;`
-- The mode code is the same one the bridge already decodes from the scope
-  frame (status byte 17, first hex digit). So the previous mode can be read
-  from the frames, with **no CAT read needed**.
-- UNVERIFIED (#62): that the FT-710 accepts exactly this string. FT-710 menu
-  labels differ slightly from the FTDX10 (wfview's table stops at `A`).
+  - Read: `SS06;` → `SS06<code>0000;`
+- UNVERIFIED (#5): that the FT-710 accepts exactly these strings, and that
+  its CAT mode codes match the frame's codes.
 
 ## How the bridge could send it (research)
 
@@ -40,7 +37,7 @@ operator's previous mode when it stops.
 |---|---|---|
 | Ask N1MM+ over UDP | N1MM+ accepts only `<radio_setfrequency>` and `<Spectrum>` inbound (N1MM+ manual, External UDP Messages); there is no raw CAT command | Not possible |
 | N1MM+ macro `{CAT1ASC SS0640000;}` | Works through N1MM+'s own CAT connection, but only when the **operator** presses the key | Document as a manual alternative |
-| FT-710 second virtual COM port ("Standard COM Port") | Yaesu documents it on the FTDX10 as **TX controls only** (PTT, CW keying, digital), not CAT. Opening a COM port on Windows asserts DTR/RTS by default, which, with the radio's PTT/keying set to RTS/DTR, **would key the transmitter** | Only if a hardware test proves it accepts CAT, **and** the port is opened with DTR/RTS held low. UNVERIFIED (#62) |
+| FT-710 second virtual COM port ("Standard COM Port") | N1MM+ uses it for **TX controls** (PTT, CW keying), not CAT (maintainer decision on #62; `tests/test_no_com_ports.py` keeps the bridge off it). Opening a COM port on Windows asserts DTR/RTS by default, which, with the radio's PTT/keying set to RTS/DTR, **would key the transmitter** | Only if a hardware test proves it accepts CAT, **and** the port is opened with DTR/RTS held low. UNVERIFIED (#5) |
 | Enhanced (CAT-1) port while N1MM+ is closed | Works, but N1MM+ normally holds it, so a restore at exit would usually fail | Fallback only; not automatic |
 | Bridge owns CAT and shares it with N1MM+ (virtual port pair) | Large, separate feature | Out of scope |
 

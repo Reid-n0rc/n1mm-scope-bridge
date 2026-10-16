@@ -11,7 +11,7 @@
   <h1>Frequently asked questions</h1>
 
   <h2 id="no-scope">The bridge says it can't find the radio's scope (<code>Could not open 'FT4222 A'</code>)</h2>
-  <p>On the FT-710, open the menu <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> and set it to <strong>ON</strong>. You don't need the SCU-LAN10 adapter: this setting is what makes the radio send its scope over USB. After changing it, turn the radio off and on <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), then press <strong>Start</strong> again. Also check that the radio is on, the USB cable is connected, FTDI's LibFT4222 is installed, and no other program (such as wfview) is using the scope.</p>
+  <p>On the FT-710, open the menu <strong>OPERATION SETTING → GENERAL → SCU-LAN10</strong> and set it to <strong>ON</strong>. This setting is what makes the radio send its scope over USB. After changing it, turn the radio off and on <strong>and</strong> unplug and replug the USB cable (a power cycle alone isn't enough), then press <strong>Start</strong> again. Also check that the radio is on, the USB cable is connected, FTDI's LibFT4222 is installed, and no other program (such as wfview) is using the scope.</p>
 
   <h2 id="cat">Does the bridge conflict with N1MM+'s CAT connection?</h2>
   <p>No. The bridge never opens the radio's COM ports, so N1MM+ keeps full control of the radio for CAT and keying.</p>
@@ -20,7 +20,7 @@
   <p>No. It only reads the scope data. It never keys the radio and never changes its settings.</p>
 
   <h2 id="radios">Which radios are supported?</h2>
-  <p>The Yaesu FT-710 is the first supported radio. The Yaesu FTDX10 is planned. See <a href="index.html#radios">supported radios</a>.</p>
+  <p>Only the Yaesu FT-710. See <a href="index.html#radios">supported radio</a>.</p>
 
   <h2 id="no-radio">Can I try it without the radio?</h2>
   <p>Yes. Turn on <strong>Use the built-in emulator</strong> in the window. It streams a simulated FT-710 so you can set up N1MM+'s Spectrum Display before connecting the radio.</p>

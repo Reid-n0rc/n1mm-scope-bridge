@@ -8,6 +8,30 @@ All notable changes to this project are documented here. The format follows
 
 See `changelog.d/` for changes not yet released.
 
+## [0.1.5] - 2026-10-16
+
+Docs and process release. The app itself is unchanged from v0.1.4.
+
+### Changed
+
+- The guide, website and roadmap now cover the Yaesu FT-710 only: notes about other radios are gone, and so is the radio support request form. (#248)
+- Project process and CI (no change to the app):
+  - Agents working on the project may push only to their own issue branch, and can't approve plans, bypass checks or approve a release. (#221)
+  - Re-running the golden-capture tool for one case keeps the cases already captured. (#36)
+  - The Center-mode design notes cite only FT-710 sources. (#251)
+
+### Added
+
+- Project process: a pilot of the Claude Code GitHub Action for website issues. It runs only when the maintainer asks, and its pull requests need the maintainer's approval before they merge. (#224)
+
+### Fixed
+
+- Project process: issues linked with `Closes #n` close again when their pull request merges into `dev`. (#250)
+
+### Security
+
+- Project process: the Issue policy check and `scripts/ready_to_merge.py` fail closed. An API error or incomplete data fails them, and each linked issue must be an open issue in this repository. A fork's `dev` branch no longer counts as a release pull request. (#247, #256)
+
 ## [0.1.4] - 2026-10-15
 
 Patch release. The main fix: the Windows app in v0.1.3 could freeze shortly

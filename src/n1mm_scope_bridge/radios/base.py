@@ -4,8 +4,8 @@
 
 A radio is a ``RadioProfile``: static facts about the model plus a pure
 ``parser`` that turns one raw transport frame into a ``ParsedFrame``. Transports
-(``transport/``) only move bytes; parsing never does I/O. See
-docs/adding-a-radio.md.
+(``transport/``) only move bytes; parsing never does I/O. The Yaesu FT-710 is
+the only supported radio; see docs/architecture.md.
 """
 
 from __future__ import annotations

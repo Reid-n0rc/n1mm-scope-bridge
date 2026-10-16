@@ -1,7 +1,7 @@
 # Setting up your Yaesu radio
 
-Radio setup has one page per radio, with each setting's menu path, menu
-number and button presses: [pick your radio](radios/README.md).
+The bridge supports the Yaesu FT-710 only ([supported radio](radios/README.md)).
+Its setup page gives each setting's menu path, menu number and button presses.
 
 - [Yaesu FT-710](radios/ft-710.md): turn **OPERATION SETTING → GENERAL →
   SCU-LAN10** **ON**, set the scope to

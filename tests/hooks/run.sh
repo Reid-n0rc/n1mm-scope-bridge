@@ -146,6 +146,56 @@ guard() {
     run_guard() { printf '%s' "$json" | ${HOOK_SHELL:-sh} "$GUARD"; }
     expect "$1" "guard $1s: $3" run_guard
 }
+
+# The allowlist (#221): only these exact forms may push.
+guard allow "$REPO" "git push origin issue-9-local-guardrails"
+guard allow "$REPO" "git push -u origin issue-9-x"
+guard allow "$REPO" "git push --set-upstream origin issue-9-x"
+guard allow "$REPO" "git push origin HEAD:issue-9-x"
+guard allow "$REPO" "git push -u origin HEAD:refs/heads/issue-9-x"
+guard allow "$REPO" "git push --force-with-lease origin issue-9-x"
+guard allow "$REPO" "git push --force-with-lease=issue-9-x:abc123 origin issue-9-x"
+guard allow "$REPO" "  git push origin issue-221-agent-permissions  "
+guard allow "$DEVREPO" "git push origin issue-9-x"
+
+# Near misses of the allowlist.
+guard block "$REPO" "git push origin issue-x"
+guard block "$REPO" "git push origin issue-9-X"
+guard block "$REPO" "git push origin issue-9-"
+guard block "$REPO" "git push origin Issue-9-x"
+guard block "$REPO" "git push origin issue-9--x:dev"
+guard block "$REPO" "git push origin issue-9-x issue-8-y"
+guard block "$REPO" "git push origin issue-9-x -u"
+guard block "$REPO" "git push upstream issue-9-x"
+guard block "$REPO" "git push  origin issue-9-x"
+guard block "$REPO" "git push	origin issue-9-x"
+guard block "$REPO" "git push origin issue-9-x;"
+guard block "$REPO" "git push -u origin issue-9-x && echo done"
+guard block "$REPO" "git push origin issue-9-x 2>&1 | tail -5"
+guard block "$REPO" "git push origin issue-9-x # never dev"
+guard block "$REPO" "git push origin issue-9-x:dev"
+guard block "$REPO" "git push origin HEAD:refs/tags/issue-9-x"
+guard block "$REPO" "git push origin refs/heads/issue-9-x"
+guard block "$REPO" "git push --force-with-lease origin HEAD:issue-9-x"
+guard block "$REPO" "git push --force-with-lease=x\$(id) origin issue-9-x"
+guard block "$REPO" "git push --force-with-lease -u origin issue-9-x"
+guard block "$REPO" "git push -f origin issue-9-x"
+guard block "$REPO" "git push --force origin issue-9-x"
+guard block "$REPO" "git push origin +issue-9-x"
+guard block "$REPO" "git push --delete origin issue-9-x"
+guard block "$REPO" "git push -d origin issue-9-x"
+guard block "$REPO" "git push --prune origin issue-9-x"
+guard block "$REPO" "git push --no-follow-tags origin issue-9-x"
+guard block "$REPO" "git -c a.b=c push origin issue-9-x"
+guard block "$REPO" "git -C $REPO push origin issue-9-x"
+guard block "$REPO" "git --git-dir=$REPO/.git push origin issue-9-x"
+guard block "$REPO" "GIT_DIR=$DEVREPO/.git git push origin issue-9-x"
+guard block "$REPO" "ALLOW_PROTECTED_PUSH=1 git push origin dev"
+guard block "$REPO" "git push origin issue-9-x
+git push origin dev"
+guard block "$REPO" "GIT PUSH origin dev"
+
+# Earlier must-deny cases: all denied by default now.
 guard block "$REPO" "git push origin dev"
 guard block "$REPO" "git push origin master"
 guard block "$REPO" "git push origin HEAD:dev"
@@ -168,26 +218,198 @@ guard block "$DEVREPO" "git push"
 guard block "$DEVREPO" "git push origin"
 guard block "$DEVREPO" "git push origin HEAD"
 guard block "$DEVREPO" "git push --force-with-lease"
+guard block "$REPO" "git push"
+guard block "$REPO" "git push origin HEAD"
+guard block "$REPO" "git push --force-with-lease"
+guard block "$REPO" "git push -o"
+guard block "$REPO" "git push -o ci.skip origin issue-9-x"
+guard block "$REPO" "git push origin :issue-9-y"
+# tags (only the maintainer pushes tags)
+g tag v1.2.3
+guard block "$REPO" "git push origin v1.2.3"
+guard block "$REPO" "git push --tags"
+guard block "$REPO" "git push origin --tags"
+guard block "$REPO" "git push origin refs/tags/v1"
+guard block "$REPO" "git push origin HEAD:refs/tags/v1"
+guard block "$REPO" "git push --follow-tags origin issue-x"
+guard block "$REPO" "git push --delete origin v1.2.3"
+guard block "$REPO" "git status && git push origin v1.2.3"
+guard block "$REPO" "git push --tag origin"
+guard block "$REPO" "git push --follow origin issue-x"
+guard block "$REPO" "git push origin tags/v1"
+guard block "$REPO" "git push origin v1:refs/tags/v1"
+guard block "$REPO" "git push origin issue-x:v1.2.3"
+g tag issue-7-tagged
+guard block "$REPO" "git push origin issue-7-tagged"
+guard allow "$REPO" "git push origin HEAD:refs/heads/issue-7-tagged"
+g tag -d issue-7-tagged >/dev/null
+g config push.followTags true
+guard block "$REPO" "git push origin issue-9-x"
+guard block "$REPO" "git push --no-follow-tags origin issue-9-x"
+g config --unset push.followTags
+# git global options, aliases and config
+guard block "$REPO" "git --no-pager push origin dev"
+guard block "$REPO" "git --git-dir=$REPO/.git push origin dev"
+guard block "$REPO" "git -c core.askPass=x push origin dev"
+guard block "$REPO" "git -c alias.p=push p origin dev"
+guard block "$REPO" "git -c alias.p=push p origin issue-x"
+guard block "$REPO" "git -c alias.p='!git push' p origin dev"
+guard block "$REPO" "git -c push.default=matching push"
+guard block "$REPO" "git -c remote.origin.push=HEAD:dev push origin"
+guard block "$REPO" "git -c remote.origin.pushurl=x push origin issue-9-x"
+guard block "$REPO" "git -c remote.origin.mirror=true push origin"
+guard block "$REPO" "git -c branch.issue-9-x.merge=refs/heads/dev push"
+guard block "$REPO" "git -c push.followTags=true push origin issue-x"
+guard block "$REPO" "git --exec-path=/tmp push origin issue-x"
+guard block "$REPO" "git config push.default matching && git push"
+guard block "$REPO" "git config branch.issue-9-x.merge refs/heads/dev; git push"
+guard block "$REPO" "git config remote.origin.pushurl x; git push origin issue-9-x"
+# aliases defined earlier in the same command (#221 second review)
+guard block "$REPO" "git config alias.sync push; git sync origin dev"
+guard block "$REPO" "git config --global alias.p push && git p origin dev"
+guard block "$REPO" "git config alias.s pu''sh; git s origin dev"
+guard block "$REPO" "git -c alias.s=pu\\sh s origin dev"
+guard block "$REPO" "git config alias.sync"
+# brace and other expansion that splits the word push (#221 second review)
+guard block "$REPO" "git push origin {dev,x}"
+guard block "$REPO" "git {push,} origin dev"
+guard block "$REPO" "git p{u,}sh origin dev"
+guard block "$REPO" "git pu{s,}h origin dev"
+guard block "$REPO" "git pu[s]h origin dev"
+guard block "$REPO" "git pu?h origin dev"
+guard block "$REPO" "git pu*h origin dev"
+guard block "$REPO" "git \$(printf pu)sh origin dev"
+guard block "$REPO" "git \`printf pu\`sh origin dev"
+guard block "$REPO" "P=pu; git \${P}sh origin dev"
+guard block "$REPO" "git \$'\\x70ush' origin dev"
+guard block "$REPO" "git pu''sh origin dev"
+guard block "$REPO" "git p\"u\"sh origin dev"
+guard block "$REPO" "git p\\ush origin dev"
+guard block "$REPO" "echo pu sh | tr -d ' ' | xargs -I x git x origin dev"
+# refspec spellings
+guard block "$REPO" "git push origin HEAD:heads/dev"
+guard block "$REPO" "git push origin issue-x:DEV"
+guard block "$REPO" "git push origin +issue-x:dev"
+guard block "$REPO" "git push origin refs/heads/master"
+guard block "$REPO" "git push origin :"
+guard block "$REPO" "git push origin 'refs/heads/*:refs/heads/*'"
+guard block "$REPO" "git push origin -- dev"
+guard block "$REPO" "git push origin issue-x:HEAD"
+guard block "$REPO" "git push -d origin feature"
+guard block "$REPO" "git push origin :feature"
+guard block "$REPO" "git push https://example.invalid/r.git HEAD:master"
+guard block "$REPO" "git push origin issue-x --force"
+guard block "$REPO" "git push origin issue-x -f"
+guard block "$REPO" "git push -uf origin issue-x"
+guard block "$REPO" "git push --forc origin issue-x"
+guard block "$REPO" "git push --mirr origin"
+guard block "$REPO" "git push --al origin"
+guard block "$REPO" "git push --prune origin issue-x"
+guard block "$REPO" "git push --force-if-includes origin feature"
+guard block "$REPO" "git push --force-with-lease origin HEAD:feature"
+# shell-level tricks
+guard block "$REPO" "true; git push origin dev"
+guard block "$REPO" "true | git push origin dev"
+guard block "$REPO" "true
+git push origin dev"
+guard block "$REPO" "echo \$(git push origin dev)"
+guard block "$REPO" "echo \`git push origin dev\`"
+guard block "$REPO" "(git push origin dev)"
+guard block "$REPO" "{ git push origin dev; }"
+guard block "$REPO" "if true; then git push origin dev; fi"
+guard block "$REPO" "env FOO=1 git push origin dev"
+guard block "$REPO" "command git push origin dev"
+guard block "$REPO" "nohup git push origin dev"
+guard block "$REPO" "\\git push origin dev"
+guard block "$REPO" "/usr/bin/git push origin dev"
+guard block "$REPO" "git \"push\" origin 'dev'"
+guard block "$REPO" "git push origin de\"\"v"
+guard block "$REPO" "git push origin d\\ev"
+guard block "$REPO" "git  push	origin	dev"
+guard block "$REPO" "echo dev | xargs git push origin"
+guard block "$REPO" "timeout 60 git push origin dev"
+guard block "$REPO" "uv run git push origin dev"
+guard block "$REPO" "sh -c \"git push origin dev\""
+guard block "$REPO" "bash -lc 'git push origin dev'"
+guard block "$REPO" "sh -c 'git push origin \"\$1\"' _ dev"
+guard block "$REPO" "eval \"git push origin dev\""
+guard block "$REPO" "B=dev; git push origin \$B"
+guard block "$REPO" "CMD='git push origin dev'; \$CMD"
+guard block "$REPO" "echo git push origin dev | sh"
+guard block "$REPO" "sh <<'EOF'
+git push origin dev
+EOF"
+guard block "$REPO" "python3 -c \"import os; os.system('git push origin dev')\""
+guard block "$REPO" "git-push origin dev"
+guard block "$REPO" "git push origin issue-x \$(echo dev)"
+guard block "$REPO" "alias p='git push origin dev'"
+g config alias.pp push
+guard block "$REPO" "git pp origin dev"
+guard block "$REPO" "git status"
+g config --unset alias.pp
+g config alias.sh '!sh -c x'
+guard block "$REPO" "git sh"
+g config --unset alias.sh
+g config alias.st status
+guard allow "$REPO" "git st"
+g config --unset alias.st
+# commands that change what a push would update
+guard block "$REPO" "git checkout dev && git push"
+guard block "$REPO" "git switch dev; git push origin HEAD"
+guard block "$REPO" "git tag v2 && git push origin v2"
+guard block "$REPO" "cd $DEVREPO && git push"
+guard block "$REPO" "cd \$X && git push origin issue-x"
+guard block "$REPO" "GIT_DIR=$DEVREPO/.git git push"
+guard block "$REPO" "git -C $DEVREPO push"
+guard block "$REPO" "git -C $REPO push -u origin issue-x"
+guard block "$REPO" "cd $REPO && git push -u origin issue-9-x"
+guard block "$REPO" "git add -A && git commit -m wip && git push"
+guard block "$REPO" "git branch --show-current && git push"
 
-guard allow "$REPO" "git push -u origin issue-x"
-guard allow "$REPO" "git push origin issue-9-local-guardrails"
-guard allow "$REPO" "git push --force-with-lease origin issue-x"
-guard allow "$REPO" "git push --force-with-lease=issue-x:abc123 origin issue-x"
-guard allow "$REPO" "git push --force-with-lease"
-guard allow "$REPO" "git push"
-guard allow "$REPO" "git push origin HEAD"
-guard allow "$REPO" "git status && git log --oneline -3"
+# Text that only mentions push is denied too (fail closed). The documented
+# workaround is a file: git commit -F <file>, gh pr create --body-file <file>.
+guard block "$REPO" "git commit -m 'docs: never git push -f to dev'"
+guard block "$REPO" "git commit -F - <<'EOF'
+Avoid git push -f origin dev.
+EOF"
+guard block "$REPO" "gh pr create --title t --body 'Run git push origin dev? No.'"
+guard block "$REPO" "gh pr comment 230 --body 'pushed'"
+guard block "$REPO" "echo \"git push origin dev\""
+guard block "$REPO" "echo push dev"
+guard block "$REPO" "uv run pytest tests/test_push.py"
+guard block "$REPO" "git log --grep=push"
+guard allow "$REPO" "git commit -F msg.txt"
+guard allow "$REPO" "gh pr create --title t --body-file body.md"
+
+# git with a metacharacter or alias is denied even without push; plain git
+# commands and everything else pass.
+guard block "$REPO" "git status && git log --oneline -3"
+guard block "$REPO" "git log --oneline | head -5"
+guard block "$REPO" "git diff > out.patch"
+guard block "$REPO" "git config --get-regexp alias"
+guard allow "$REPO" "git status"
+guard allow "$REPO" "git log --oneline -5"
 guard allow "$REPO" "git fetch origin dev"
 guard allow "$REPO" "git switch dev"
-guard allow "$REPO" "echo push dev"
-guard allow "$REPO" "git push -o"
+guard allow "$REPO" "git tag --list"
+guard allow "$REPO" "git commit -m \"fix the parser\""
+guard allow "$REPO" "uv run pytest -q && uv run ruff check ."
+guard allow "$REPO" "ls .github/workflows/*.yml | head -3"
+guard allow "$REPO" "echo \$HOME"
 
-# Non-Bash payloads and bad input fail open (with a warning).
+# Non-Bash payloads pass; unparseable input that needs a check is denied.
 guard_raw() { printf '%s' "$1" | ${HOOK_SHELL:-sh} "$GUARD"; }
 expect allow "guard allows input with no command" guard_raw '{"tool_name":"Read","tool_input":{"file_path":"x"}}'
 expect allow "guard allows unparseable input" guard_raw 'not json'
+expect block "guard blocks unparseable input that mentions push" guard_raw 'not json: git push origin dev'
+expect block "guard blocks truncated JSON that mentions push" guard_raw '{"tool_input":{"command":"git push origin issue-9-x'
+expect block "guard blocks unparseable input that runs git" guard_raw 'not json: git pp origin dev'
+expect block "guard blocks unparseable input with git and a brace" guard_raw 'not json: git p{u,}sh origin dev'
+expect block "guard blocks a non-string command that mentions push" guard_raw '{"tool_input":{"command":["git","push","origin","dev"]}}'
+expect block "guard blocks a NUL byte after an allowed push" guard_raw '{"tool_input":{"command":"git push origin issue-9-x\u0000git push origin dev"}}'
+expect block "guard blocks an escaped newline after an allowed push" guard_raw '{"tool_input":{"command":"git push origin issue-9-x\ngit push origin dev"}}'
 
-# Without jq the guard allows and warns on stderr.
+# Without jq the guard warns, and denies anything that would need a check.
 # Git for Windows' MSYS binaries cannot run from symlinked copies, so there
 # the "no jq" PATH is the MSYS core bin directory (jq is not part of Git).
 case "$(uname -s)" in
@@ -199,22 +421,30 @@ case "$(uname -s)" in
         NOJQ_PATH="$TMP/nojq-bin"
         NOJQ_SH="$NOJQ_PATH/sh"
         mkdir -p "$NOJQ_PATH"
-        for tool in cat git tr sh; do ln -s "$(command -v "$tool")" "$NOJQ_PATH/$tool"; done
+        for tool in cat git tr grep sh; do ln -s "$(command -v "$tool")" "$NOJQ_PATH/$tool"; done
         ;;
 esac
-nojq() { printf '{"tool_input":{"command":"git push origin dev"}}' | PATH="$NOJQ_PATH" "$NOJQ_SH" "$GUARD"; }
+nojq_run() { printf '%s' "$1" | PATH="$NOJQ_PATH" "$NOJQ_SH" "$GUARD"; }
+nojq() { nojq_run '{"tool_input":{"command":"ls -la"}}'; }
+nojq_git() { nojq_run '{"tool_input":{"command":"git status"}}'; }
+nojq_push() { nojq_run '{"tool_input":{"command":"git push origin issue-9-x"}}'; }
+nojq_brace() { nojq_run '{"tool_input":{"command":"git p{u,}sh origin dev"}}'; }
 if PATH="$NOJQ_PATH" command -v jq >/dev/null 2>&1; then
-    ok "skip: jq is present in $NOJQ_PATH, cannot simulate a missing jq"
-    ok "skip: jq is present in $NOJQ_PATH, cannot simulate a missing jq"
+    for i in 1 2 3 4 5; do ok "skip: jq is present in $NOJQ_PATH, cannot simulate a missing jq"; done
 else
-    expect allow "guard allows when jq is missing" nojq
+    expect allow "guard allows a command without push or git when jq is missing" nojq
     if nojq 2>&1 | grep -q "jq not found"; then ok "guard warns when jq is missing"; else not_ok "guard warns when jq is missing"; fi
+    # Fail closed: without jq the guard cannot check the command (the raw
+    # JSON always has braces), so any git or push is denied.
+    expect block "guard blocks git when jq is missing" nojq_git
+    expect block "guard blocks a push when jq is missing" nojq_push
+    expect block "guard blocks a brace push when jq is missing" nojq_brace
 fi
 
-# Blocked output explains why on stderr.
+# Blocked output explains why on stderr, with the workaround.
 reason=$(printf '%s' '{"tool_input":{"command":"git push origin dev"}}' | ${HOOK_SHELL:-sh} "$GUARD" 2>&1 >/dev/null)
 case "$reason" in
-    *"git push to dev"*) ok "guard prints the reason on stderr" ;;
+    *"Pushes are allowlisted"*"ALLOW_PROTECTED_PUSH does not apply to agents"*"--body-file"*) ok "guard prints the reason on stderr" ;;
     *) not_ok "guard prints the reason on stderr (got: $reason)" ;;
 esac
 

@@ -9,7 +9,7 @@ wins. Fix the other doc in the same PR.
 
 `n1mm-scope-bridge` reads a radio's spectrum scope and sends it to N1MM
 Logger+'s Spectrum Display window as N1MM's external `<Spectrum>` UDP packet.
-The first radio is the **Yaesu FT-710**. Its scope arrives through an FTDI
+The only supported radio is the **Yaesu FT-710**. Its scope arrives through an FTDI
 FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
 
 - Stack: Python 3.10 or later, standard library only at runtime (`ctypes`,
@@ -43,7 +43,6 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
   - [docs/architecture.md](docs/architecture.md): module layout and data flow
   - [docs/protocol-yaesu-ft4222.md](docs/protocol-yaesu-ft4222.md): FT-710 frame layout
   - [docs/n1mm-spectrum-protocol.md](docs/n1mm-spectrum-protocol.md): N1MM packet
-  - [docs/adding-a-radio.md](docs/adding-a-radio.md): how a new radio plugs in
 
 ## Product target
 
@@ -146,6 +145,8 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     positive, dismiss it with a written justification
     (`gh api -X PATCH repos/<repo>/code-scanning/alerts/<n> -f state=dismissed
     -f dismissed_reason="false positive" -f dismissed_comment="<why>"`).
+    Agents may not run that `gh api` write (see Local setup), so an agent
+    proposes the dismissal and its justification for the maintainer to run.
     One narrow exception is printed as a `NOTE`: a failed
     `github-advanced-security` run (GitHub's optional Copilot AI review, which
     fails when the Copilot quota runs out) does not block when the real
@@ -198,13 +199,67 @@ git config core.hooksPath .githooks
 - `pre-push` blocks pushes to `master` or `dev`. The maintainer-only emergency
   bypass is `ALLOW_PROTECTED_PUSH=1`.
 - `.claude/settings.json` wires in `.claude/hooks/guard-git-push.sh`, which
-  needs `jq`. It denies agent pushes to `master` or `dev` and force pushes,
-  except `--force-with-lease` on `issue-*` branches.
+  needs `jq`. It is a strict **allowlist** that fails closed and does not
+  parse shell. A command that mentions `push` anywhere (any case, also split
+  by quotes or backslashes), or that runs `git` together with `alias` or a
+  shell metacharacter (`;` `&` `|` `` ` `` `$` `(` `)` `<` `>` `{` `}` `*`
+  `?` `[` `]` or a newline), must be exactly one of:
+  - `git push [-u|--set-upstream] origin issue-<n>-<slug>`
+  - `git push [-u|--set-upstream] origin HEAD:[refs/heads/]issue-<n>-<slug>`
+  - `git push --force-with-lease[=<lease>] origin issue-<n>-<slug>`
+
+  with `<slug>` matching `[a-z0-9][a-z0-9-]*`. Everything else is denied:
+  `dev`/`master`, a bare `git push`, other remotes, tags, `--force`/`-f`,
+  `+refspec`, `--delete`, `git -c`/`-C`/`--git-dir`, env prefixes, and
+  compound commands. A short-form push is also denied when a local tag has the
+  branch's name or `push.followTags` is set, and a plain `git` command is
+  denied while a configured alias mentions push or runs a shell (`!`).
+  `ALLOW_PROTECTED_PUSH` does not apply to agents. **Workarounds:** text that
+  merely mentions push is denied too, so put commit messages and PR or issue
+  bodies in a file (`git commit -F <file>`, `gh pr create --body-file <file>`,
+  `gh pr comment --body-file <file>`), and run other `git` commands one at a
+  time instead of chaining or piping them. Without `jq`, or with input it
+  cannot read, any command that mentions push or git is denied.
+- `.claude/settings.json` also commits Claude Code permission rules (#221):
+  - **allow** (no prompt): routine `gh pr checks|view|list|diff|create`,
+    `gh run view|watch|list|rerun`, `gh issue view|list|comment|close|create`,
+    and `python scripts/ready_to_merge.py` / `check_overlap.py`. Each rule
+    names one exact subcommand; anything else (`gh issue edit`,
+    `gh run cancel`, `gh pr ready`, …) prompts;
+  - **ask** (always prompts, and wins over allow): `git tag`,
+    `gh issue … delete|transfer`, every `gh pr … merge` (`--auto` included),
+    and `gh workflow … run`;
+  - **deny** (fail-closed, matched anywhere in the command so env prefixes
+    and `/path/to/gh` are caught): `gh release …`; any command containing
+    `--admin`, `--auto=` or `plan-approved` (common casings); any command
+    mentioning `graphql`, `pending_deployments`, `deployments/*/statuses`,
+    `deployment_protection_rule` or `approveDeployments`; every `gh api`
+    write (`-X`/`--method` with any method, and `-f`/`-F`/`--field`/
+    `--raw-field`/`--input`, which imply POST, also as `-iX`/`-if`/`-iF`);
+    `gh alias …` and `gh auth token`; tag and force pushes. Plain `gh api`
+    reads (GET) still work, with a prompt. Use typed `gh` subcommands for
+    writes. `tests/test_agent_settings.py` checks every known spelling.
+
+  **Known limits.** These rules are best-effort: globs match command text,
+  so odd whitespace, mixed-case labels, a script file, `curl` with a token
+  from elsewhere, or a sequence of commands can sidestep them, and the hook
+  stays the authority for pushes. A trailing `*` in an allow rule still
+  admits extra flags of that one subcommand. Claude Code documents that
+  Bash rules respect shell operators, so `gh pr view *` does not allow
+  `gh pr view 1 && <other>`: each part of a compound command must be
+  allowed on its own, and the test models that. The allows are kept narrow
+  in case that splitting misses a form. The real gates are server-side: the
+  `dev`/`master` rulesets, the `release` environment's required reviewer,
+  and the convention that only the maintainer applies `plan-approved`.
+  Agents act with the maintainer's token, so the **Issue policy** check
+  cannot tell an agent's label or approval from the maintainer's; that
+  residual risk rests on these rules and on review. Put personal additions
+  in `.claude/settings.local.json`, which is not committed. Changes to these
+  rules are reviewed and merged by the maintainer personally.
 
 ## Issue lifecycle
 
-Anyone can file a **Bug report**, **Feature request**, or **Radio support
-request** without a plan. Those templates are intake only, and filing one
+Anyone can file a **Bug report** or **Feature request** without a plan. Those templates are intake only, and filing one
 does not authorize work.
 
 1. Before anyone works an issue, it needs a software plan: the goal, the
@@ -289,6 +344,25 @@ Copilot's repository instructions are in
   pass, and merging happens through the normal adoption routine or the
   maintainer. Dependabot PRs are still adopted by a person or agent.
 
+**Claude Code Action (pilot, `lane:site` only, #224).**
+`.github/workflows/claude.yml` runs `anthropics/claude-code-action` for the
+maintainer only:
+- **Trigger:** add the `agent-go` label to an assigned `plan-approved` +
+  `lane:site` issue, or comment `@claude ...` on such an issue or on one of
+  its own PRs (opened by `claude[bot]`). Anyone else's label or mention is
+  ignored, fork PRs are refused, and the conditions are re-read when the job
+  starts. Like every `issues` workflow, it runs from `master`, so it works
+  only after a release carries it there.
+- **What it does:** follows this file: branches `issue-<n>-<slug>` from `dev`,
+  adds a `changelog.d/` fragment, runs the regression, opens a PR into `dev`
+  with `Closes #<n>`, and stops.
+- **It never merges, and its PRs are adopted like any automated PR** (see
+  above): the maintainer reviews the PR and enables auto-merge. The action is
+  told never to merge, approve, tag, release or change labels, and those
+  tools are disallowed. No check in this repo blocks a green PR it opened, so
+  don't enable auto-merge on one you haven't reviewed.
+- **Stop it:** remove the label, or `gh workflow disable claude.yml`.
+
 **Automation triage** (`.github/workflows/automation-triage.yml`, every two
 hours, on demand, and when an automated PR opens) finds what still needs
 adopting:
@@ -370,9 +444,9 @@ by a person or an agent, following the steps above.
 - Keep parsing **pure**: functions that turn `bytes` into dataclasses, with no
   I/O. Keep I/O (the FT4222 device, sockets, files) in thin adapters behind
   small protocols, so tests can substitute fakes.
-- Radios plug in through a `RadioProfile` plus a `SpectrumSource`. See
-  [docs/adding-a-radio.md](docs/adding-a-radio.md). Do not special-case a
-  radio model outside its own module.
+- The FT-710 plugs in through a `RadioProfile` plus a `SpectrumSource` (see
+  [docs/architecture.md](docs/architecture.md)). Keep FT-710 specifics in its
+  own module.
 - Anything derived from wfview follows rule 6 (verbatim notices, GPL block,
   dated modification notice, THIRD_PARTY.md row).
 - Mark anything not yet confirmed on real hardware with `# UNVERIFIED:` and

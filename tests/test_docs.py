@@ -359,6 +359,6 @@ def test_privacy_notice_covers_gdpr_topics() -> None:
 
 
 def test_issue_templates_warn_about_personal_data() -> None:
-    for name in ("bug_report.yml", "feature_request.yml", "radio_support.yml"):
+    for name in ("bug_report.yml", "feature_request.yml"):
         text = (ROOT / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8")
         assert "Issues are public" in text, name

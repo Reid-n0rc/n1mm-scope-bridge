@@ -105,7 +105,9 @@ radio yourself into a dummy load.
 
    The cases are: Center mode at all 10 spans, Cursor mode, Fixed mode,
    transmit into a dummy load, power-on start-up, and USB re-plug. Use
-   `--only <case> ...` to redo some of them.
+   `--only <case> ...` to record or redo some of them. The other cases in
+   `manifest.json` are kept (a case you skip keeps its earlier capture too),
+   unless `radios/yaesu_scope.py` changed since they were recorded.
 6. Run `uv run pytest tests/test_emulator_conformance.py`. Any difference
    between the radio and the emulator is listed by name, for example
    `real frames use 'zero' padding, emulator uses 'sync'`.
