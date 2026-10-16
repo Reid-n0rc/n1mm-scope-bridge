@@ -1,6 +1,8 @@
 # Closes a PR's linked issues when it merges into dev (#220). GitHub closes
 # `Closes #n` issues only on a merge into the default branch (master), so
 # finished issues would otherwise stay open until a release.
+# GitHub also leaves closingIssuesReferences empty for PRs into dev, so the
+# script parses the closing keywords from the PR body itself (#250).
 # Logic: scripts/close_linked_issues.py.
 #
 # pull_request_target (not pull_request) so a fork PR's merge can still write
@@ -26,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read # check out the base branch for the script
-      pull-requests: read # read the PR's closing issue references
+      pull-requests: read # read the merged PR (state, base, body)
       issues: write # close the issues and comment
     steps:
       # Base branch only. Never check out or run the PR head.
