@@ -52,7 +52,7 @@ bottom:
    |---|---|
    | Frequency | The VFO-A frequency, for example **14.074 000 MHz** |
    | Span | The scope span and the frequency range it covers |
-   | Scope mode | The radio's scope mode. **✓ Exact frequencies** (green) in Center mode; **Switch the radio to Center** (amber) otherwise, because N1MM+'s frequencies are only exact in Center mode |
+   | Scope mode | The radio's scope mode. **Exact frequencies** (green) in Center mode; **Switch the radio to Center** (amber) otherwise, because N1MM+'s frequencies are only exact in Center mode |
    | To N1MM+ | Updates per second, and the N1MM+ PC and port |
    | Health | **OK**, **Degraded** (frames dropped or failing checks), or **Problem** (red, with the error) |
 
@@ -101,7 +101,7 @@ mode. When it isn't, a prompt appears below the cards:
   opens a COM port.** The exact command format (`SS06…`) is still being
   verified on the FT-710 (#62).
 - **Dismiss** hides the prompt until the scope changes to a different mode.
-- When the scope reaches Center, the prompt shows **✓ Center mode** for a few
+- When the scope reaches Center, the prompt shows **Center mode** (green) for a few
   seconds and then hides.
 
 The same messages, including the macros, are written to the Activity log.
@@ -173,7 +173,7 @@ window's controls update to match.
 | FT4222 device | `device` | The FT4222 device description, normally `FT4222 A` |
 
 A problem with a value is shown right under the field, for example
-"⚠ port must be 1-65535 (N1MM+ uses 13064)".
+"port must be 1-65535 (N1MM+ uses 13064)", in red.
 
 ## Closing, minimizing, and the system tray
 
@@ -204,6 +204,6 @@ On a system with no tray (rare), Close exits and Minimize minimizes normally.
 | Option | Meaning |
 |---|---|
 | `--settings PATH` | Use a different settings file |
-| `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression) |
+| `--self-test` | Open the window, stream the emulator to a local test listener, and exit with code 0 on success (used by CI and the release regression). The result line is also saved to `self-test.log` in the settings folder |
 | `--version` | Print the version |
 

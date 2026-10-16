@@ -12,6 +12,10 @@ on:
     branches: [dev, master]
   push:
     branches: [dev, master]
+  # Merge queue on dev (#216, #218): every required check must report on the
+  # gh-readonly-queue/... commit, or a queued PR never merges.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -93,9 +97,30 @@ jobs:
       # No GUI (PySide6) on free-threaded Python (abi3 wheels only) or 32-bit x86 (no Qt 6).
       - run: uv sync --locked ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }}
       # junit.xml feeds Codecov Test Analytics (#171); legacy family = readable test names.
-      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
+      - run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} pytest -raR --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--cov-config=.coveragerc-nogui' || '' }}
         env:
           QT_QPA_PLATFORM: offscreen
+      # Quarantined GUI tests (#222) rerun once; never let a pass on rerun go unseen.
+      # conftest.py tags them with a flaky_rerun JUnit property.
+      - name: Reruns summary
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          uv run --no-sync python - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          path = pathlib.Path("junit.xml")
+          root = ET.parse(path).getroot() if path.exists() else ET.Element("testsuites")
+          ids = sorted(
+              f"{case.get('classname')}::{case.get('name')}"
+              for case in root.iter("testcase")
+              if any(p.get("name") == "flaky_rerun" for p in case.iter("property"))
+              and case.find("failure") is None
+              and case.find("error") is None
+          )
+          print(f"{len(ids)} test(s) passed only on rerun" + (": " + ", ".join(ids) if ids else ""))
+          EOF
       # Per-area floors (app 90%, scripts ratchet), replacing coverage's single fail_under (#180).
       - name: Coverage gate
         run: uv run ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--no-group gui-dev' || '' }} python scripts/coverage_gate.py ${{ (endsWith(matrix.python, 't') || matrix.nogui) && '--config .coveragerc-nogui' || '' }}
@@ -111,7 +136,8 @@ jobs:
             echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
           fi
       - name: Upload coverage to Codecov
-        if: ${{ !cancelled() }}
+        # Queue commits are temporary; keep them out of Codecov's branch list.
+        if: ${{ !cancelled() && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           # Repository secret only; fork PRs have no secrets and skip the upload.
@@ -122,7 +148,8 @@ jobs:
           fail_ci_if_error: false
       # Upload even when tests fail, so Codecov sees the failures.
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
+        # Queue commits are temporary; keep them out of Codecov's branch list.
+        if: ${{ !cancelled() && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -152,7 +179,8 @@ jobs:
             echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
           fi
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
+        # Queue commits are temporary; keep them out of Codecov's branch list.
+        if: ${{ !cancelled() && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -186,7 +214,8 @@ jobs:
             echo "::warning::CODECOV_TOKEN is empty — coverage/test results won't upload. Set it with 'gh secret set CODECOV_TOKEN' in a terminal."
           fi
       - name: Upload coverage to Codecov
-        if: ${{ !cancelled() }}
+        # Queue commits are temporary; keep them out of Codecov's branch list.
+        if: ${{ !cancelled() && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -195,7 +224,8 @@ jobs:
           flags: powershell
           fail_ci_if_error: false
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
+        # Queue commits are temporary; keep them out of Codecov's branch list.
+        if: ${{ !cancelled() && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -225,7 +255,8 @@ jobs:
     name: Dependency review
     # Blocks PRs that add dependencies with known vulnerabilities (moderate or
     # worse) or incompatible licenses. The merge gate (scripts/ready_to_merge.py)
-    # requires it to pass.
+    # requires it to pass. In the merge queue it is skipped (the PR run already
+    # reviewed the same dependency diff), and a skipped check counts as passing.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -242,6 +273,9 @@ jobs:
 
   gitleaks:
     name: Secret scan (gitleaks)
+    # gitleaks-action does not support merge_group, and the PR head was already
+    # scanned. Skipped in the queue; a skipped check counts as passing.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       contents: read

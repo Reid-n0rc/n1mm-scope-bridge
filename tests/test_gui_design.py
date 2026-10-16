@@ -100,7 +100,7 @@ def test_badge_and_card(qtbot: QtBot) -> None:
     qtbot.addWidget(card)
     card.show()
     assert card.value.text() == "—"
-    card.show_chip("✓ Exact frequencies", "success")
+    card.show_chip("Exact frequencies", "success")
     assert card.chip.isVisible()
     assert card.chip.kind == "success"
     card.show_chip("", "neutral")

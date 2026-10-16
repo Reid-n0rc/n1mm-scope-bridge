@@ -23,6 +23,11 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
     it). Codecov shows them as the `app` and `scripts` components.
   - `uv run ruff check . && uv run ruff format --check .`: lint and format
   - `uv run mypy`: strict type check of `src/` and `tests/`
+  - `actionlint` and `uvx zizmor --config .github/zizmor.yml .github/workflows`
+    (optional, local only; not in `uv sync`): lint workflows for bugs and
+    security smells. CI's `Workflow lint` workflow enforces both, at pinned
+    versions, on PRs that touch workflows. Accepted zizmor findings, each with
+    a reason, live in `.github/zizmor.yml`.
   - `sh tests/hooks/run.sh`: git hook and agent hook tests. With
     `HOOKS_JUNIT=<file>` it also writes a JUnit report (one testcase per
     check); CI sends it to Codecov Test Analytics with flag `hooks`, and the
@@ -69,8 +74,14 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    git switch -c issue-<number>-<short-slug> origin/dev
    ```
 3. **Open pull requests against `dev`.** Never push directly to `dev` or
-   `master`. A ruleset enforces this. PRs from non-admins need code-owner
-   approval, and new pushes dismiss approvals.
+   `master`. Two rulesets enforce this (#218):
+   - **`dev`:** a PR, the required CI checks, resolved review threads, and
+     merge commits only. It needs no approval, so `gh pr merge --auto`
+     merges once the required checks pass. Only users with write access (the
+     maintainer) can enable auto-merge, and the maintainer reviews outside
+     PRs before doing so.
+   - **`master`:** release PRs also need a code-owner approval, and new
+     pushes dismiss approvals.
 4. **Only the maintainer promotes `dev` to `master`**, through a release PR.
    Tags and releases come only from `master`.
 5. **Do not push, tag, release, or bump versions** unless the maintainer
@@ -113,10 +124,21 @@ FT4222 USB-to-SPI bridge, which is separate from the CAT COM ports.
    mode (`SS06`), and always restores them. The package never imports it
    (enforced by `tests/scripts/test_dev_cat.py`).
 9. **Test everything, and regress before merging.** See the Testing policy.
-10. **Never merge with a red check or an open security finding.** Before any
-    merge, including `gh pr merge --admin` (which bypasses the ruleset), run
-    `python scripts/ready_to_merge.py <PR>` and merge only if it prints
-    `READY`. It requires every check on the PR head to be green (CodeQL,
+10. **Never merge with a red check or an open security finding.** The merge
+    routine for a PR into `dev` is:
+    ```bash
+    gh pr checks <PR> --watch               # wait for every check to finish
+    python scripts/ready_to_merge.py <PR>   # must print READY
+    gh pr merge <PR> --auto --merge         # GitHub merges when required checks pass
+    ```
+    Run `ready_to_merge.py` after **all** checks finish: auto-merge waits only
+    for the checks the `dev` ruleset requires, and path-filtered workflows
+    (Windows app, installer, regression, FTDI) are not required because they
+    don't run on every PR. There is no merge queue: GitHub offers merge
+    queues only on organization-owned repositories, and this one is
+    user-owned. `gh pr merge --admin` bypasses the ruleset and is reserved
+    for the maintainer's emergencies; agents never use it. `ready_to_merge.py`
+    requires every check on the PR head to be green (CodeQL,
     Analyze, secret scan, and dependency review included), **zero open
     CodeQL alerts on the PR**, no open secret-scanning alerts, no merge
     conflicts, and an approved, assigned linked issue. Resolve every CodeQL
@@ -198,8 +220,13 @@ does not authorize work.
    check (`.github/workflows/issue-policy.yml`) fails a PR whose linked issue
    lacks `plan-approved` or an assignee. CI must be green.
 6. The maintainer (or an agent the maintainer has explicitly authorized)
-   merges, only after `python scripts/ready_to_merge.py <PR>` prints `READY`
-   (rule 10).
+   enables auto-merge with `gh pr merge <PR> --auto --merge`, only after
+   every check has finished and `python scripts/ready_to_merge.py <PR>`
+   prints `READY` (rule 10). Never `--admin`; that is for the maintainer's
+   emergencies only. When the PR merges into `dev`, the **Close linked issues**
+   workflow (`.github/workflows/close-linked-issues.yml`) closes its
+   `Closes #<n>` issues with a comment saying the fix ships in the next
+   release. GitHub itself only does this for merges into `master`.
 
 Hardware-dependent findings (anything learned by running against a real
 radio) go in the issue as a comment, with the radio model, the firmware
@@ -299,6 +326,28 @@ by a person or an agent, following the steps above.
    run the full suite plus lint and type checks. Paste the commands and
    results into the PR. Never skip, xfail, or delete a failing test to get
    green.
+
+   **Flaky GUI quarantine (the one exception, #222).** A `gui` test that
+   fails intermittently (for example a Qt crash on a Windows runner) may be
+   marked `@pytest.mark.flaky(reruns=1, reason="<URL of its open issue>")`
+   from `pytest-rerunfailures`, and nothing else qualifies:
+   - only `gui` tests, exactly one rerun, and a `reason=` that links the open
+     issue tracking the fix; `tests/conftest.py` rejects anything else, and
+     any suite-wide `--reruns` or `--force-reruns`, at collection;
+   - never quarantine a non-GUI test;
+   - every rerun is visible: `RERUN` lines in the pytest summary, a
+     `flaky_rerun` property in `junit.xml` (Codecov Test Analytics), and
+     "N test(s) passed only on rerun" in the CI job summary;
+   - remove the marker in the PR that closes its issue.
+
+   **Qt update hold.** Dependabot groups `PySide6*` and `shiboken6` into
+   one `qt` PR and ignores their minor and major versions; patch versions
+   still come and must pass the Windows GUI tests. To take a held version,
+   bump it in a tracked issue after a green Windows GUI run (CI
+   `Test (windows-latest, Python 3.13)` plus the `Windows app` GUI
+   self-test), then drop the ignore. The ignore lists only
+   `version-update:*` types, which GitHub applies to version updates, not to
+   security updates, but still watch Dependabot alerts for PySide6 by hand.
 4. **Every release runs full regression from a clean environment**, and the
    maintainer runs an on-air check with a real FT-710 and N1MM+:
    ```bash
@@ -404,7 +453,13 @@ has the `no-changelog` label.
    manual version bump is needed and a tag can't disagree with
    `pyproject.toml`. It checks the tag points at `master`, runs the release
    regression on the tag, builds everything, attests build provenance, and
-   publishes the release. **A release carries exactly one file: the universal
+   publishes the release. **Publishing waits for the maintainer's approval
+   (#233):** the **Publish GitHub release** job uses the `release`
+   environment (required reviewer @Reid-n0rc, self-review allowed, no admin
+   bypass, deployment refs `v*` tags and `master`), so it pauses as "Waiting
+   for review" until the maintainer approves it in the Actions UI. A tag alone
+   never publishes. Dry runs skip that job and never wait. Agents never
+   approve or bypass a deployment. **A release carries exactly one file: the universal
    installer** `n1mm-scope-bridge-setup-<version>.exe`. Its notes give the
    installer's SHA-256, a link to the workflow run (whose artifacts hold the
    zips, wheel, sdist, regression report, and screenshots), and point to

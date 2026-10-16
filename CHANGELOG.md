@@ -8,6 +8,34 @@ All notable changes to this project are documented here. The format follows
 
 See `changelog.d/` for changes not yet released.
 
+## [0.1.4] - 2026-10-15
+
+Patch release. The main fix: the Windows app in v0.1.3 could freeze shortly
+after streaming started on its first launch. Upgrade if you run v0.1.3.
+
+### Changed
+
+- Every place in the user guide that says to switch the scope to Center now links to the FT-710's front-panel steps, with the N1MM+ macros as the alternative. (#191)
+- `--self-test` also saves its result line to `self-test.log` in the settings folder, so the installer smoke test can show why it failed. (#209)
+- A stalled GUI `--self-test` now also reports any error that stopped streaming and every thread's stack, in its message and `self-test.log`. (#219)
+- Project process and CI (no change to the app):
+  - Issues close when their pull request merges into `dev`, with a comment that the fix ships in the next release. (#220)
+  - A `Workflow lint` check runs actionlint and zizmor on workflow changes. (#223)
+  - Required checks also run in the merge queue, so one can be turned on for `dev`. (#216)
+  - Pull requests into `dev` merge with auto-merge once the required checks pass; release pull requests into `master` still need a code-owner review. (#218)
+  - An intermittent GUI test can be quarantined to rerun once, tracked by an issue; Dependabot holds PySide6 minor and major updates until they pass the Windows GUI tests. (#222)
+
+### Fixed
+
+- The Windows app no longer freezes for up to a minute (stopping the N1MM+ spectrum) on its first launch after Windows starts on some PCs. The cause was a slow font fallback scan for two status symbols, now removed, and the app is back on Qt for Python (PySide6) 6.12. (#238, #243)
+- The GUI no longer risks crashing when remote control reports an error: it now cleans up its internal objects on the window's own thread. (#217)
+- On the website, links between guide pages now open the matching site page and section instead of a file on GitHub, and the N1MM+ setup page now shows the same steps as the program's own guide. (#192)
+
+### Security
+
+- Publishing a release now waits for the maintainer's approval in GitHub Actions, so pushing a tag alone never publishes. (#233)
+- CI: reusable build workflows refuse untrusted checkout refs (CodeQL alerts #37 to #40). (#211)
+
 ## [0.1.3] - 2026-10-15
 
 ### Added
@@ -30,6 +58,7 @@ See `changelog.d/` for changes not yet released.
 
 ### Fixed
 
+- The GUI no longer stalls after the first N1MM+ packet on some PCs: streaming threads now hand their updates to the window instead of calling Qt directly. (#207)
 - Republishing an older release no longer moves the website back to that version. (#167)
 - Release candidate tags (for example v0.1.3-rc1) now build an installer instead of failing on Windows' numbers-only file version. (#167)
 - Releases made by tagging or in the GitHub web UI now always get the installer and files: the version comes from the tag (no manual bump needed), an existing release is filled in instead of failing, a missing changelog section no longer blocks publishing, and `release.yml` can rebuild an existing tag with `-f publish=true`. (#167)

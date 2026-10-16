@@ -37,7 +37,7 @@ PROMPT = (
     "Set the scope to Center on the radio, or add these N1MM+ function-key macros "
     "(N1MM+ sends them on its own CAT port; the bridge never does):"
 )
-CONFIRMED = "✓ The {model}'s scope is in Center mode. N1MM+ frequencies are exact."
+CONFIRMED = "The {model}'s scope is in Center mode. N1MM+ frequencies are exact."
 MACRO_NOTE = "Format UNVERIFIED on the radio (#62). Paste each line into the N1MM+ F-key editor."
 
 

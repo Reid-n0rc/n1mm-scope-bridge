@@ -20,7 +20,9 @@ Open your radio's page and do everything on it once. Each page gives the menu
 path, the menu number and the button presses for every setting.
 
 - [Yaesu FT-710](radios/ft-710.md): turn **SCU-LAN10** **ON**, set the scope
-  to **CENTER**, then power-cycle the radio and replug the USB cable.
+  to [**CENTER**](radios/ft-710.md#scope-mode-center) (touch the mode key at the
+  left end under the scope until it shows **CENTER**), then power-cycle the
+  radio and replug the USB cable.
 
 Other radios: [Pick your radio](radios/README.md).
 
@@ -50,8 +52,9 @@ Details: the [install page](https://reid-n0rc.github.io/n1mm-scope-bridge/instal
 2. Press **Start**. The status pill turns green (**Streaming**) and the cards
    show your radio's frequency, span and scope mode.
 3. If the **Scope mode** card says **Switch the radio to Center**, set the
-   radio's scope to Center (see your radio's page). The window also offers
-   N1MM+ function-key macros that do it for you.
+   radio's scope to Center on its front panel: on the FT-710, follow
+   [Scope mode: CENTER](radios/ft-710.md#scope-mode-center). Or use the N1MM+
+   function-key macros the window offers, which do it for you.
 
 No radio handy? Turn on **Use the built-in emulator** to try everything
 first. Details: [GUI](gui.md).

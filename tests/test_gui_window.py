@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -324,6 +327,8 @@ def test_self_test_passes(qapp: QApplication, tmp_path: Path) -> None:
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert ok, message
     assert "self-test: OK" in message
+    assert "blocked" not in message
+    assert not [t for t in threading.enumerate() if t.name == "selftest-watchdog"]  # joined
 
 
 def test_self_test_never_prompts_with_a_tray(
@@ -344,6 +349,17 @@ def test_self_test_never_prompts_with_a_tray(
 def test_main_self_test(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 0
     assert "self-test: OK" in capsys.readouterr().out
+    # #209: the windowed exe has no console, so the result also goes to a file.
+    log = (tmp_path / "self-test.log").read_text(encoding="utf-8")
+    assert log.startswith("self-test: OK")
+    assert "most recent call first" not in log  # #219: thread stacks only on a stall
+
+
+def test_self_test_log_failure_is_ignored(tmp_path: Path) -> None:
+    blocker = tmp_path / "file"
+    blocker.write_text("not a folder")
+    gui_app._write_self_test_log(blocker / "self-test.log", "self-test: OK")  # no exception
+    assert blocker.read_text() == "not a folder"
 
 
 def test_self_test_failure_reported(
@@ -355,6 +371,7 @@ def test_self_test_failure_reported(
     monkeypatch.setattr(gui_app, "self_test", lambda app, path: (False, "self-test: received 0"))
     assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 1
     assert "received 0" in capsys.readouterr().err
+    assert (tmp_path / "self-test.log").read_text(encoding="utf-8") == "self-test: received 0\n"
 
 
 def test_main_opens_window_and_autostarts(
@@ -390,6 +407,81 @@ def test_self_test_reports_missing_packets(
     ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
     assert not ok
     assert "received 0 N1MM packets" in message
+    assert "no pipeline stats" in message  # the timeout beat the first stats poll
+    assert "threads:" in message
+    assert "slowest processEvents: " in message
+    assert "late packets: " in message
+    assert "GUI thread blocked" not in message
+
+
+def test_self_test_reports_stopped_errors(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #219: a stage that stopped with an error must not look like a silent stall.
+    def fail_to_start(self: MainWindow) -> None:
+        self.controller.stopped.emit("")  # a normal stop is not an error
+        self.controller.stopped.emit("Streaming stopped: sender failed")
+        self.model.last_error = "N1MM+ port refused"
+
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(MainWindow, "toggle_streaming", fail_to_start)
+    ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
+    assert not ok
+    first = message.splitlines()[0]
+    assert first.endswith("errors: Streaming stopped: sender failed | N1MM+ port refused)")
+
+
+def test_self_test_stall_dumps_thread_stacks(
+    qapp: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(Path, "home", lambda: Path(gui_app.__file__).parents[1])
+    assert gui_app.main(["--self-test", "--settings", str(tmp_path / "s.json")]) == 1
+    assert "most recent call first" in capsys.readouterr().err
+    log = (tmp_path / "self-test.log").read_text(encoding="utf-8")
+    first, _, stacks = log.partition("\n")
+    assert first.startswith("self-test: received 0 N1MM packets")  # the result line comes first
+    assert "Current thread" in stacks
+    assert "_thread_stacks" in stacks
+    assert str(Path(gui_app.__file__).parents[1]) not in stacks  # home folder shown as ~
+    assert "~" in stacks
+
+
+def test_self_test_watchdog_reports_a_blocked_gui_thread(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #219: one processEvents() call blocks the GUI thread past the deadline.
+    process_events = QApplication.processEvents
+    calls: list[int] = []
+
+    def slow_process_events(*args: Any) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            time.sleep(1.5)
+        process_events()
+
+    monkeypatch.setattr(gui_app, "SELF_TEST_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(gui_app, "WATCHDOG_STALL_S", 0.2)
+    monkeypatch.setattr(QApplication, "processEvents", slow_process_events)
+    ok, message = gui_app.self_test(qapp, tmp_path / "st.json")
+    assert not ok
+    first = message.splitlines()[0]
+    assert re.search(r"slowest processEvents: 1\.[5-9]\d s", first), first
+    late = re.search(r"late packets: (\d+)", first)
+    assert late, first
+    assert int(late.group(1)) >= 1, first  # sent while the GUI thread was blocked
+    assert "selftest-watchdog" not in first
+    assert "GUI thread blocked for" in message
+    assert "in slow_process_events" in message
+
+
+def test_self_test_failure_names_the_stalled_stage() -> None:
+    stats = PipelineStats(frames_read=12, frames_dropped=1, bad_frames=0, emitted=1)
+    assert gui_app._describe_stats(stats) == "read 12, dropped 1, bad 0, sent 1"
+    assert gui_app._describe_stats(None) == "no pipeline stats"
 
 
 def test_window_status_panel_log_and_diagnostics(qtbot: QtBot, listener: socket.socket) -> None:

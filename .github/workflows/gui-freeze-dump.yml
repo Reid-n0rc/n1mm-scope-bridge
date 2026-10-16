@@ -1,0 +1,190 @@
+# Opt-in diagnosis of the Windows GUI freeze on PySide6 6.12 (#238, #236, #219).
+#
+# Builds the frozen app with PySide6 forced to 6.12.x (in the CI venv only; the
+# lock is not touched), runs the GUI self-test in a loop, and when a run is
+# still alive after STALL_AFTER_S seconds (a normal run takes a few seconds)
+# takes full dumps of it with Sysinternals procdump (SHA-256 and Authenticode
+# checked download). A failed run's dumps are symbolized with cdb (Debugging
+# Tools for Windows, preinstalled with the Windows SDK) into a text stack
+# summary. Artifacts: dumps plus summary, kept 7 days.
+#
+# workflow_dispatch only: never runs on PRs or pushes. Privacy (rule 11): it
+# runs only on GitHub-hosted runners, which hold no personal data; never upload
+# dumps taken on a developer machine.
+#
+# Never dispatch it on dev or master: its checks land on the branch head, and a
+# caught stall (a red job) would block a release PR. Dispatch it on an
+# issue-* branch: gh workflow run gui-freeze-dump.yml --ref issue-<n>-<slug>.
+# The job is skipped on any other ref.
+name: GUI freeze dump
+
+on:
+  workflow_dispatch:
+    inputs:
+      pyside:
+        description: "PySide6-Essentials version to force (6.12.x)"
+        type: string
+        default: "6.12.0"
+      iterations:
+        description: "Self-test runs per job (1-40)"
+        type: string
+        default: "13"
+
+permissions: {}
+
+concurrency:
+  group: gui-freeze-dump-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    name: Self-test loop (${{ matrix.arch }}, shard ${{ matrix.shard }})
+    # issue-* branches only (see the header): never dev or master.
+    if: startsWith(github.ref, 'refs/heads/issue-')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+        shard: [1, 2, 3]
+        include:
+          - { arch: x64, os: windows-latest, procdump: procdump64.exe, debuggers: x64 }
+          - { arch: arm64, os: windows-11-arm, procdump: procdump64a.exe, debuggers: arm64 }
+    env:
+      PYSIDE: ${{ inputs.pyside }}
+      ITERATIONS: ${{ inputs.iterations }}
+      PROCDUMP_EXE: ${{ matrix.procdump }}
+      DEBUGGERS_ARCH: ${{ matrix.debuggers }}
+      # Sysinternals publishes no versioned URL: a new release changes the hash
+      # and fails this job closed. Update the hash after checking the new zip.
+      PROCDUMP_URL: https://download.sysinternals.com/files/Procdump.zip
+      PROCDUMP_SHA256: 5fe68e81632f13188930affff20a9a9910170bae654360850d3108cead708a2d
+      STALL_AFTER_S: "8"
+      MAX_CAPTURES: "2"
+      OUT_DIR: freeze-dump
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.13"
+      - name: Install with PySide6 forced to 6.12.x (CI venv only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$PYSIDE" =~ ^6\.12\.[0-9]+$ ]]; then
+            echo "::error::inputs.pyside must be 6.12.x"
+            exit 1
+          fi
+          if ! [[ "$ITERATIONS" =~ ^[0-9]+$ ]] || [ "$ITERATIONS" -lt 1 ] || [ "$ITERATIONS" -gt 40 ]; then
+            echo "::error::inputs.iterations must be 1-40"
+            exit 1
+          fi
+          uv sync --locked --group packaging
+          uv pip install "PySide6-Essentials==$PYSIDE"
+          uv run --no-sync python -c "import PySide6, shiboken6; print('PySide6', PySide6.__version__, 'shiboken6', shiboken6.__version__)"
+      - name: Build the frozen app (no smoke test)
+        shell: bash
+        run: uv run --no-sync python scripts/build_windows_app.py --gui auto --no-smoke
+      - name: Download procdump (SHA-256 and signature checked)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'Procdump.zip'
+          Invoke-WebRequest -Uri $env:PROCDUMP_URL -OutFile $zip -UseBasicParsing
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if ($hash -ne $env:PROCDUMP_SHA256) { throw "Procdump.zip SHA-256 mismatch: $hash" }
+          $dir = Join-Path $env:RUNNER_TEMP 'procdump'
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          $exe = Join-Path $dir $env:PROCDUMP_EXE
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "procdump signature not valid: $($sig.Status) $($sig.SignerCertificate.Subject)"
+          }
+          "PROCDUMP=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Self-test loop with dumps of stalled runs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'dist\windows\n1mm-scope-bridge\N1MM Scope Bridge.exe'
+          $out = New-Item -ItemType Directory -Force -Path $env:OUT_DIR
+          $results = @()
+          $captures = 0
+          for ($i = 1; $i -le [int]$env:ITERATIONS; $i++) {
+            $run = New-Item -ItemType Directory -Force -Path (Join-Path $env:RUNNER_TEMP "st\$i")
+            $settings = Join-Path $run 'self-test.json'
+            $started = Get-Date
+            $p = Start-Process -FilePath $exe -ArgumentList '--self-test', '--settings', "`"$settings`"" -PassThru
+            $dumped = $false
+            $dumpDir = Join-Path $out "run-$i"
+            if (-not $p.WaitForExit([int]$env:STALL_AFTER_S * 1000)) {
+              New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+              # Three full dumps 3 s apart, while the process is still alive.
+              & $env:PROCDUMP -accepteula -ma -n 3 -s 3 $p.Id $dumpDir | Out-File (Join-Path $dumpDir 'procdump.txt')
+              $dumped = $true
+            }
+            if (-not $p.WaitForExit(90000)) { Stop-Process -Id $p.Id -Force; $p.WaitForExit() }
+            $code = $p.ExitCode
+            $secs = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+            $log = Join-Path $run 'self-test.log'
+            $text = if (Test-Path $log) { Get-Content -Raw $log } else { '(no self-test.log)' }
+            $results += "run $i : exit $code in $secs s (dumped: $dumped)"
+            Write-Output "run $i : exit $code in $secs s (dumped: $dumped)"
+            if ($dumped -and $code -ne 0) {
+              $captures++
+              Set-Content -Path (Join-Path $dumpDir 'self-test.log') -Value $text -Encoding utf8
+            } elseif ($dumped) {
+              Remove-Item -Recurse -Force $dumpDir  # slow but passed: keep only the timing
+            }
+            if ($code -ne 0) { Write-Output $text }
+            if ($captures -ge [int]$env:MAX_CAPTURES) { break }
+          }
+          Set-Content -Path (Join-Path $out 'runs.txt') -Value $results -Encoding utf8
+          "CAPTURES=$captures" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Symbolize the dumps into a stack summary
+        if: always() && env.CAPTURES != '' && env.CAPTURES != '0'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Debuggers'
+          $cdb = Join-Path $kits "$env:DEBUGGERS_ARCH\cdb.exe"
+          if (-not (Test-Path $cdb)) {
+            $cdb = Get-ChildItem -Path $kits -Recurse -Filter cdb.exe -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          $summary = Join-Path $env:OUT_DIR 'stack-summary.txt'
+          $app = Join-Path $PWD 'dist\windows\n1mm-scope-bridge'
+          $env:_NT_SYMBOL_PATH = "srv*$env:RUNNER_TEMP\symbols*https://msdl.microsoft.com/download/symbols;$app;$app\_internal;$app\_internal\PySide6;$app\_internal\shiboken6"
+          $md = @("## GUI freeze dump: $env:DEBUGGERS_ARCH", '', '```')
+          $md += Get-Content (Join-Path $env:OUT_DIR 'runs.txt')
+          $md += '```'
+          if (-not $cdb) {
+            Set-Content $summary 'cdb.exe not found on this runner; the dumps are in the artifact.'
+            $md += 'cdb.exe not found on this runner; the dumps are in the artifact.'
+          } else {
+            $all = @()
+            foreach ($dmp in Get-ChildItem -Path $env:OUT_DIR -Recurse -Filter *.dmp | Sort-Object FullName) {
+              $all += "==================== $($dmp.Directory.Name)\$($dmp.Name)"
+              $all += & $cdb -z $dmp.FullName -i $app -c '.symopt+0x40;.reload;!runaway 7;~*kn 120;q' 2>&1
+            }
+            Set-Content -Path $summary -Value $all -Encoding utf8
+            $first = Get-ChildItem -Path $env:OUT_DIR -Recurse -Filter *.dmp | Sort-Object FullName | Select-Object -First 1
+            $log = Join-Path $first.Directory.FullName 'self-test.log'
+            $md += '', "### Self-test log ($($first.Directory.Name))", '', '```'
+            $md += Get-Content $log
+            $md += '```', '', "### Main thread and thread times ($($first.Name))", '', '```'
+            $md += & $cdb -z $first.FullName -i $app -c '.symopt+0x40;.reload;!runaway 7;~0kn 120;q' 2>&1
+            $md += '```'
+          }
+          $md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gui-freeze-dump-${{ matrix.arch }}-${{ matrix.shard }}
+          path: freeze-dump/
+          if-no-files-found: ignore
+          retention-days: 7

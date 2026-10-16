@@ -487,13 +487,20 @@ def test_radio_pages_render_docs_from_a_subfolder(tmp_path: Path) -> None:
     assert "<!-- markdown:" not in page
     picker = (tmp_path / "out" / "radios.html").read_text(encoding="utf-8")
     assert 'href="radio-ft-710.html"' in picker
-    assert "/blob/dev/docs/user/radios/ft-710.md" in picker
+    assert "/blob/dev/docs/user/radios/ft-710.md" not in picker  # on the site (#192)
 
 
-def test_markdown_marker_needs_a_plain_docs_user_path() -> None:
+def test_markdown_marker_needs_a_plain_docs_path() -> None:
     assert bs.MARKDOWN.fullmatch("<!-- markdown:docs/user/radios/ft-710.md -->")
     assert bs.MARKDOWN.fullmatch("<!-- markdown:docs/user/radios/README.md -->")
-    for path in ("docs/user/../secret.md", "docs/user/a/b/c.md", "docs/other.md"):
+    assert bs.MARKDOWN.fullmatch("<!-- markdown:docs/n1mm-setup.md -->")
+    for path in (
+        "docs/user/../secret.md",
+        "docs/user/a/b/c.md",
+        "docs/other/x.md",
+        "docs/../README.md",
+        "README.md",
+    ):
         assert not bs.MARKDOWN.fullmatch(f"<!-- markdown:{path} -->"), path
 
 
@@ -508,6 +515,71 @@ def test_markdown_marker_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     src2 = write_site(tmp_path / "src2", {"index.html": "<!-- markdown:docs/user/bad.md -->"})
     with pytest.raises(bs.SiteError, match=r"bad\.md: unsupported"):
         bs.build(tmp_path / "out2", DEV, src2)
+
+
+# --- links between rendered docs (#192) ----------------------------------------------
+
+
+def test_doc_pages_are_discovered_from_markers(tmp_path: Path) -> None:
+    a = tmp_path / "a.html"
+    a.write_text("<!-- markdown:docs/user/x.md --><!-- markdown:docs/user/x.md -->", "utf-8")
+    b = tmp_path / "b.html"
+    b.write_text("<!-- markdown:docs/n1mm-setup.md -->", encoding="utf-8")
+    (tmp_path / "c.html").write_text("<p>no doc</p>", encoding="utf-8")
+    pages = [a, b, tmp_path / "c.html"]
+    assert bs.doc_pages(pages) == {"docs/user/x.md": "a.html", "docs/n1mm-setup.md": "b.html"}
+
+
+def test_doc_rendered_by_two_pages_fails(tmp_path: Path) -> None:
+    for name in ("a.html", "b.html"):
+        (tmp_path / name).write_text("<!-- markdown:docs/user/x.md -->", encoding="utf-8")
+    with pytest.raises(bs.SiteError, match=r"rendered by both a\.html and b\.html"):
+        bs.doc_pages([tmp_path / "a.html", tmp_path / "b.html"])
+
+
+def fake_docs(root: Path, monkeypatch: pytest.MonkeyPatch, link: str) -> None:
+    (root / "docs" / "user").mkdir(parents=True)
+    (root / "docs" / "user" / "a.md").write_text(f"# A\n\nSee [b]({link}).\n", "utf-8")
+    (root / "docs" / "user" / "b.md").write_text("# B\n\n## Real section\n\nx\n", "utf-8")
+    monkeypatch.setattr(bs, "ROOT", root)
+
+
+def test_build_links_rendered_docs_to_their_pages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_docs(tmp_path / "repo", monkeypatch, "b.md#real-section")
+    pages = {
+        "a.html": "<!-- markdown:docs/user/a.md -->",
+        "b.html": "<!-- markdown:docs/user/b.md -->",
+    }
+    bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", pages))
+    page = (tmp_path / "out" / "a.html").read_text(encoding="utf-8")
+    assert '<a href="b.html#real-section">b</a>' in page
+
+
+def test_build_fails_on_a_missing_section_in_a_rendered_doc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_docs(tmp_path / "repo", monkeypatch, "b.md#no-such-section")
+    pages = {
+        "a.html": "<!-- markdown:docs/user/a.md -->",
+        "b.html": "<!-- markdown:docs/user/b.md -->",
+    }
+    with pytest.raises(bs.SiteError, match=r"missing anchor 'b\.html#no-such-section'"):
+        bs.build(tmp_path / "out", DEV, write_site(tmp_path / "src", pages))
+
+
+def test_real_site_keeps_doc_links_on_the_site(tmp_path: Path) -> None:
+    """Getting started links to pages the site renders; other docs still go to GitHub."""
+    bs.build(tmp_path / "out", RELEASE)
+    page = (tmp_path / "out" / "getting-started.html").read_text(encoding="utf-8")
+    for href in ("radios.html", "radio-ft-710.html", "troubleshooting.html",
+                 "n1mm.html#running-n1mm-on-another-pc"):  # fmt: skip
+        assert f'href="{href}"' in page, href
+    assert f"/blob/{RELEASE['ref']}/docs/user/gui.md" in page
+    n1mm = (tmp_path / "out" / "n1mm.html").read_text(encoding="utf-8")
+    assert 'href="radio-setup.html"' in n1mm
+    assert "<!-- markdown:" not in n1mm
 
 
 # --- animated recordings (#124) ----------------------------------------------------------

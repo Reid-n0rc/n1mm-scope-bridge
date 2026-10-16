@@ -18,7 +18,7 @@ from __future__ import annotations
 import html
 import posixpath
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 LinkMapper = Callable[[str], str]
 
@@ -41,9 +41,15 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")
 
 
-def doc_link_mapper(base_url: str, doc_dir: str) -> LinkMapper:
-    """Map links in a doc: other repo files go to GitHub (``base_url``); URLs and
-    anchors stay as they are. ``doc_dir`` is the doc's folder in the repo."""
+def doc_link_mapper(
+    base_url: str, doc_dir: str, site_pages: Mapping[str, str] | None = None
+) -> LinkMapper:
+    """Map links in a doc: a doc the site renders goes to its site page
+    (``site_pages`` maps repo path to page, for example
+    ``docs/user/troubleshooting.md`` to ``troubleshooting.html``, #192), other repo
+    files go to GitHub (``base_url``); URLs and anchors stay as they are.
+    ``doc_dir`` is the doc's folder in the repo. A ``#fragment`` is kept: site
+    headings use the same ``slug()`` ids, and the site build checks them."""
 
     def mapper(target: str) -> str:
         if re.match(r"^(https?:|mailto:|#)", target):
@@ -52,7 +58,8 @@ def doc_link_mapper(base_url: str, doc_dir: str) -> LinkMapper:
         resolved = posixpath.normpath(posixpath.join(doc_dir, path))
         if resolved.startswith(".."):
             raise MarkdownError(f"link {target!r} points outside the repository")
-        return f"{base_url}/{resolved}" + (f"#{frag}" if frag else "")
+        page = (site_pages or {}).get(resolved)
+        return (page or f"{base_url}/{resolved}") + (f"#{frag}" if frag else "")
 
     return mapper
 

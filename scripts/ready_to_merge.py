@@ -2,8 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Reid Crowe, N0RC
 """Merge gate: is this pull request safe to merge? (issue #97)
 
-Agents merge with ``gh pr merge --admin``, which bypasses the branch
-ruleset, so AGENTS.md requires this gate to pass before any merge:
+PRs into ``dev`` merge with ``gh pr merge <PR> --auto --merge`` (#218).
+Auto-merge waits only for the checks the ``dev`` ruleset requires, and
+path-filtered workflows are not required, so AGENTS.md requires this gate
+to pass, after every check has finished, before enabling auto-merge or
+merging any other way:
 
     python scripts/ready_to_merge.py <PR number>
 
