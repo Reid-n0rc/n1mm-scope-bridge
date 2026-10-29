@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 See `changelog.d/` for changes not yet released.
 
+## [0.1.6] - 2026-10-29
+
+Maintenance release: build and development tool updates only. The app itself is unchanged from v0.1.5.
+
+### Changed
+
+- Updated the build's GitHub Actions (CodeQL and Claude Code action) to their latest pinned releases. (#263)
+- Updated the ruff development tool to 0.17.1. (#264)
+
+### Security
+
+- Updated the setuptools build tool to 84.1.0, which fixes archive extraction path-traversal issues (GHSA-grgh-hr87-3jpw, GHSA-xmj3-9gf7-h52w). (#266)
+
 ## [0.1.5] - 2026-10-16
 
 Docs and process release. The app itself is unchanged from v0.1.4.
